@@ -306,31 +306,59 @@ class UnitRepairCount(models.Model):
 # ABSTRACT BASE CLASS: GlassService
 # =============================================================================
 
-# Coarse arrival windows a customer can ask for (FIELD_OPS S4).
+# Arrival windows a customer can ask for (FIELD_OPS S4).
 #
-# Deliberately three buckets and not a time picker: TIME_ZONE is one global
-# setting, so a fleet dispatcher two states away picking "8:15 AM" is ambiguous
-# in a way "morning" is not — and the shop decides the real clock time anyway.
+# Three one-tap presets plus EXACT, which reads `preferred_time_start` /
+# `preferred_time_end` instead of the hour pair below.
 #
-# PREFERRED_WINDOW_HOURS is the single numeric source of truth: the labels
-# below are written from it by hand, and services/schedule_booking.py turns a
-# (date, window) pair into the real scheduled_for / scheduled_window_end.
+# EXACT exists because this portal serves trucking fleets: "morning" is a
+# useless answer when the truck rolls at 6:00 and the yard only has it from
+# 04:30 to 05:45. The presets stay because most retail work genuinely doesn't
+# care, and a required time picker would tax every one of those requests.
+#
+# The original spec argued against a picker on timezone grounds — TIME_ZONE is
+# one global setting, so "8:15 AM" from a dispatcher two states away is
+# ambiguous. That objection is answered by labelling the clock rather than by
+# refusing precision: every exact-time surface states whose local time it is
+# (`shop_timezone_label`). When per-tenant timezones arrive, that helper and
+# `window_bounds()` are the two places that change.
+#
+# PREFERRED_WINDOW_HOURS is the single numeric source of truth for the presets:
+# the labels below are written from it by hand, and
+# services/schedule_booking.py turns a (date, window[, start, end]) tuple into
+# the real scheduled_for / scheduled_window_end.
 PREFERRED_WINDOW_HOURS = {
     'MORNING': (8, 12),
     'AFTERNOON': (12, 17),
     'ANYTIME': (8, 17),
+    # Fallback only — EXACT normally carries its own times. A row that says
+    # EXACT with no times (stale form, hand-edited data) books a full day
+    # rather than failing.
+    'EXACT': (8, 17),
 }
 PREFERRED_WINDOW_CHOICES = [
     ('MORNING', 'Morning (8:00 AM – 12:00 PM)'),
     ('AFTERNOON', 'Afternoon (12:00 PM – 5:00 PM)'),
     ('ANYTIME', 'Any time that day'),
+    ('EXACT', 'A specific window'),
 ]
 # Short forms for dense surfaces (the triage rail, a one-line summary).
 PREFERRED_WINDOW_SHORT = {
     'MORNING': 'morning',
     'AFTERNOON': 'afternoon',
     'ANYTIME': 'any time',
+    'EXACT': 'a set window',
 }
+
+
+def shop_timezone_label():
+    """Short name of the clock every time on every screen is stated in.
+
+    'CDT' / 'CST'. There is no per-tenant timezone yet — TIME_ZONE is one
+    global setting — so precision has to be labelled to be honest. Every
+    surface that shows or takes an exact time prints this next to it.
+    """
+    return timezone.localtime(timezone.now()).strftime('%Z')
 
 
 class GlassService(models.Model):
@@ -427,6 +455,17 @@ class GlassService(models.Model):
         max_length=20, blank=True, default='',
         choices=PREFERRED_WINDOW_CHOICES,
         help_text="Part of the day the customer asked for."
+    )
+    # Set when preferred_window is EXACT. Fleets run to the minute — the truck
+    # rolls at 6:00 and the yard has it from 04:30 — so "morning" is not an
+    # answer. Stored in the shop's local clock (see shop_timezone_label).
+    preferred_time_start = models.TimeField(
+        null=True, blank=True,
+        help_text="Earliest the vehicle is available. Only with window=EXACT."
+    )
+    preferred_time_end = models.TimeField(
+        null=True, blank=True,
+        help_text="Latest the work can run to — a fleet's hard cutoff."
     )
     description = models.TextField(blank=True, null=True)
     cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -637,19 +676,43 @@ class GlassService(models.Model):
 
     @property
     def has_time_preference(self):
-        return bool(self.preferred_date or self.preferred_window)
+        return bool(self.preferred_date or self.preferred_window
+                    or self.preferred_time_start)
+
+    @property
+    def has_exact_time_preference(self):
+        """A window asked for to the minute — the fleet case."""
+        return bool(self.preferred_time_start or self.preferred_time_end)
 
     @property
     def preferred_window_short(self):
-        """'morning' / 'afternoon' / 'any time', or '' — for dense rows."""
+        """'morning' / '7:00 – 8:30 AM CDT' / '' — for dense rows.
+
+        An exact ask renders the clock rather than the bucket name: 'a set
+        window' tells a dispatcher nothing, and the whole point of EXACT is
+        that the minutes matter.
+        """
+        if self.has_exact_time_preference:
+            start, end = self.preferred_time_start, self.preferred_time_end
+            tz = shop_timezone_label()
+            if start and end:
+                # Drop the meridiem from the start when both share it —
+                # '7:00 – 8:30 AM' reads better than '7:00 AM – 8:30 AM'.
+                same_half = format_date(start, 'A') == format_date(end, 'A')
+                left = format_date(start, 'g:i' if same_half else 'g:i A')
+                return f"{left} – {format_date(end, 'g:i A')} {tz}"
+            if start:
+                return f"from {format_date(start, 'g:i A')} {tz}"
+            return f"by {format_date(end, 'g:i A')} {tz}"
         return PREFERRED_WINDOW_SHORT.get(self.preferred_window, '')
 
     def get_time_preference(self):
         """One line for what the customer asked for, or ''.
 
-        'Tue, Aug 19 (morning)' · 'Tue, Aug 19' · 'Morning, no date given'.
-        Returns '' when nothing was asked for, so callers drop the whole row
-        rather than render an empty label.
+        'Tue, Aug 19 (7:00 – 8:30 AM CDT)' · 'Tue, Aug 19 (morning)' ·
+        'Tue, Aug 19' · 'Morning, no day given'. Returns '' when nothing was
+        asked for, so callers drop the whole row rather than render an empty
+        label.
         """
         if not self.has_time_preference:
             return ''

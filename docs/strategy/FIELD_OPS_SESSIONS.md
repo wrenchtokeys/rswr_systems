@@ -508,6 +508,16 @@ on top of it, and a fresh session should start from these rather than re-derive:
   decides the real clock time anyway. A DateField plus a three-value choice also
   matches the shipped `RewardRedemption` precedent, which means a customer-facing
   pattern the portal has already proven.
+  **— Overturned during the build (Drake, 2026-08-18): "there should be a way to
+  dial the time better. we're dealing with trucking companies and fleets in this
+  portal, sometimes they're on a tight deadline."** He is right and this note was
+  wrong. "Morning" is not an answer when the unit rolls at 06:00 and the yard has
+  it from 04:30; worse, it is indistinguishable from a retail customer with no
+  constraint at all, so the shop cannot tell an urgent ask from a relaxed one.
+  The timezone objection is answered by **labelling** the clock, not by refusing
+  precision — see the EXACT bullet in Notes. The presets stayed: most work
+  genuinely doesn't care, and making every request pick a clock taxes all of them
+  to serve some of them.
 - **Address: prefill, but persist only real overrides.** `QuickJobForm.clean()`
   blanks a submitted address that matches the picked customer's current address
   (whitespace/case-normalized) precisely so a typo fixed on the customer record
@@ -552,12 +562,37 @@ on top of it, and a fresh session should start from these rather than re-derive:
   `POST /tech/schedule/book/` (`schedule_book`), JSON for every outcome including
   refusals, authorization checked in-body. **S5 should call this, not reimplement
   it** — same relationship it has to S7's swap.
-- **`window_bounds(day, window)` is where a coarse window becomes real clock
-  time**, and it is the only place that knows what "morning" means (8–12, 12–17,
-  8–17, in `PREFERRED_WINDOW_HOURS` on the model). Both ends are wall-clock
-  combined with the date, so a DST-transition day keeps "8 AM to noon" honest.
-  This makes S4 `scheduled_window_end`'s first *originating* writer, as S1
+- **`window_bounds(day, window, start_time, end_time)` is where a window becomes
+  real clock time**, and it is the only place that knows what "morning" means
+  (8–12, 12–17, 8–17, in `PREFERRED_WINDOW_HOURS` on the model). Both ends are
+  wall-clock combined with the date, so a DST-transition day keeps "8 AM to noon"
+  honest. This makes S4 `scheduled_window_end`'s first *originating* writer, as S1
   predicted — S7 only ever preserved an existing duration.
+- **EXACT windows — the fleet case, added mid-session at Drake's push (see the
+  struck-through Design note above).** `preferred_window='EXACT'` reads
+  `preferred_time_start` / `preferred_time_end` (migration
+  `technician_portal/0056`) instead of a fixed hour pair, so a customer can ask
+  for 04:30–05:45 and the shop can *book* 04:30–05:45 — the rail's control grew
+  the same two inputs, because offering precision on the request form and then
+  forcing the booking into a four-hour block is the same broken promise as never
+  asking. Details worth keeping:
+  - **The end field is labelled "Must be done by"**, because for a fleet the
+    cutoff *is* the request. A lone end books back from it by
+    `NOMINAL_JOB_LENGTH` (1 hour, a constant in the booking service — nothing in
+    the app models job duration yet, and a settings screen for it would promise
+    more than the number is worth; S5/S6 can replace it).
+  - **Every exact-time surface prints `shop_timezone_label()`** ('CDT'). That
+    helper and `window_bounds()` are the two places to change when per-tenant
+    timezones arrive.
+  - **Times are ignored unless the window is EXACT**, on both the customer form
+    and the endpoint, so a stale pair left in a POST can never silently override
+    a preset. And EXACT submitted with *no* times drops the window entirely
+    rather than storing a bucket that lies about its own precision.
+  - `preferred_window_short` renders the clock rather than the bucket name for
+    an exact ask — "a set window" tells a dispatcher nothing.
+  - An end at or before the start is treated as a typo, not a window crossing
+    midnight: the endpoint refuses it, and the request form keeps the usable half
+    rather than discarding the whole ask.
 - **The rail is now a shared partial.** `schedule_row.html` grew a `triage=True`
   mode (no time column, no drag handle, wish chip, inline book form) and
   `schedule.html`'s inline copy is gone. The doc called this "the third reason to
@@ -612,10 +647,14 @@ on top of it, and a fresh session should start from these rather than re-derive:
     map link.
   - A **past preferred date is dropped on read** (stale autosaved form), so the
     rail never shows a wish for last Tuesday.
+  - **Nothing models technician availability or working hours yet**, so a fleet
+    can ask for 04:30 and the shop can agree to it with no warning that nobody
+    starts before 07:00. That is S6 item 4, and EXACT windows make it matter
+    sooner than the backlog assumed — S5's conflict display should surface it.
   - `_read_service_preference()` / `_preference_form_context()` in
     `apps/customer_portal/views.py` are the shared reader/context pair — both
     request flows and all their error-path renders go through them.
-- **Tests:** `tests/test_fieldops_s4.py` (34). Green alongside S1/S2/S3/S7 (122
+- **Tests:** `tests/test_fieldops_s4.py` (46, twelve of them the EXACT-window path). Green alongside S1/S2/S3/S7 (122
   total), N1/N4, customer auto-accept, request-replacement, primary-contact,
   e2e-today, touch targets, view transitions, step5-nav, job-form parity,
   individual-vs-fleet, invoice-send-polish and email branding. The one failure in

@@ -29,11 +29,17 @@
         // since the type itself never contains one but a future id might.
         var key = row.getAttribute('data-job-key') || '';
         var dash = key.indexOf('-');
+        var start = form.querySelector('[data-book-start]');
+        var end = form.querySelector('[data-book-end]');
         return {
             type: key.slice(0, dash),
             id: key.slice(dash + 1),
             date: form.querySelector('[data-book-date]').value,
             window: form.querySelector('[data-book-window]').value,
+            // Only meaningful when the window is EXACT; the server ignores
+            // them otherwise, so a stale pair cannot override a preset.
+            start_time: start ? start.value : '',
+            end_time: end ? end.value : '',
             // What this row believed the job's time was. Empty means
             // "unscheduled", which is the normal case here and is exactly the
             // expectation the server's optimistic lock checks — so a job
@@ -41,6 +47,24 @@
             expected: row.getAttribute('data-scheduled-for') || ''
         };
     }
+
+    // Show the from/until clock only when the manager picks a specific window.
+    // Delegated, because rows are re-rendered on every page load and there may
+    // be dozens of them.
+    document.addEventListener('change', function (event) {
+        var select = event.target.closest('[data-book-window]');
+        if (!select) { return; }
+        var form = select.closest('[data-book-form]');
+        var exact = form && form.querySelector('[data-book-exact]');
+        if (!exact) { return; }
+        var on = select.value === 'EXACT';
+        exact.classList.toggle('hidden', !on);
+        if (!on) {
+            exact.querySelectorAll('input').forEach(function (input) {
+                input.value = '';
+            });
+        }
+    });
 
     document.addEventListener('submit', function (event) {
         var form = event.target.closest('[data-book-form]');

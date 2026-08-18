@@ -18,7 +18,7 @@ Two inherited testing gotchas apply throughout (S7 + N4):
 """
 
 import json
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import Group, User
@@ -31,7 +31,7 @@ from apps.customer_portal.models import CustomerUser
 from apps.tenants.models import SubscriptionPlan, Tenant, TenantMembership
 from apps.technician_portal.models import (
     PREFERRED_WINDOW_HOURS, Repair, Replacement, Technician,
-    TechnicianNotification,
+    TechnicianNotification, shop_timezone_label,
 )
 from apps.technician_portal.services.schedule_booking import (
     BookingError, confirm_appointment, window_bounds,
@@ -133,11 +133,12 @@ class S4Base(TestCase):
             return self.client.post(reverse('customer_request_repair'), data)
 
     def post_book(self, job, kind='repair', day=None, window='MORNING',
-                  expected=''):
+                  start_time='', end_time='', expected=''):
         payload = {
             'type': kind, 'id': job.pk,
             'date': (day or tomorrow()).isoformat(),
             'window': window, 'expected': expected,
+            'start_time': start_time, 'end_time': end_time,
         }
         with self.captureOnCommitCallbacks(execute=True):
             return self.client.post(
@@ -632,6 +633,183 @@ class ConfirmTests(S4Base):
         self.assertEqual(resp.status_code, 200)
         repl.refresh_from_db()
         self.assertIsNotNone(repl.scheduled_for)
+
+
+# =============================================================================
+# Exact windows — the fleet case
+# =============================================================================
+
+class ExactWindowTests(S4Base):
+    """"Morning" is not an answer when the truck rolls at 6:00.
+
+    A fleet has to be able to say 4:30–5:45, the shop has to be able to book
+    it to the minute, and the clock has to say whose timezone it is on.
+    """
+
+    suffix = '_exact'
+
+    def test_customer_can_ask_for_a_window_to_the_minute(self):
+        self.login_customer()
+        day = tomorrow()
+        self.post_request_repair(
+            preferred_date=day.isoformat(), preferred_window='EXACT',
+            preferred_time_start='04:30', preferred_time_end='05:45')
+
+        repair = Repair.objects.get(customer=self.customer)
+        self.assertEqual(repair.preferred_window, 'EXACT')
+        self.assertEqual(repair.preferred_time_start, time(4, 30))
+        self.assertEqual(repair.preferred_time_end, time(5, 45))
+        self.assertTrue(repair.has_exact_time_preference)
+        # Still only a wish.
+        self.assertIsNone(repair.scheduled_for)
+
+    def test_the_shop_reads_back_a_clock_not_a_bucket(self):
+        self.login_customer()
+        self.post_request_repair(
+            preferred_date=tomorrow().isoformat(), preferred_window='EXACT',
+            preferred_time_start='04:30', preferred_time_end='05:45')
+        repair = Repair.objects.get(customer=self.customer)
+        summary = repair.get_time_preference()
+        self.assertIn('4:30', summary)
+        self.assertIn('5:45 AM', summary)
+        self.assertNotIn('set window', summary)
+        # An exact time is only unambiguous if you say whose clock it is on.
+        self.assertIn(shop_timezone_label(), summary)
+
+    def test_a_hard_cutoff_alone_is_enough(self):
+        """"Done by 5:45" is a complete fleet request on its own."""
+        self.login_customer()
+        self.post_request_repair(
+            preferred_date=tomorrow().isoformat(), preferred_window='EXACT',
+            preferred_time_end='05:45')
+        repair = Repair.objects.get(customer=self.customer)
+        self.assertIsNone(repair.preferred_time_start)
+        self.assertEqual(repair.preferred_time_end, time(5, 45))
+        self.assertIn('by 5:45 AM', repair.get_time_preference())
+
+    def test_backwards_window_keeps_the_usable_half(self):
+        self.login_customer()
+        self.post_request_repair(
+            preferred_date=tomorrow().isoformat(), preferred_window='EXACT',
+            preferred_time_start='09:00', preferred_time_end='07:00')
+        repair = Repair.objects.get(customer=self.customer)
+        self.assertEqual(repair.preferred_time_start, time(9, 0))
+        self.assertIsNone(repair.preferred_time_end)
+
+    def test_exact_with_no_times_is_not_stored_as_a_window(self):
+        """A bucket that lies about its own precision is worse than none."""
+        self.login_customer()
+        self.post_request_repair(
+            preferred_date=tomorrow().isoformat(), preferred_window='EXACT')
+        repair = Repair.objects.get(customer=self.customer)
+        self.assertEqual(repair.preferred_window, '')
+        self.assertFalse(repair.has_exact_time_preference)
+
+    def test_times_behind_a_preset_window_are_ignored(self):
+        """A stale pair left in the POST must not override the preset."""
+        self.login_customer()
+        self.post_request_repair(
+            preferred_date=tomorrow().isoformat(), preferred_window='MORNING',
+            preferred_time_start='04:30', preferred_time_end='05:45')
+        repair = Repair.objects.get(customer=self.customer)
+        self.assertEqual(repair.preferred_window, 'MORNING')
+        self.assertIsNone(repair.preferred_time_start)
+        self.assertIsNone(repair.preferred_time_end)
+
+    def test_shop_books_the_exact_window(self):
+        repair = Repair(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='TRK-6', queue_status='APPROVED',
+        )
+        repair.preferred_date = tomorrow()
+        repair.preferred_window = 'EXACT'
+        repair.preferred_time_start = time(4, 30)
+        repair.preferred_time_end = time(5, 45)
+        repair.save()
+
+        self.login_shop()
+        resp = self.post_book(repair, window='EXACT',
+                              start_time='04:30', end_time='05:45')
+        self.assertEqual(resp.status_code, 200)
+
+        repair.refresh_from_db()
+        self.assertEqual(timezone.localtime(repair.scheduled_for).time(), time(4, 30))
+        self.assertEqual(
+            timezone.localtime(repair.scheduled_window_end).time(), time(5, 45))
+        # The confirmation says the clock back, not the bucket name.
+        self.assertIn('4:30', json.loads(resp.content)['message'])
+
+    def test_booking_a_lone_cutoff_books_back_from_it(self):
+        repair = Repair(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='TRK-7', queue_status='APPROVED',
+        )
+        repair.save()
+        self.login_shop()
+        resp = self.post_book(repair, window='EXACT', end_time='06:00')
+        self.assertEqual(resp.status_code, 200)
+        repair.refresh_from_db()
+        self.assertEqual(
+            timezone.localtime(repair.scheduled_window_end).time(), time(6, 0))
+        self.assertEqual(
+            timezone.localtime(repair.scheduled_for).time(), time(5, 0))
+
+    def test_booking_refuses_a_backwards_window(self):
+        repair = Repair(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='TRK-8', queue_status='APPROVED',
+        )
+        repair.save()
+        self.login_shop()
+        resp = self.post_book(repair, window='EXACT',
+                              start_time='09:00', end_time='07:00')
+        self.assertEqual(resp.status_code, 400)
+        repair.refresh_from_db()
+        self.assertIsNone(repair.scheduled_for)
+
+    def test_booking_exact_with_no_times_is_refused(self):
+        repair = Repair(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='TRK-9', queue_status='APPROVED',
+        )
+        repair.save()
+        self.login_shop()
+        resp = self.post_book(repair, window='EXACT')
+        self.assertEqual(resp.status_code, 400)
+        repair.refresh_from_db()
+        self.assertIsNone(repair.scheduled_for)
+
+    def test_request_form_offers_the_specific_window(self):
+        self.login_customer()
+        for url in ('customer_request_repair', 'customer_request_replacement'):
+            resp = self.client.get(reverse(url))
+            self.assertContains(resp, 'A specific window', msg_prefix=url)
+            self.assertContains(resp, 'name="preferred_time_start"', msg_prefix=url)
+            self.assertContains(resp, 'name="preferred_time_end"', msg_prefix=url)
+            self.assertContains(resp, 'Must be done by', msg_prefix=url)
+            # The clock has to be labelled — there is no per-tenant timezone.
+            self.assertContains(resp, shop_timezone_label(), msg_prefix=url)
+
+    def test_rail_offers_the_shop_the_same_precision(self):
+        """A fleet asking 4:30-5:45 and booked into "morning" is the same
+        broken promise as never asking."""
+        repair = Repair(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='TRK-10', queue_status='APPROVED',
+        )
+        repair.preferred_date = tomorrow()
+        repair.preferred_window = 'EXACT'
+        repair.preferred_time_start = time(4, 30)
+        repair.preferred_time_end = time(5, 45)
+        repair.save()
+
+        self.login_shop()
+        resp = self.client.get(reverse('day_schedule'))
+        self.assertContains(resp, 'data-book-start')
+        self.assertContains(resp, 'value="04:30"')
+        self.assertContains(resp, 'value="05:45"')
+        # And the wish itself is shown as a clock.
+        self.assertContains(resp, '4:30')
 
 
 # =============================================================================

@@ -270,9 +270,11 @@ def book_appointment(request):
         )
 
     try:
-        key, pk, day, window, expected = parse_booking_request(payload)
+        key, pk, day, window, start_time, end_time, expected = (
+            parse_booking_request(payload))
         result = perform_booking(
             tenant=tenant, service_type=key, pk=pk, day=day, window=window,
+            start_time=start_time, end_time=end_time,
             expected=expected, actor_user=request.user,
         )
     except BookingError as exc:

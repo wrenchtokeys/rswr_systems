@@ -37,12 +37,12 @@ managers confirming the same request at once is the realistic race.
 """
 
 import logging
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 from django.db import transaction
 from django.utils import timezone
 from django.utils.dateformat import format as format_date
-from django.utils.dateparse import parse_date, parse_datetime
+from django.utils.dateparse import parse_date, parse_datetime, parse_time
 
 from apps.technician_portal.models import (
     PREFERRED_WINDOW_HOURS, PREFERRED_WINDOW_SHORT,
@@ -55,6 +55,12 @@ logger = logging.getLogger(__name__)
 # meaningless. REQUESTED *is* included — a replacement sits there until the
 # shop prices it, and scheduling the visit is part of accepting it.
 BOOKABLE_STATUSES = ('REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS')
+
+# How long a visit is assumed to take when only one end of an exact window is
+# known. Deliberately a constant and not a setting: nothing in the app models
+# job duration yet, and inventing a settings screen for it would be a bigger
+# promise than the number deserves. S5/S6 can replace it with something real.
+NOMINAL_JOB_LENGTH = timedelta(hours=1)
 
 
 def _job_models():
@@ -71,7 +77,7 @@ class BookingError(Exception):
         self.status = status
 
 
-def window_bounds(day, window):
+def window_bounds(day, window, start_time=None, end_time=None):
     """(start, end) aware datetimes for a (date, window) pair.
 
     Built in the shop's local timezone and combined per-day, the same
@@ -81,13 +87,28 @@ def window_bounds(day, window):
 
     Both ends are wall-clock times combined with the date, so "8 AM to noon"
     stays 8 AM to noon on a DST-transition day.
+
+    ``start_time`` / ``end_time`` are the EXACT case — a fleet asking for
+    04:30–05:45 because the truck rolls at 06:00. Either may be given alone:
+    a lone start books a nominal hour from it, a lone end (a hard cutoff)
+    books back from it. They are ignored unless the window is EXACT, so a
+    stale pair left in a form POST cannot quietly override a preset.
     """
+    tz = timezone.get_current_timezone()
+
+    def at(clock):
+        return timezone.make_aware(datetime.combine(day, clock), tz)
+
+    if window == 'EXACT' and (start_time or end_time):
+        if start_time and end_time:
+            return at(start_time), at(end_time)
+        if start_time:
+            return at(start_time), at(start_time) + NOMINAL_JOB_LENGTH
+        return at(end_time) - NOMINAL_JOB_LENGTH, at(end_time)
+
     start_hour, end_hour = PREFERRED_WINDOW_HOURS.get(
         window, PREFERRED_WINDOW_HOURS['ANYTIME'])
-    tz = timezone.get_current_timezone()
-    start = timezone.make_aware(datetime.combine(day, time(start_hour, 0)), tz)
-    end = timezone.make_aware(datetime.combine(day, time(end_hour, 0)), tz)
-    return start, end
+    return at(time(start_hour, 0)), at(time(end_hour, 0))
 
 
 def parse_booking_request(payload):
@@ -117,6 +138,11 @@ def parse_booking_request(payload):
     if window not in PREFERRED_WINDOW_HOURS:
         raise BookingError("Pick a time of day for this visit.")
 
+    start_time, end_time = _parse_clock_pair(
+        payload.get('start_time'), payload.get('end_time'))
+    if window == 'EXACT' and not (start_time or end_time):
+        raise BookingError("Enter the window this visit has to fall in.")
+
     raw_expected = str(payload.get('expected') or '').strip()
     expected = None
     if raw_expected:
@@ -126,7 +152,23 @@ def parse_booking_request(payload):
         if expected is None or timezone.is_naive(expected):
             raise BookingError("Reload the schedule and try again.", status=409)
 
-    return key, pk, day, window, expected
+    return key, pk, day, window, start_time, end_time, expected
+
+
+def _parse_clock_pair(raw_start, raw_end):
+    """Validate an exact-window pair, or (None, None).
+
+    An end at or before the start is a typo, not a window that wraps midnight
+    — a glass job does not run past midnight, and silently accepting it would
+    book a negative-length appointment onto a technician's day.
+    """
+    start = parse_time(str(raw_start or '').strip()) if raw_start else None
+    end = parse_time(str(raw_end or '').strip()) if raw_end else None
+    if (raw_start and start is None) or (raw_end and end is None):
+        raise BookingError("That time didn't look like a time.")
+    if start and end and end <= start:
+        raise BookingError("The end of the window has to be after the start.")
+    return start, end
 
 
 def _batch_siblings(job, tenant):
@@ -152,6 +194,7 @@ def _display_name(job):
 
 @transaction.atomic
 def confirm_appointment(*, tenant, service_type, pk, day, window,
+                        start_time=None, end_time=None,
                         expected=None, actor_user=None):
     """Book ``day`` + ``window`` onto a job (and its whole batch).
 
@@ -197,7 +240,7 @@ def confirm_appointment(*, tenant, service_type, pk, day, window,
                 "Only open jobs can be booked — that one is "
                 f"{job.get_queue_status_display().lower()}.")
 
-    start, end = window_bounds(day, window)
+    start, end = window_bounds(day, window, start_time, end_time)
 
     for job in jobs:
         # The row count IS the optimistic lock. `expected` applies to the row
@@ -232,7 +275,15 @@ def confirm_appointment(*, tenant, service_type, pk, day, window,
     )
 
     when = format_date(timezone.localtime(start), 'D, M j')
-    window_label = PREFERRED_WINDOW_SHORT.get(window, 'any time')
+    if window == 'EXACT':
+        # Say the clock back, not the bucket name — the minutes are the whole
+        # reason this booking used EXACT.
+        window_label = (
+            f"{format_date(timezone.localtime(start), 'g:i')}"
+            f"–{format_date(timezone.localtime(end), 'g:i A')}"
+        )
+    else:
+        window_label = PREFERRED_WINDOW_SHORT.get(window, 'any time')
     suffix = f" ({len(jobs)} breaks)" if len(jobs) > 1 else ''
     message = (
         f"{_display_name(anchor)} booked for {when}, {window_label}{suffix}."

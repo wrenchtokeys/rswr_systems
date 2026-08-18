@@ -136,6 +136,23 @@ it. `data-scheduled-for` is empty on these rows, which is exactly the
                 <option value="{{ value }}"{% if job.preferred_window == value %} selected{% elif not job.preferred_window and value == 'ANYTIME' %} selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
+            {% comment %}
+            The shop has to be able to honour the precision the customer was
+            offered — a fleet asking for 4:30–5:45 and getting booked into a
+            four-hour "morning" block is the same broken promise as not
+            asking. Prefilled from their ask, so confirming it is one tap.
+            {% endcomment %}
+            <span data-book-exact class="{% if job.preferred_window != 'EXACT' %}hidden {% endif %}inline-flex items-center gap-2">
+                <label class="sr-only" for="book-from-{{ job.service_type }}-{{ job.id }}">Start time</label>
+                <input type="time" data-book-start id="book-from-{{ job.service_type }}-{{ job.id }}"
+                       value="{{ job.preferred_time_start|time:'H:i' }}"
+                       class="min-h-11 px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                <span class="text-xs text-gray-400">to</span>
+                <label class="sr-only" for="book-to-{{ job.service_type }}-{{ job.id }}">End time</label>
+                <input type="time" data-book-end id="book-to-{{ job.service_type }}-{{ job.id }}"
+                       value="{{ job.preferred_time_end|time:'H:i' }}"
+                       class="min-h-11 px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+            </span>
             <button type="submit"
                     class="inline-flex items-center min-h-11 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors shadow-sm press">
                 Book

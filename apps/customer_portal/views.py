@@ -19,7 +19,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth import login, authenticate
 from django.utils import timezone
 from django.utils.dateformat import format as format_date
-from django.utils.dateparse import parse_date
+from django.utils.dateparse import parse_date, parse_time
 from django.db.models import Sum, Q, Count
 from django.db import models, transaction, IntegrityError
 from django.contrib.auth import update_session_auth_hash
@@ -1928,7 +1928,9 @@ def _preference_form_context(customer):
     `customer_location` is shown as read-only text — the address inputs start
     empty behind a toggle, so anything typed is a genuine override.
     """
-    from apps.technician_portal.models import PREFERRED_WINDOW_CHOICES
+    from apps.technician_portal.models import (
+        PREFERRED_WINDOW_CHOICES, shop_timezone_label,
+    )
 
     parts = [
         (customer.address or '').strip(),
@@ -1936,10 +1938,14 @@ def _preference_form_context(customer):
         ' '.join(p for p in ((customer.state or '').strip(),
                              (customer.zip_code or '').strip()) if p),
     ] if customer else []
+    tenant = getattr(customer, 'tenant', None) if customer else None
     return {
         'preferred_windows': PREFERRED_WINDOW_CHOICES,
         'preference_min_date': timezone.localtime(timezone.now()).date().isoformat(),
         'customer_location': ', '.join(p for p in parts if p),
+        # An exact time is only unambiguous if you say whose clock it is on.
+        'shop_timezone_label': shop_timezone_label(),
+        'shop_name': getattr(tenant, 'name', ''),
     }
 
 
@@ -1982,6 +1988,25 @@ def _read_service_preference(request, customer):
     window = (request.POST.get('preferred_window') or '').strip().upper()
     if window in PREFERRED_WINDOW_HOURS:
         prefs['preferred_window'] = window
+
+    # The fleet case: a window to the minute. Only read when they actually
+    # picked "a specific window" — a stale pair left in the POST behind a
+    # preset must not quietly override it.
+    if window == 'EXACT':
+        start = parse_time((request.POST.get('preferred_time_start') or '').strip())
+        end = parse_time((request.POST.get('preferred_time_end') or '').strip())
+        # An end at or before the start is a typo, not a window across
+        # midnight. Keep the usable half rather than dropping the whole ask.
+        if start and end and end <= start:
+            end = None
+        if start:
+            prefs['preferred_time_start'] = start
+        if end:
+            prefs['preferred_time_end'] = end
+        if not (start or end):
+            # "Specific window" with no times is no more specific than
+            # nothing — don't store a bucket that lies about its precision.
+            prefs.pop('preferred_window', None)
 
     street = ' '.join((request.POST.get('service_address') or '').split())
     if street:
@@ -2032,11 +2057,31 @@ def _request_received_message(count, prefs):
 
 
 def _preference_sentence(prefs):
-    """'Tuesday, Aug 19 (morning)' style echo for a success message, or ''."""
-    from apps.technician_portal.models import PREFERRED_WINDOW_SHORT
+    """'Tuesday, Aug 19 (7:00 – 8:30 AM CDT)' style echo, or ''.
+
+    Built from the same prefs dict that was just written, so the customer is
+    read back exactly what was stored — including nothing, when their
+    "specific window" carried no times and was dropped.
+    """
+    from apps.technician_portal.models import (
+        PREFERRED_WINDOW_SHORT, shop_timezone_label,
+    )
 
     day = prefs.get('preferred_date')
-    window = PREFERRED_WINDOW_SHORT.get(prefs.get('preferred_window', ''), '')
+    start, end = prefs.get('preferred_time_start'), prefs.get('preferred_time_end')
+    if start or end:
+        tz = shop_timezone_label()
+        if start and end:
+            same_half = format_date(start, 'A') == format_date(end, 'A')
+            left = format_date(start, 'g:i' if same_half else 'g:i A')
+            window = f"{left} – {format_date(end, 'g:i A')} {tz}"
+        elif start:
+            window = f"from {format_date(start, 'g:i A')} {tz}"
+        else:
+            window = f"by {format_date(end, 'g:i A')} {tz}"
+    else:
+        window = PREFERRED_WINDOW_SHORT.get(prefs.get('preferred_window', ''), '')
+
     if day and window:
         return f"{format_date(day, 'l, M j')} ({window})"
     if day:

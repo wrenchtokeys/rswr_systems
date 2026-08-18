@@ -35,7 +35,7 @@ The server still normalizes and drops an override that matches.
         </div>
         <div>
             <label for="preferredWindow" class="block text-xs font-medium text-gray-700 mb-1">Time of day</label>
-            <select name="preferred_window" id="preferredWindow"
+            <select name="preferred_window" id="preferredWindow" data-preferred-window
                     class="w-full min-h-11 px-3 py-2 border border-gray-300 rounded-lg text-base bg-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
                 <option value="">No preference</option>
                 {% for value, label in preferred_windows %}
@@ -43,6 +43,33 @@ The server still normalizes and drops an override that matches.
                 {% endfor %}
             </select>
         </div>
+    </div>
+
+    {% comment %}
+    The fleet case. "Morning" is not an answer when the truck rolls at 6:00
+    and the yard only has it from 4:30 — so "A specific window" opens a real
+    clock. The timezone is stated because there is no per-tenant timezone yet
+    (TIME_ZONE is one global setting), and an unlabelled exact time from a
+    dispatcher two states away is a guess dressed as a fact.
+    {% endcomment %}
+    <div id="exactWindowFields" data-exact-window-fields class="hidden mt-3">
+        <div class="grid grid-cols-2 gap-3">
+            <div>
+                <label for="preferredTimeStart" class="block text-xs font-medium text-gray-700 mb-1">Available from</label>
+                <input type="time" name="preferred_time_start" id="preferredTimeStart"
+                       class="w-full min-h-11 px-3 py-2 border border-gray-300 rounded-lg text-base focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+            </div>
+            <div>
+                <label for="preferredTimeEnd" class="block text-xs font-medium text-gray-700 mb-1">Must be done by</label>
+                <input type="time" name="preferred_time_end" id="preferredTimeEnd"
+                       class="w-full min-h-11 px-3 py-2 border border-gray-300 rounded-lg text-base focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+            </div>
+        </div>
+        <p class="text-xs text-gray-500 mt-1.5">
+            The window the vehicle is actually free — if it rolls at 6:00 AM, say so here.
+            Times are {{ shop_timezone_label }}{% if shop_name %}, {{ shop_name }}'s local time{% endif %}.
+        </p>
+        <p id="exactWindowError" data-exact-window-error class="hidden text-xs text-red-600 mt-1.5"></p>
     </div>
 
     <div class="mt-5 pt-4 border-t border-gray-100">
@@ -95,20 +122,61 @@ The server still normalizes and drops an override that matches.
 </div>
 
 <script>
-// Reveal the address inputs only when the vehicle is somewhere else. Inline
-// because it is three lines and belongs to this card alone; the card ships
-// with both request pages and neither has a module of its own.
+// Two reveals, both belonging to this card alone. Inline because the card
+// ships with both request pages and neither has a module of its own.
 (function () {
+    // 1. The address inputs, only when the vehicle is somewhere else.
     var toggle = document.querySelector('[data-service-elsewhere-toggle]');
     var fields = document.querySelector('[data-service-elsewhere-fields]');
-    if (!toggle || !fields) { return; }
-    toggle.addEventListener('change', function () {
-        fields.classList.toggle('hidden', !toggle.checked);
-        if (!toggle.checked) {
-            fields.querySelectorAll('input').forEach(function (input) {
-                input.value = '';
-            });
+    if (toggle && fields) {
+        toggle.addEventListener('change', function () {
+            fields.classList.toggle('hidden', !toggle.checked);
+            if (!toggle.checked) {
+                fields.querySelectorAll('input').forEach(function (input) {
+                    input.value = '';
+                });
+            }
+        });
+    }
+
+    // 2. The exact from/until clock, only when they picked a specific window.
+    var select = document.querySelector('[data-preferred-window]');
+    var exact = document.querySelector('[data-exact-window-fields]');
+    var error = document.querySelector('[data-exact-window-error]');
+    if (!select || !exact) { return; }
+    var start = exact.querySelector('#preferredTimeStart');
+    var end = exact.querySelector('#preferredTimeEnd');
+
+    function sync() {
+        var on = select.value === 'EXACT';
+        exact.classList.toggle('hidden', !on);
+        if (!on) {
+            // Clear rather than hide-and-keep: a stale pair left behind would
+            // be submitted and, on a preset window, silently ignored — which
+            // looks to the customer like the shop lost their times.
+            start.value = '';
+            end.value = '';
+            validate();
         }
-    });
+    }
+
+    // The server refuses an end at or before the start; say so here first, so
+    // a fleet dispatcher finds out while they are still looking at the field.
+    function validate() {
+        var bad = start.value && end.value && end.value <= start.value;
+        if (error) {
+            error.textContent = bad
+                ? 'The "done by" time has to be after the "available from" time.'
+                : '';
+            error.classList.toggle('hidden', !bad);
+        }
+        end.setCustomValidity(bad ? 'End must be after start' : '');
+        return !bad;
+    }
+
+    select.addEventListener('change', sync);
+    start.addEventListener('change', validate);
+    end.addEventListener('change', validate);
+    sync();
 })();
 </script>

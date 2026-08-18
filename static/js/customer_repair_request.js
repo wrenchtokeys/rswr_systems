@@ -852,6 +852,8 @@ async function confirmAndSubmit() {
         [
             ['preferred_date', 'preferredDate'],
             ['preferred_window', 'preferredWindow'],
+            ['preferred_time_start', 'preferredTimeStart'],
+            ['preferred_time_end', 'preferredTimeEnd'],
             ['service_address', 'serviceAddress'],
             ['service_city', 'serviceCity'],
             ['service_state', 'serviceState'],
