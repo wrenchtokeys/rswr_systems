@@ -19,6 +19,17 @@
                     · {{ jobs|length }} job{{ jobs|length|pluralize }}{% if done_count %}, {{ done_count }} done{% endif %}
                     {% endif %}
                 </p>
+                {% if can_swap and jobs %}
+                {% comment %}
+                The handles are visible but a grip icon doesn't say what it
+                does. One line, managers only, and only when there is more
+                than one job to trade with.
+                {% endcomment %}
+                <p class="text-xs text-gray-500 mt-1">
+                    <i class="fas fa-grip-vertical text-gray-300"></i>
+                    Drag a job onto another in the same tech's day to trade times.
+                </p>
+                {% endif %}
             </div>
             <div class="flex items-center gap-2">
                 {% comment %}
@@ -64,7 +75,13 @@
                 </div>
                 <a href="{% url 'job_list' %}" class="text-sm font-medium text-brand-600 hover:text-brand-800">All jobs</a>
             </div>
-            <div class="divide-y divide-gray-100">
+            {% comment %}
+            Marked as a swap group so S7 can refuse a drop here with a reason:
+            the rail sits directly above the tech cards and is the most
+            tempting wrong target on the page. Dropping a booked job onto
+            unscheduled work is a different feature (the follow-on session).
+            {% endcomment %}
+            <div class="divide-y divide-gray-100" data-swap-group="triage">
                 {% for job in triage_jobs %}
                 <div class="px-4 py-3 sm:px-6 hover:bg-gray-50 transition-colors flex items-center gap-4">
                     <div class="flex-1 min-w-0">
@@ -123,7 +140,12 @@
                 </div>
             </div>
             {% if group.jobs %}
-            <div class="divide-y divide-gray-100">
+            {% comment %}
+            data-swap-group scopes S7 drops to one technician's day. Cross-tech
+            drops are refused in the browser with a reason — moving work to
+            another tech is reassignment, which belongs in N1's assign_job().
+            {% endcomment %}
+            <div class="divide-y divide-gray-100" data-swap-group="tech-{{ group.technician.pk }}">
                 {% for job in group.jobs %}
                 {% include "technician_portal/includes/schedule_row.html" %}
                 {% endfor %}
@@ -138,7 +160,7 @@
 
         {% else %}
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
-            <div class="divide-y divide-gray-100">
+            <div class="divide-y divide-gray-100" data-swap-group="own">
                 {% for job in jobs %}
                 {% include "technician_portal/includes/schedule_row.html" %}
                 {% endfor %}
@@ -172,4 +194,13 @@
 
 {% block extra_js %}
 <script src="{% static 'js/field_dispatch.js' %}" defer></script>
+{% if can_swap %}
+{% comment %}
+S7 drag-to-swap. Managers only — a technician's page never loads this, so
+there are no handles to find and no endpoint to poke at from the UI. The
+endpoint re-checks authorization regardless.
+{% endcomment %}
+<script src="{% static 'js/schedule_swap.js' %}"
+        data-swap-url="{% url 'schedule_swap' %}" defer></script>
+{% endif %}
 {% endblock %}

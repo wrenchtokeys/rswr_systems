@@ -1,0 +1,31 @@
+================================================
+{{ branding.company_name }}
+SCHEDULE CHANGE - {{ day|upper }}
+================================================
+
+Two of your jobs traded times. Nothing was added or removed.
+
+================================================
+NEW TIMES
+================================================
+
+{{ first_time }}   {{ first_job }}
+
+{{ second_time }}   {{ second_job }}
+
+================================================
+VIEW YOUR DAY
+================================================
+
+{{ base_url }}{{ action_url }}
+
+================================================
+
+{{ branding.footer_text }}
+
+Manage notification preferences:
+{{ base_url }}/tech/notifications/preferences/
+
+{{ branding.company_name }}
+{% if branding.company_address %}{{ branding.company_address }}
+{% endif %}{% if branding.website_url %}{{ branding.website_url }}{% endif %}

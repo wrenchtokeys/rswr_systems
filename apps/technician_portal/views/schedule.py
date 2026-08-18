@@ -1,19 +1,27 @@
 """
-Day / agenda view (FIELD_OPS S3).
+Day / agenda view (FIELD_OPS S3) and the drag-to-swap endpoint (S7).
 
 A technician sees their day in scheduled order; owners and managers see
-every tech's day, with unscheduled work surfaced for triage. Read-mostly:
-nothing here edits a job — entries link to the detail pages, and the S2
-map/call actions ride along on each row.
+every tech's day, with unscheduled work surfaced for triage. The day view
+itself is read-only — entries link to the detail pages, and the S2 map/call
+actions ride along on each row. The one write here is ``swap_appointments``,
+which lets a manager drag one booked job onto another in the same tech's day
+so the two trade times; all of its logic lives in ``services/schedule_swap``.
 """
 
+import json
 from datetime import date as date_cls, datetime, time, timedelta
 
+from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from apps.technician_portal.models import Technician, Repair, Replacement
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
+from apps.technician_portal.services.schedule_swap import (
+    SwapError, parse_ref, swap_appointments as perform_swap,
+)
 
 # What belongs on a day sheet: work that is a go, plus what already got done
 # that day (a schedule with its finished jobs missing looks un-run, not run).
@@ -26,13 +34,14 @@ TRIAGE_STATUSES = ('REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS')
 TRIAGE_RAIL_CAP = 8
 
 
-@technician_required
-def day_schedule(request):
-    """One day of booked work, grouped by technician for managers."""
-    tenant = getattr(request, 'tenant', None)
+def _resolve_viewer(request, tenant):
+    """Who is looking, and do they see the whole shop?
 
-    # Tenant-scoped Technician lookup — same rule as the dashboard (CODE-081):
-    # never resolve request.user.technician globally when a tenant is known.
+    Tenant-scoped Technician lookup — same rule as the dashboard (CODE-081):
+    never resolve request.user.technician globally when a tenant is known.
+    Shared by the day view and the swap endpoint so the two cannot disagree
+    about who is a manager.
+    """
     technician = None
     if hasattr(request.user, 'technician'):
         if tenant:
@@ -43,6 +52,14 @@ def day_schedule(request):
 
     is_admin = is_tenant_admin(request.user, tenant=tenant)
     sees_whole_shop = is_admin or bool(technician and technician.is_manager)
+    return technician, sees_whole_shop
+
+
+@technician_required
+def day_schedule(request):
+    """One day of booked work, grouped by technician for managers."""
+    tenant = getattr(request, 'tenant', None)
+    technician, sees_whole_shop = _resolve_viewer(request, tenant)
 
     local_today = timezone.localtime(timezone.now()).date()
     day = local_today
@@ -151,4 +168,53 @@ def day_schedule(request):
         'unscheduled_count': unscheduled_count,
         'triage_jobs': triage_jobs,
         'triage_overflow': max(0, unscheduled_count - len(triage_jobs)),
+        'can_swap': sees_whole_shop,
     })
+
+
+@technician_required
+@require_POST
+def swap_appointments(request):
+    """Trade the booked times of two jobs (fieldops S7).
+
+    Answers JSON for every outcome, including refusals. Authorization is
+    checked in-body rather than with @manager_required on purpose: that
+    decorator redirects to HTML *and* queues a messages.warning, which would
+    surface as a stray banner on the manager's next page load. It also
+    resolves request.user.technician globally, which this view deliberately
+    avoids (CODE-081).
+
+    Note for the caller: SubscriptionEnforcementMiddleware blocks every POST
+    from a read-only/grace tenant before this view runs, and returns JSON only
+    for paths under /api/ — otherwise it redirects. The client must check
+    response.ok and the content type before parsing.
+    """
+    tenant = getattr(request, 'tenant', None)
+    _technician, sees_whole_shop = _resolve_viewer(request, tenant)
+    if not sees_whole_shop:
+        return JsonResponse(
+            {'ok': False, 'error': "Only managers can move booked times."},
+            status=403,
+        )
+
+    try:
+        payload = json.loads(request.body or b'{}')
+    except (ValueError, UnicodeDecodeError):
+        payload = None
+    if not isinstance(payload, dict):
+        return JsonResponse(
+            {'ok': False, 'error': "Reload the schedule and try again."},
+            status=400,
+        )
+
+    try:
+        ref_a = parse_ref(payload.get('a'), 'first')
+        ref_b = parse_ref(payload.get('b'), 'second')
+        result = perform_swap(
+            tenant=tenant, ref_a=ref_a, ref_b=ref_b, actor_user=request.user,
+        )
+    except SwapError as exc:
+        return JsonResponse({'ok': False, 'error': exc.message},
+                            status=exc.status)
+
+    return JsonResponse({'ok': True, 'message': result['message']})

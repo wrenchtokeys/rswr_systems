@@ -22,6 +22,10 @@ module.exports = {
     // shared component classes kept alive for the shells that need them next
     // — an @layer components class no template references yet is purged.
     { pattern: /^safe-area-(top|bottom|x)$/ },
+    // Schedule drag-to-swap state (S7). These are toggled by name from
+    // static/js/schedule_swap.js and never appear in a template, so the
+    // purge has nothing to anchor them to.
+    { pattern: /^swap-(row-dragging|row-target|row-selected|dragging|busy)$/ },
   ],
   theme: {
     extend: {
