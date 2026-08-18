@@ -18,7 +18,7 @@ This file is the **work queue** for making field operations real: a technician f
 | S — Where and when | S1 · A real "booked time" | M | DONE (2026-08-15, **PR #188**) |
 | S — Where and when | S2 · Field dispatch (executes B1) | M | DONE (2026-08-15, PR #189) |
 | S — Where and when | S3 · Day / agenda view | M | DONE (2026-08-16, PR #190) |
-| S — Where and when | S4 · Customer requests carry when + where | M | TODO |
+| S — Where and when | S4 · Customer requests carry when + where | M | TODO — **next up**, spec pressure-tested 2026-08-17 |
 | S — Where and when | S5 · Dispatch board | L | TODO |
 | S — Where and when | S6 · Routing / ETA / lot-walking | — | BACKLOG (deliberately deferred) |
 | S — Where and when | S7 · Drag to swap two appointments | M | DONE (2026-08-17, **PR #192**) |
@@ -27,6 +27,8 @@ This file is the **work queue** for making field operations real: a technician f
 
 **Suggested sequence:** N1 → N4 (start the review clock early — it's days-to-weeks of waiting either way) → S1 → S2 → S3 → N2 (whenever the TFN approves) → S4 → N3 → S5 → (S6 stays backlog until S3/S5 prove demand). **S7 slots in any time after S3** — it needs neither S4 nor S5, and S5 inherits its endpoint. P1 is independent of both arcs and can slot anywhere once Mygrant API onboarding is done (like N4, start that clock early — it's a phone call to the rep).
 Rationale: N1 is the reported bug and pays off alone. S1 is the schema foundation every S-session builds on. S2 is IMPROVEMENT_SESSIONS' "biggest daily-felt gain per hour spent." S4 before S5 because the board is only as good as the data flowing into it.
+
+**Where we are (2026-08-17):** N1, N4, S1, S2, S3 and S7 are done; PRs #190/#191/#192 still need `eb deploy`. N2 is parked until the toll-free number clears review (Appendix A), so **S4 is next** — its spec was pressure-tested against the real code on 2026-08-17 and is ready to execute. S5 follows it.
 
 Sizes: **S** ≈ half a day · **M** ≈ 1–2 days · **L** ≈ 3–5 days.
 
@@ -71,7 +73,32 @@ RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration
 
 **Planned but unbuilt:** B1 field dispatch (`IMPROVEMENT_SESSIONS.md:376-420`) puts address + `tel:` + a Google Maps link on the job card and adds `service_address` to `GlassService` — explicitly *not* a calendar. `PRODUCT_DIRECTION.md:96-142` sketches a ~3–4-week minimum-viable calendar: a day/week view over existing data plus a scheduled date/time field, with route optimization explicitly deferred and the success bar "a shop can run its day from the calendar view."
 
-**Built: essentially nothing.**
+**Update 2026-08-17 — what is built now.** The paragraph below is the original
+(2026-08-11) survey and is kept as the diagnosis; four sessions have since landed
+on top of it, and a fresh session should start from these rather than re-derive:
+
+- **S1** added `GlassService.scheduled_for` + `scheduled_window_end`
+  (`apps/technician_portal/models.py:379-386`) — booking time, distinct from
+  `service_date`, null = unscheduled. Written by `RepairForm` (`forms.py:443`),
+  `QuickJobForm` (`forms.py:975`, nulled at `:1168` for already-completed work),
+  `ReplacementForm` (`apps/saas/forms.py:329`), the create view
+  (`views/jobs.py:515`) and S7's swap service. The tech dashboard buckets by it
+  (`views/dashboard.py:363-391`).
+- **S2** added `service_address/_city/_state/_zip` with a render-time fallback to
+  the customer record — `get_service_location_parts()` (`models.py:565-590`).
+- **S3** added the day view `/tech/schedule/` (`views/schedule.py`), its shared row
+  partial `templates/technician_portal/includes/schedule_row.html`, and the
+  manager triage rail (rendered inline in `schedule.html:68-96`, *not* through the
+  partial).
+- **S7** added the only non-form writer of a booked time —
+  `apps/technician_portal/services/schedule_swap.py` + `POST /tech/schedule/swap/`
+  — and with it the house rules for changing a time (never `save()`; keep each
+  job's own duration; notify on commit; answer JSON even when refusing).
+- Still true and still unbuilt: no `Appointment`/`Availability` model, no
+  technician working hours, no customer-side capture of when or where (S4), no
+  dispatch board (S5).
+
+**Built (as of 2026-08-11): essentially nothing.**
 - `GlassService.service_date` (`apps/technician_portal/models.py:326`) is the only date on a job — a *completion* timestamp defaulting to `now()`. The primary QuickJobForm (`forms.py:872-1060`) has **no date input at all**; only the legacy RepairForm (:407-410) and the multi-break form expose one.
 - No `Appointment`/`Schedule`/`TimeSlot`/`Availability` model. No `service_address` anywhere (zero grep hits). `Vehicle` and `Technician` have no location fields. `Customer` has `address/city/state/zip` (`core/models/customer.py:81-84`) shown only on `customer_details.html`.
 - "Today's Queue" (`views/dashboard.py:232-251`) is a misnomer: it filters by status with **no date filter** — a three-week-old job still shows.
@@ -402,15 +429,103 @@ RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration
 
 | Field | Value |
 |---|---|
-| **Goal** | A customer requesting work can say where the vehicle is and when it's available; that information rides the job all the way to the assigned tech; and the shop confirms the slot. |
+| **Goal** | A customer requesting work can say where the vehicle is and when it's available; that preference rides the job all the way to the assigned tech; and one shop click turns it into a real booking. |
 | **Size** | M |
-| **Depends on** | S1 (fields), N1 (confirmation notification). S2 recommended (address plumbing exists). |
-| **Why it matters** | Drake's scenario: "what if a customer requests a job and the truck is located somewhere else or has to be in a certain time frame." Today that wish can only travel as free text — and the success message *promises a schedule that doesn't exist* (`views.py:2018`). |
-| **Verified current state** | Repair request reads `unit_number/description/damage_type/damage_photo_before` (`apps/customer_portal/views.py:1940-1943`); replacement reads `unit_number/glass_position/description/damage_photo` (:1749-1752). No date/window/address on either form. Copy-the-pattern precedent: `RewardRedemption.preferred_date`/`preferred_time` (`apps/rewards_referrals/models.py:210-217`; staff display `reward_fulfillment.html:87-109`). |
-| **Considerations** | Capture as *preference*, not booking: `preferred_date` + a coarse window (morning/afternoon/anytime — mirror the RewardRedemption pattern) + optional service location (prefill company address; free-notes field for "truck is at yard 4"). Shop confirms/adjusts → writes `scheduled_for` (S1) → notifies customer AND assigned tech (N1/N3). Fix the over-promise copy at :2018 to honest wording ("Request received — we'll confirm a time"). Surface preferences prominently on job detail + the S3 day view until confirmed. Both request forms, both job types. |
-| **Decisions needed** | Whether confirmation is a required shop step or `scheduled_for` silently defaults to the preference (recommend: explicit confirm — it's one click and it's the honest version of "you're on the schedule"). Whether customers see the confirmed time in the portal (recommend: yes, on the service detail page). |
-| **Acceptance criteria** | Customer submits a request with date/window/location → shop sees it on the job + triage rail → confirming writes `scheduled_for` and notifies customer + tech → tech's day view shows the job at the right time and place. Requests without preferences behave as today. Success message no longer lies. |
-| **Out of scope** | Live availability/slot-picking against tech capacity (S5/S6). Self-service rescheduling. |
+| **Depends on** | S1 (`scheduled_for`), S3 (triage rail + day view), S7 (the non-form write path and its four rules), N1 (the assignment/notification helper). S2 supplies the address plumbing — reuse it, don't add a second location concept. |
+| **Why it matters** | Drake's scenario: "what if a customer requests a job and the truck is located somewhere else or has to be in a certain time frame." Today that wish can only travel as free text in the notes blob — **and the product already claims the feature in four places** (see below), which is worse than not having it. |
+| **Verified current state** *(2026-08-17)* | **Repair requests do not wait for anyone.** `handle_single_repair_request` (`apps/customer_portal/views.py:1940`) and `handle_batch_repair_request` (:2039) create at `REQUESTED`, then call `_auto_accept_customer_repair` (:1903), which saves `APPROVED` (the 2026-08-07 frictionless-requests change, PR #147). Only **replacements** stay `REQUESTED` (`request_replacement` :1722-1812 — the shop must price them first). Neither form captures a date, a window or an address: the repair path reads `unit_number/description/damage_type/damage_photo_before` (:1954-1957), the batch path reads the JSON keys `unitNumber/damageType/notes/hasPhoto/hasMultipleBreaks/breakCount/damageLocation{X,Y}` (:2131-2142), the replacement path reads `unit_number/glass_position/description/damage_photo` (:1760-1763). **The over-promise lives in four places, not one** (the doc's old `:2018` anchor has drifted): `views.py:2032`, `:2250`, `:2257` (the AJAX JSON copy), and the customer detail badge `templates/customer_portal/repair_detail.html:61-62`, which reads **"Scheduled for Repair"** on an auto-approved request whose `scheduled_for` is null. Day sheet admits `DAY_STATUSES = PENDING/APPROVED/IN_PROGRESS/COMPLETED` (`views/schedule.py:22`); the triage rail is `scheduled_for__isnull=True` + `TRIAGE_STATUSES`, capped at 8, sorted `service_date` desc (`:24,:26,:121-139`) and rendered by **inline markup** in `schedule.html:68-96`, not the shared `schedule_row.html`. Capture precedent: `RewardRedemption.preferred_date` (DateField) + `preferred_time` (TimeField) (`apps/rewards_referrals/models.py:210-217`, parsed `views.py:503-515`, staff display `reward_fulfillment.html:87-109`). Customer address is `address/city/state/zip_code` (`core/models/customer.py:81-84`) — note **`zip_code`**, while the job field is `service_zip`. There is **no per-tenant timezone**: `TIME_ZONE` is a global setting (`settings/production.py:197`, America/Chicago). |
+| **Considerations** | The engineering detail is long enough to be worth prose — see **"Design notes"** below the table. The four rules that shape everything else: **(1)** a preference is **not** a booking — it gets its own fields and never lands in `scheduled_for` without a shop action, because an auto-approved repair with a `scheduled_for` is a *booked visit on the day sheet* the instant the field is set; **(2)** confirming writes the time through an S7-style `.update()` service, never `save()` (which re-prices the job and rewrites live invoices); **(3)** one submission carries **one** preference, and confirming a multi-break/multi-unit batch times the whole `repair_batch_id` group together — one physical visit; **(4)** reuse S2's `service_address*` for the *where*, with S2's "blank an unchanged prefill" rule, or every request freezes a stale copy of the customer's address. |
+| **Decisions needed** | **(a)** Explicit confirm vs. silently defaulting `scheduled_for` to the preference — **recommend explicit**, and this is no longer a taste call: repairs auto-approve, so a silent default publishes an unagreed appointment onto the tech's day sheet. **(b)** Customer-facing confirmation email — **recommend NOT opening a new customer email stream in this session**: echo the preference back in the existing `repair_request_received` email and show the confirmed time in the portal; a new `job_scheduled` customer template needs Drake's yes first (CLAUDE.md: don't expand customer-facing email without asking; replacement lifecycle emails were deferred by choice). **(c)** Field naming + granularity — recommend `preferred_date` (DateField) + `preferred_window` (MORNING/AFTERNOON/ANYTIME) on `GlassService`, **no time picker** (see the timezone note in Design notes). **(d)** Whether the customer sees the confirmed time in the portal — recommend yes, on the service detail page, replacing the badge that lies. |
+| **Acceptance criteria** | A customer submits a repair or replacement request with a preferred date + window (and, if the vehicle is elsewhere, a service address) → the shop sees the wish on the job detail **and** on the triage rail, sorted so the soonest wish is visible → one confirm action writes `scheduled_for` (+ `scheduled_window_end` from the window) without changing `cost`, `tax_amount` or any invoice line (asserted by a test that puts the job on a live invoice) → the job appears on the assigned tech's day view at that time, with S2's map/call actions → the assigned tech is notified once, and never for their own action. A batch submission carries one preference onto every row it creates, and confirming times the whole batch. Requests with no preference behave exactly as today. The four over-promise copies are honest. Stale/duplicate confirms are refused, not silently overwritten. |
+| **Out of scope** | Live availability or slot-picking against tech capacity (S5/S6). Technician working hours (S6 item 4). Self-service rescheduling by the customer (S6 item 5). Dragging an unscheduled job from the rail onto a time (the S7 follow-on). Customer-facing SMS (N2). A `job_scheduled` customer email unless decision (b) says yes. |
+
+**Design notes** *(from a 2026-08-17 read of the real code — these are the expensive findings; do not re-derive them)*
+
+- **The premise in the old table was wrong, and it changes the design.** "Customer
+  requests enter as REQUESTED and the shop confirms" is true only for
+  *replacements*. A repair request is auto-accepted to APPROVED milliseconds later
+  (`_auto_accept_customer_repair`, `views.py:1903`) — deliberately, so a chip repair
+  priced from the shop's price book needs no review. `APPROVED` is in
+  `DAY_STATUSES`, so **the only thing keeping a customer's wish off the tech's day
+  sheet is that `scheduled_for` is null.** Write the preference there and the shop
+  has promised a time nobody agreed to. Hence separate preference fields plus an
+  explicit confirm — not "default it and let the shop fix it."
+- **The product already claims this feature four times.** Three success messages
+  (`views.py:2032`, `:2250`, and the AJAX JSON at `:2257`) say *"you're on the
+  schedule!"*, and the customer detail page badges an auto-approved request
+  **"Scheduled for Repair"** (`customer_portal/repair_detail.html:61-62`). Fixing
+  the copy is part of the session, not a nicety; and note the badge is the one
+  that survives on screen long after the toast is gone.
+- **Batch requests multiply everything.** One submission can create 50 units × up
+  to 20 breaks (`views.py:2080-2081`), all in one `transaction.atomic()`, each with
+  its own `repair_batch_id` group for multi-break units. A preference captured once
+  must be written to **every** row, or the rail shows some rows with the wish and
+  some without. Confirming must set the time for the whole batch in one write —
+  S7 refuses to drag a batched repair for exactly this reason (moving one break
+  silently splits one physical visit), and a per-row confirm would reintroduce it.
+- **The existing request emails already fan out per row.** `signals.py:91-99`
+  fires `_notify_customer_request_received` **and** `_notify_technician_new_request`
+  on every created REQUESTED Repair — a 5-unit batch is 5 customer emails and 5 tech
+  emails today. That is a pre-existing wart (N3's inventory), but it constrains S4:
+  if the preference is echoed back to the customer, echo it in that template rather
+  than adding a fifth message, and do not add any new per-row send.
+- **Never write the time with `save()`.** S7's rule 1: `GlassService.save()` runs
+  `TaxService` on every Repair save and pushes prices onto live invoices through
+  `invoice_sync`. The confirm action should be a sibling of
+  `services/schedule_swap.py` (`set_appointment(...)`, same module or a shared
+  `services/schedule.py`), reusing its shape: `select_for_update()` in deterministic
+  `(model, pk)` order, expected-current-value folded into the `.update()` WHERE so
+  the returned row count *is* the optimistic lock (409 on a stale confirm), JSON
+  refusals, and `transaction.on_commit()` for the notification. Two managers
+  confirming the same request at once is the realistic race here.
+- **Reuse S7's `job_rescheduled` for the tech, don't invent a second template.**
+  It exists (core migration `0029`, arriving with PR #192), is category
+  `assignment` so the existing `TechnicianNotificationPreference` opt-out covers it,
+  and is priority MEDIUM on purpose — **HIGH maps to `['in_app','sms']` and excludes
+  email entirely** (N1's structural bug). Any new template S4 does add must be
+  MEDIUM or carry `channels_override`. Beware the naming trap while reading:
+  `repair_approved` notifies the **technician**, not the customer
+  (`signals.py:228-252`), and `core.Notification` has its own unrelated
+  `scheduled_for` column (`core/models/notification.py:102`).
+- **Window → `scheduled_window_end`, with S7's semantics.** S7 fixed the field's
+  meaning: each job keeps its own duration across a move, NULL stays NULL. S4 is its
+  second writer and its first *originating* one — confirming "morning" should write
+  a real start **and** end (the day view already renders "to 11:00 AM" when present),
+  so the shop's window definition (what MORNING means in hours) has to live
+  somewhere. Simplest honest answer: constants in the confirm service, not a new
+  settings screen.
+- **Why a coarse window and not a time picker.** There is no per-tenant timezone —
+  `TIME_ZONE` is one global setting. A fleet dispatcher in another timezone picking
+  "8:15 AM" is ambiguous in a way that "morning" is not, and the shop is the one who
+  decides the real clock time anyway. A DateField plus a three-value choice also
+  matches the shipped `RewardRedemption` precedent, which means a customer-facing
+  pattern the portal has already proven.
+- **Address: prefill, but persist only real overrides.** `QuickJobForm.clean()`
+  blanks a submitted address that matches the picked customer's current address
+  (whitespace/case-normalized) precisely so a typo fixed on the customer record
+  fixes every job. The request form must do the same, or each request freezes the
+  company address as it stood that day. Two further traps: the customer field is
+  `zip_code` and the job field is `service_zip` (a straight name-for-name copy is a
+  bug), and `get_service_location_parts()` (`models.py:565-590`) is
+  **all-or-nothing** — any job field set wins wholesale, so half an address ("Yard
+  4" with no city) silently drops the customer's city and breaks the map link. If
+  what customers actually type is a landmark, that belongs in `customer_notes`.
+- **The rail is where the wish has to show up, and the rail is a second renderer.**
+  `schedule.html:68-96` renders triage rows inline rather than through
+  `schedule_row.html` — S7 hit this and had to special-case it. S4 adds the third
+  reason to collapse them; do that first if the rail grows a confirm control.
+  Also: the rail is **capped at 8 and sorted by `service_date` desc**, so without a
+  sort change a request wished for tomorrow can sit invisibly below eight newer
+  ones. Sort the rail by preferred date (nulls last).
+- **Plain technicians cannot see REQUESTED jobs at all** (`views/dashboard.py:61-74`,
+  `views/jobs.py:42-45`) — deliberate, CODE-081. So for replacements the whole
+  where-and-when only reaches the tech *after* the shop confirms, which is another
+  argument for making confirm a real, visible step rather than a silent default.
+- **Testing gotchas inherited from S7 and N4.** Notifications sent from
+  `transaction.on_commit()` do not run under `TestCase` — wrap the POST in
+  `captureOnCommitCallbacks(execute=True)` or the test passes while testing
+  nothing. And any test that indexes `mail.outbox[0]` after creating a job is
+  suspect: since N1, creating a job emails the tech.
 
 **Notes**
 
