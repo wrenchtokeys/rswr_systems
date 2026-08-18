@@ -3,16 +3,16 @@
 SCHEDULE CHANGE - {{ day|upper }}
 ================================================
 
-Two of your jobs traded times. Nothing was added or removed.
+{{ lead|default:"Two of your jobs traded times. Nothing was added or removed." }}
 
 ================================================
-NEW TIMES
+{% if second_job %}NEW TIMES{% else %}NEW TIME{% endif %}
 ================================================
 
 {{ first_time }}   {{ first_job }}
-
+{% if second_job %}
 {{ second_time }}   {{ second_job }}
-
+{% endif %}
 ================================================
 VIEW YOUR DAY
 ================================================

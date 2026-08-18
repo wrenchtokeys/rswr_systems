@@ -18,7 +18,7 @@ Split from a single 2700-line views.py into logical modules:
 from .dashboard import register_technician, technician_dashboard
 
 # Day / agenda view (S3)
-from .schedule import day_schedule, swap_appointments
+from .schedule import book_appointment, day_schedule, swap_appointments
 
 # Global search
 from .search import global_search

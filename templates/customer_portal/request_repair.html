@@ -138,6 +138,14 @@
                     </p>
                 </div>
 
+                {% comment %}
+                When + where (S4). Deliberately OUTSIDE #batchRepairForm: the
+                page submits through fetch with a hand-built FormData, so
+                customer_repair_request.js reads these by name. One preference
+                per submission, written onto every unit it creates.
+                {% endcomment %}
+                {% include "customer_portal/includes/service_preference_fields.html" %}
+
                 <!-- Info Card -->
                 <div class="bg-brand-50 border-l-4 border-brand-400 p-4 rounded-lg mb-4">
                     <h3 class="text-sm font-medium text-brand-900 mb-2">
@@ -451,12 +459,19 @@
                 <p class="text-gray-600 mb-1">
                     Successfully submitted <span id="successUnitCount" class="font-semibold text-brand-600">0</span> repair request(s)
                 </p>
-                <div class="mt-6 inline-flex items-center px-3 py-1.5 bg-yellow-100 text-yellow-800 rounded-full text-sm">
-                    <i class="fas fa-clock mr-2"></i>
-                    <span class="font-semibold">Status: Pending Approval</span>
+                {% comment %}
+                S4 honesty pass: this said "Status: Pending Approval" while
+                the server auto-accepts every repair request on submit, and
+                the toast next to it said "you're on the schedule!" while
+                scheduled_for stayed null. Both were wrong, in opposite
+                directions. Accepted, not yet booked, is the truth.
+                {% endcomment %}
+                <div class="mt-6 inline-flex items-center px-3 py-1.5 bg-green-100 text-green-800 rounded-full text-sm">
+                    <i class="fas fa-check mr-2"></i>
+                    <span class="font-semibold">Accepted</span>
                 </div>
                 <p class="text-sm text-gray-600 mt-4">
-                    A technician will review your request and provide additional details soon.
+                    The shop will confirm a time with you. You'll see it on your request as soon as it's booked.
                 </p>
             </div>
             <div class="px-6 py-4 bg-gray-50 rounded-b-lg space-y-2">

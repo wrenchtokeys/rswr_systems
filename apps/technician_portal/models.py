@@ -5,6 +5,7 @@ from django.contrib.auth.models import User
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
+from django.utils.dateformat import format as format_date
 from django.core.validators import FileExtensionValidator, RegexValidator
 from decimal import Decimal
 from core.models import Customer
@@ -305,6 +306,33 @@ class UnitRepairCount(models.Model):
 # ABSTRACT BASE CLASS: GlassService
 # =============================================================================
 
+# Coarse arrival windows a customer can ask for (FIELD_OPS S4).
+#
+# Deliberately three buckets and not a time picker: TIME_ZONE is one global
+# setting, so a fleet dispatcher two states away picking "8:15 AM" is ambiguous
+# in a way "morning" is not — and the shop decides the real clock time anyway.
+#
+# PREFERRED_WINDOW_HOURS is the single numeric source of truth: the labels
+# below are written from it by hand, and services/schedule_booking.py turns a
+# (date, window) pair into the real scheduled_for / scheduled_window_end.
+PREFERRED_WINDOW_HOURS = {
+    'MORNING': (8, 12),
+    'AFTERNOON': (12, 17),
+    'ANYTIME': (8, 17),
+}
+PREFERRED_WINDOW_CHOICES = [
+    ('MORNING', 'Morning (8:00 AM – 12:00 PM)'),
+    ('AFTERNOON', 'Afternoon (12:00 PM – 5:00 PM)'),
+    ('ANYTIME', 'Any time that day'),
+]
+# Short forms for dense surfaces (the triage rail, a one-line summary).
+PREFERRED_WINDOW_SHORT = {
+    'MORNING': 'morning',
+    'AFTERNOON': 'afternoon',
+    'ANYTIME': 'any time',
+}
+
+
 class GlassService(models.Model):
     """
     Abstract base class for all glass service types (repairs and replacements).
@@ -383,6 +411,22 @@ class GlassService(models.Model):
     scheduled_window_end = models.DateTimeField(
         null=True, blank=True,
         help_text="Optional end of the promised arrival window."
+    )
+    # --- What the customer asked for (S4) ---
+    # A wish, NOT a booking. These never imply scheduled_for: a customer repair
+    # request auto-approves to APPROVED milliseconds after it is created, and
+    # APPROVED is on the day sheet, so writing a wished-for time straight into
+    # scheduled_for would publish an appointment nobody in the shop agreed to.
+    # The shop turns a wish into a booking through
+    # services/schedule_booking.confirm_appointment().
+    preferred_date = models.DateField(
+        null=True, blank=True,
+        help_text="Day the customer asked for. A request, not a booking."
+    )
+    preferred_window = models.CharField(
+        max_length=20, blank=True, default='',
+        choices=PREFERRED_WINDOW_CHOICES,
+        help_text="Part of the day the customer asked for."
     )
     description = models.TextField(blank=True, null=True)
     cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -588,6 +632,32 @@ class GlassService(models.Model):
         address = ' '.join(address.split())
         region = ' '.join(p for p in (state, zip_code) if p)
         return ', '.join(p for p in (address, city, region) if p)
+
+    # ---- Customer's requested time (S4) ------------------------------------
+
+    @property
+    def has_time_preference(self):
+        return bool(self.preferred_date or self.preferred_window)
+
+    @property
+    def preferred_window_short(self):
+        """'morning' / 'afternoon' / 'any time', or '' — for dense rows."""
+        return PREFERRED_WINDOW_SHORT.get(self.preferred_window, '')
+
+    def get_time_preference(self):
+        """One line for what the customer asked for, or ''.
+
+        'Tue, Aug 19 (morning)' · 'Tue, Aug 19' · 'Morning, no date given'.
+        Returns '' when nothing was asked for, so callers drop the whole row
+        rather than render an empty label.
+        """
+        if not self.has_time_preference:
+            return ''
+        window = self.preferred_window_short
+        if not self.preferred_date:
+            return f"{window.capitalize()}, no day given" if window else ''
+        day = format_date(self.preferred_date, 'D, M j')
+        return f"{day} ({window})" if window else day
 
     def get_vehicle_label(self):
         """Self-describing identifier for inline prose (invoice descriptions).

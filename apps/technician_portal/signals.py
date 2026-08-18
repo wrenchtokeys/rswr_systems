@@ -414,6 +414,11 @@ def _notify_customer_request_received(repair):
         'unit_number': repair.unit_number,
         'customer_name': repair.customer.name,
         'damage_type': repair.get_damage_type_display() or 'Unknown',
+        # What they asked for (S4), echoed back in the email they already
+        # get. Deliberately NOT a new customer-facing message: a batch
+        # request already fans this template out once per row, so a second
+        # stream would multiply by the same factor.
+        'preferred_time': repair.get_time_preference(),
         'action_url': f'/app/repairs/{repair.pk}/',
     }
 

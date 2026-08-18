@@ -127,6 +127,25 @@
                     <span class="text-gray-500">Service Date</span>
                     <div class="font-medium text-gray-900">{{ replacement.service_date|date:"F d, Y" }}</div>
                 </div>
+                {% comment %}
+                The booked time (S4), and until it exists, what was asked for —
+                so a customer can tell "asked" from "booked".
+                {% endcomment %}
+                {% if replacement.scheduled_for %}
+                <div>
+                    <span class="text-gray-500">Scheduled</span>
+                    <div class="font-medium text-gray-900">
+                        {{ replacement.scheduled_for|date:"D, M j" }},
+                        {{ replacement.scheduled_for|date:"g:i A" }}{% if replacement.scheduled_window_end %} – {{ replacement.scheduled_window_end|date:"g:i A" }}{% endif %}
+                    </div>
+                </div>
+                {% elif replacement.has_time_preference %}
+                <div>
+                    <span class="text-gray-500">You asked for</span>
+                    <div class="font-medium text-gray-900">{{ replacement.get_time_preference }}</div>
+                    <div class="text-xs text-gray-500">Not booked yet</div>
+                </div>
+                {% endif %}
                 {% if replacement.technician %}
                 <div>
                     <span class="text-gray-500">Technician</span>

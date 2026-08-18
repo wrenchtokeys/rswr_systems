@@ -243,6 +243,7 @@ def notify_schedule_swap(job_a, job_b, *, actor_user=None):
     context = {
         'day': day,
         'summary': summary,
+        'lead': 'Two of your jobs traded times. Nothing was added or removed.',
         'technician_name': (
             technician.user.get_full_name() or technician.user.username
         ),
@@ -268,6 +269,98 @@ def notify_schedule_swap(job_a, job_b, *, actor_user=None):
     except Exception:
         logger.exception(
             "Failed to send schedule-swap notification to technician %s",
+            technician.pk,
+        )
+
+
+def notify_appointment_set(job, *, job_count=1, actor_user=None):
+    """Tell the assigned tech a time was booked onto their job (fieldops S4).
+
+    Reuses S7's ``job_rescheduled`` template rather than adding a second
+    schedule-change stream: it is category ``assignment`` (so the existing
+    TechnicianNotificationPreference opt-out covers it) and priority MEDIUM on
+    purpose — HIGH maps to ``['in_app', 'sms']`` and excludes email entirely.
+
+    No customer is notified here. Echoing a confirmed time back to the
+    customer is a deliberate product decision, not a side effect of a
+    manager's click — the portal shows the booked time instead.
+
+    Call from ``transaction.on_commit`` only: NotificationService sends email
+    synchronously and re-raises, and the caller holds row locks.
+    """
+    from apps.technician_portal.models import TechnicianNotification
+    from core.services.notification_service import NotificationService
+    from django.utils import timezone
+    from django.utils.dateformat import format as format_date
+
+    technician = job.technician
+    if technician is None or job.scheduled_for is None:
+        return
+    actor_id = actor_user.id if actor_user is not None else None
+    if technician.user_id == actor_id:
+        return
+    if job.queue_status not in NOTIFIABLE_STATUSES:
+        return
+
+    local_start = timezone.localtime(job.scheduled_for)
+    day = format_date(local_start, 'D M j')
+    start = format_date(local_start, 'g:i A')
+    if job.scheduled_window_end:
+        end = format_date(timezone.localtime(job.scheduled_window_end), 'g:i A')
+        when = f"{day}, {start}–{end}"
+    else:
+        when = f"{day}, {start}"
+
+    name = job.customer.name if job.customer_id else 'Walk-in'
+    unit = job.unit_number or ''
+    who = f"{name} (Unit {unit})" if unit else name
+    breaks = f" — {job_count} breaks, one visit" if job_count > 1 else ''
+    summary = f"{who} is booked for {when}{breaks}"
+
+    is_repair = not _is_replacement(job)
+    TechnicianNotification.objects.create(
+        technician=technician,
+        message=f"Scheduled: {summary}",
+        read=False,
+        # TechnicianNotification carries only a `repair` FK, so a booked
+        # replacement gets a dashboard row with no link — its action_url in
+        # the bell notification below still works.
+        repair=job if is_repair else None,
+    )
+
+    context = {
+        'day': day,
+        'summary': summary,
+        'lead': (
+            'A job on your schedule now has a time. Nothing else moved.'
+            if job_count == 1 else
+            f'A {job_count}-break job on your schedule now has a time — '
+            'one visit. Nothing else moved.'
+        ),
+        'technician_name': (
+            technician.user.get_full_name() or technician.user.username
+        ),
+        'first_job': who,
+        'first_time': start,
+        # The template renders a second job for the swap case; a booking has
+        # only one, so these stay blank rather than repeating the first.
+        'second_job': '',
+        'second_time': '',
+        # Link to the day that changed, not to "today" — the tech may read
+        # this the morning before a job two days out.
+        'action_url': '/tech/schedule/?date=' + local_start.date().isoformat(),
+    }
+    try:
+        NotificationService.create_notification(
+            recipient=technician,
+            template_name='job_rescheduled',
+            context=context,
+            repair=job if is_repair else None,
+            action_url=context['action_url'],
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send booking notification to technician %s",
             technician.pk,
         )
 

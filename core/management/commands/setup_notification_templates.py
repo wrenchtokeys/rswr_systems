@@ -341,13 +341,14 @@ class Command(BaseCommand):
                 'required_context': ['job_count', 'job_summary', 'new_technician_name'],
             },
 
-            # 13. JOB RESCHEDULED (Technician) — fieldops S7 day-view swap.
-            # Category 'assignment' so it reuses the existing technician
-            # opt-out; MEDIUM so email is actually a channel (HIGH is
-            # in_app+sms only).
+            # 13. JOB RESCHEDULED (Technician) — one template for every
+            # "your day changed" event: the S7 day-view swap and the S4
+            # booking confirm. One stream, one opt-out. Category 'assignment'
+            # so it reuses the existing technician opt-out; MEDIUM so email is
+            # actually a channel (HIGH is in_app+sms only).
             {
                 'name': 'job_rescheduled',
-                'description': 'Technician notice that two of their jobs traded times',
+                'description': 'Technician notice that their booked times changed',
                 'category': Notification.CATEGORY_ASSIGNMENT,
                 'default_priority': Notification.PRIORITY_MEDIUM,
                 'title_template': 'Schedule change for {{ day }}',
@@ -355,10 +356,7 @@ class Command(BaseCommand):
                 'email_subject_template': 'Your schedule changed for {{ day }}',
                 'email_html_template': 'emails/notifications/job_rescheduled.html',
                 'email_text_template': 'emails/notifications/job_rescheduled.txt',
-                'sms_template': (
-                    'Schedule change {{ day }}: {{ first_job }} now '
-                    '{{ first_time }}, {{ second_job }} now {{ second_time }}.'
-                ),
+                'sms_template': 'Schedule change {{ day }}: {{ summary }}.',
                 'action_url_template': '/tech/schedule/',
                 'required_context': ['day', 'summary'],
             },

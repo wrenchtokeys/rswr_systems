@@ -845,6 +845,24 @@ async function confirmAndSubmit() {
             damageLocationY: u.damageLocationY || null
         }))));
 
+        // When + where (S4). One preference per submission, not per unit —
+        // the card lives outside #batchRepairForm because this page submits a
+        // hand-built FormData, so the values are read straight from the DOM.
+        // Empty strings are harmless: the server ignores blanks.
+        [
+            ['preferred_date', 'preferredDate'],
+            ['preferred_window', 'preferredWindow'],
+            ['service_address', 'serviceAddress'],
+            ['service_city', 'serviceCity'],
+            ['service_state', 'serviceState'],
+            ['service_zip', 'serviceZip'],
+        ].forEach(([field, id]) => {
+            const el = document.getElementById(id);
+            if (el && el.value) {
+                formData.append(field, el.value);
+            }
+        });
+
         // Add photo files
         units.forEach((unit, index) => {
             if (unit.photoFile) {

@@ -14,6 +14,14 @@ is the expected start in ISO-8601 ("c"); the endpoint parses it and compares
 datetimes, so a stale drop 409s instead of overwriting whatever the row holds
 now. `data-swap-block` names WHY a row can't move, so the browser can refuse
 with a reason instead of a dead handle.
+
+S4 adds `triage` mode. The "Needs scheduling" rail used to render its own
+inline copy of this markup in schedule.html; S7 had to special-case it and S4
+would have been the third divergence, so the rail now comes through here.
+A triage row has no booked time (so no time column and no drag handle) and
+instead shows what the customer asked for, plus the inline control that books
+it. `data-scheduled-for` is empty on these rows, which is exactly the
+"unscheduled" expectation the booking endpoint's optimistic lock wants.
 {% endcomment %}
 <div class="px-4 py-3 sm:px-6 hover:bg-gray-50 transition-colors flex items-center gap-4{% if job.queue_status == 'COMPLETED' %} opacity-60{% endif %}"
      data-job-key="{{ job.service_type }}-{{ job.id }}"
@@ -21,6 +29,7 @@ with a reason instead of a dead handle.
      data-job-name="{{ job.customer.name|default:'Walk-in' }}"
      {% if job.queue_status == 'COMPLETED' %}data-swap-block="completed"{% elif job.repair_batch_id %}data-swap-block="batch"{% endif %}>
 
+    {% if not triage %}
     {% comment %}
     Drag handle — managers only, and only on rows that can actually move.
     Always visible: reveal-on-hover is a mouse idiom and does not exist on a
@@ -45,6 +54,7 @@ with a reason instead of a dead handle.
         <div class="text-xs text-gray-400">to {{ job.scheduled_window_end|date:"g:i A" }}</div>
         {% endif %}
     </div>
+    {% endif %}
 
     <div class="flex-shrink-0 w-1.5 h-12 rounded-full
         {% if job.queue_status == 'COMPLETED' %}bg-green-500
@@ -63,13 +73,32 @@ with a reason instead of a dead handle.
             {% service_type_chip job.service_type %}
             {% endif %}
         </div>
-        <div class="flex items-center gap-2 mt-1">
-            {% if job.queue_status == 'APPROVED' %}
+        <div class="flex items-center gap-2 mt-1 flex-wrap">
+            {% if job.queue_status == 'APPROVED' and not triage %}
             {% status_badge job.queue_status label="Ready" %}
             {% else %}
             {% status_badge job.queue_status %}
             {% endif %}
+            {% if triage %}
+            <span class="text-xs text-gray-500">{{ job.technician.user.get_full_name|default:job.technician.user.username }}</span>
+            {% endif %}
         </div>
+
+        {% comment %}
+        What the customer asked for. Shown on triage rows (it's the reason the
+        row is sorted where it is) and on a booked row only while the booking
+        misses the wish — once the two agree, repeating it is noise.
+        {% endcomment %}
+        {% with wish=job.get_time_preference %}
+        {% if wish and triage %}
+        <div class="mt-1">
+            <span class="inline-flex items-center gap-1.5 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                <i class="fas fa-clock"></i>Asked for {{ wish }}
+            </span>
+        </div>
+        {% endif %}
+        {% endwith %}
+
         {% with location=job.get_service_location %}
         {% if location or job.customer.phone %}
         <div class="flex items-center gap-4 mt-1 min-w-0">
@@ -86,6 +115,33 @@ with a reason instead of a dead handle.
         </div>
         {% endif %}
         {% endwith %}
+
+        {% comment %}
+        The one write on the rail: pick a day and a window, and the job gets a
+        real booked time. Prefilled with the customer's wish when there is one
+        — confirming what they asked for is one tap, and changing it is two.
+        A plain <form> so a JS failure reloads the page instead of doing
+        nothing silently; static/js/schedule_booking.js intercepts it.
+        {% endcomment %}
+        {% if triage and can_book %}
+        <form class="mt-2 flex flex-wrap items-center gap-2" data-book-form>
+            <label class="sr-only" for="book-date-{{ job.service_type }}-{{ job.id }}">Date for {{ job.customer.name|default:"this job" }}</label>
+            <input type="date" data-book-date id="book-date-{{ job.service_type }}-{{ job.id }}"
+                   value="{{ job.preferred_date|date:'Y-m-d'|default:booking_default_date }}"
+                   class="min-h-11 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+            <label class="sr-only" for="book-window-{{ job.service_type }}-{{ job.id }}">Time of day for {{ job.customer.name|default:"this job" }}</label>
+            <select data-book-window id="book-window-{{ job.service_type }}-{{ job.id }}"
+                    class="min-h-11 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                {% for value, label in preferred_windows %}
+                <option value="{{ value }}"{% if job.preferred_window == value %} selected{% elif not job.preferred_window and value == 'ANYTIME' %} selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit"
+                    class="inline-flex items-center min-h-11 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors shadow-sm press">
+                Book
+            </button>
+        </form>
+        {% endif %}
     </div>
 
     <!-- Action stays far from Call (left side), per the S2 touch rule. -->
@@ -95,7 +151,11 @@ with a reason instead of a dead handle.
         {% else %}
         {% url 'repair_detail' job.id as job_url %}
         {% endif %}
-        {% if job.queue_status == 'IN_PROGRESS' %}
+        {% if triage %}
+        <a href="{{ job_url }}" class="inline-flex items-center min-h-11 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+            View
+        </a>
+        {% elif job.queue_status == 'IN_PROGRESS' %}
         <a href="{{ job_url }}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors shadow-sm press">
             Continue
         </a>

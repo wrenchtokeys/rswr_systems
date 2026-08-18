@@ -89,7 +89,7 @@ class SingleRequestAutoAcceptTests(CustomerPortalTestBase):
         self.assertEqual(approval.approved_by, self.cu)
         self.assertEqual(approval.notes, BREADCRUMB_NOTES)
 
-    def test_detail_page_shows_scheduled_not_approve_deny(self):
+    def test_detail_page_shows_accepted_not_approve_deny(self):
         self.client.post(reverse('customer_request_repair'), {
             'unit_number': 'UNIT-2', 'damage_type': 'Chip', 'description': 'x',
         })
@@ -97,7 +97,12 @@ class SingleRequestAutoAcceptTests(CustomerPortalTestBase):
         resp = self.client.get(reverse('customer_repair_detail', args=[repair.id]))
         self.assertEqual(resp.status_code, 200)
         content = resp.content.decode()
-        self.assertIn('Scheduled for Repair', content)
+        # The point of this test is that an auto-accepted request offers the
+        # customer nothing to approve. Fieldops S4 corrected what it says
+        # instead: this badge read "Scheduled for Repair" while scheduled_for
+        # was null, and it is the claim that outlives the submit toast.
+        self.assertIn('Accepted', content)
+        self.assertNotIn('Scheduled for Repair', content)
         self.assertNotIn('needs your approval', content)
 
     def test_submission_notifies_customer_received(self):
@@ -130,7 +135,11 @@ class BatchRequestAutoAcceptTests(CustomerPortalTestBase):
         self.assertEqual(resp.status_code, 200)
         payload = resp.json()
         self.assertTrue(payload['success'])
-        self.assertIn("you're on the schedule", payload['message'])
+        # Fieldops S4 corrected this claim: auto-accepted is not booked.
+        # Nothing in the request path writes scheduled_for, so "you're on the
+        # schedule" promised a time the shop had not picked.
+        self.assertNotIn("you're on the schedule", payload['message'])
+        self.assertIn('confirm your time', payload['message'])
 
         repairs = Repair.objects.filter(tenant=self.tenant, customer=self.customer)
         self.assertEqual(repairs.count(), 3)  # 1 + 2 breaks

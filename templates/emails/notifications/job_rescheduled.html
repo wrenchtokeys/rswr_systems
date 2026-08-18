@@ -1,10 +1,15 @@
 {% extends "emails/base.html" %}
 
 {% comment %}
-Fieldops S7: two of this tech's jobs traded times. The two new times ARE the
-message, so they lead — a tech reading this on a phone at 6am needs the times,
-not the prose. CTA links to the day that changed (base_url + action_url; a
-relative href is dead in a mail client).
+Fieldops S7 + S4: this tech's day changed. The times ARE the message, so they
+lead — a tech reading this on a phone at 6am needs the times, not the prose.
+CTA links to the day that changed (base_url + action_url; a relative href is
+dead in a mail client).
+
+One template covers both writers on purpose: a swap (S7, two jobs trading) and
+a new booking (S4, one job getting a time). Splitting them would give techs a
+second schedule-change stream with its own opt-out. `lead` carries the
+sentence that differs; the second row renders only when there is a second job.
 {% endcomment %}
 
 {% block email_title %}Schedule change for {{ day }}{% endblock %}
@@ -31,7 +36,7 @@ relative href is dead in a mail client).
                 Your {{ day }} schedule changed
             </h1>
             <p style="margin: 10px 0 0 0; color: #666666; font-family: {{ branding.body_font }}; font-size: 16px; line-height: 24px;">
-                Two of your jobs traded times. Nothing was added or removed.
+                {{ lead|default:"Two of your jobs traded times. Nothing was added or removed." }}
             </p>
         </td>
     </tr>
@@ -45,7 +50,7 @@ relative href is dead in a mail client).
                 <tr>
                     <td style="padding-bottom: 15px; border-bottom: 2px solid {{ branding.primary_color }};">
                         <h2 style="margin: 0; color: {{ branding.primary_color }}; font-family: {{ branding.heading_font }}; font-size: 18px; font-weight: bold;">
-                            New times
+                            {% if second_job %}New times{% else %}New time{% endif %}
                         </h2>
                     </td>
                 </tr>
@@ -58,12 +63,14 @@ relative href is dead in a mail client).
                                     <span style="color: #666666;">&nbsp;&nbsp;{{ first_job }}</span>
                                 </td>
                             </tr>
+                            {% if second_job %}
                             <tr>
                                 <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
                                     <strong style="color: {{ branding.text_color }};">{{ second_time }}</strong>
                                     <span style="color: #666666;">&nbsp;&nbsp;{{ second_job }}</span>
                                 </td>
                             </tr>
+                            {% endif %}
                         </table>
                     </td>
                 </tr>
