@@ -22,6 +22,7 @@ This file is the **work queue** for making field operations real: a technician f
 | S — Where and when | S5 · Dispatch board | L | TODO — **next up** |
 | S — Where and when | S6 · Routing / ETA / lot-walking | — | BACKLOG (deliberately deferred) |
 | S — Where and when | S7 · Drag to swap two appointments | M | DONE (2026-08-17, **PR #192**) |
+| S — Where and when | S8 · Per-tenant timezone | M | TODO (not urgent — harmless until a shop outside America/Chicago signs up, then it is a correctness bug) |
 | P — Parts | P1 · Mygrant live quotes + ordering | M | IN PROGRESS (steps 3+4 MERGED+DEPLOYED 2026-08-15, PR #184; step 5 quote-only built 2026-08-15, **PR #186**; steps 1–2 wait on the Mygrant IT callback; step 6 ordering waits for quotes to prove out) |
 | P — Parts | P2 · Vehicle→NAGS part lookup | — | BACKLOG (blocked on a NAGS licensing decision — Appendix B) |
 
@@ -581,9 +582,13 @@ on top of it, and a fresh session should start from these rather than re-derive:
     `NOMINAL_JOB_LENGTH` (1 hour, a constant in the booking service — nothing in
     the app models job duration yet, and a settings screen for it would promise
     more than the number is worth; S5/S6 can replace it).
-  - **Every exact-time surface prints `shop_timezone_label()`** ('CDT'). That
-    helper and `window_bounds()` are the two places to change when per-tenant
-    timezones arrive.
+  - **Every exact-time surface prints `shop_timezone_label()`** ('CDT'), which
+    is what makes an exact time honest while `TIME_ZONE` is global. **This is
+    not a stopgap for the out-of-state dispatcher** — a Phoenix dispatcher
+    booking an Arkansas truck at an Arkansas shop *should* be reading the
+    shop's clock, so the label is the correct permanent answer for that case.
+    Per-tenant timezones are a different problem: the second shop in a
+    different state. Scoped as **S8** below.
   - **Times are ignored unless the window is EXACT**, on both the customer form
     and the endpoint, so a stale pair left in a POST can never silently override
     a preset. And EXACT submitted with *no* times drops the window entirely
@@ -664,6 +669,26 @@ on top of it, and a fresh session should start from these rather than re-derive:
 - **Not done, deliberately:** dragging an unscheduled job from the rail onto a
   time (the S7 follow-on), customer-facing notice of a confirmed time beyond the
   portal, and rescheduling from the customer side (S6 item 5).
+
+## S8 · Per-tenant timezone — TODO (not urgent, but load-bearing before shop #2 out of state)
+
+*(Added 2026-08-18. Drake asked during S4 whether this was documented; it was, in
+one under-scoped line that claimed the change was "two places". It is not — this
+table is the corrected version.)*
+
+| Field | Value |
+|---|---|
+| **Goal** | Each shop's times — day sheet, booked windows, "today", cron-sent email — are in **that shop's** local clock, not one global setting. |
+| **Size** | M |
+| **Depends on** | Nothing. Independent of the S-arc, but every S-session adds surface area to it. |
+| **Why it matters** | `TIME_ZONE` is a single global setting (`America/Chicago`, both settings files). **Today this is harmless** — there is one production shop and it is in Arkansas. It becomes a live correctness bug the moment RS Systems signs a shop in another state: their day sheet would bucket jobs by Central midnight, S4's "morning" would mean 8am Central, and a booked 04:30 would render an hour off. Nothing warns anyone when that happens; it just quietly reads wrong. |
+| **Verified current state** *(2026-08-18)* | `TIME_ZONE = os.environ.get('TIME_ZONE', 'America/Chicago')` in both `settings/development.py:152` and `settings/production.py:197`; `USE_TZ = True` (`base.py:139`), so **storage is already UTC and no data migration is needed** — this is purely a presentation/boundary problem. `Tenant` has **no** timezone field. There are ~19 `timezone.localtime()` / `get_current_timezone()` call sites in the scheduling paths alone, spread across `views/schedule.py`, `views/dashboard.py`, `views/repairs.py`, `services/schedule_booking.py`, `services/schedule_swap.py`, `services/assignments.py`, `technician_portal/models.py`, `technician_portal/forms.py` and `customer_portal/views.py` — plus every template that renders a datetime, which Django formats in the *active* timezone. `TenantMiddleware.process_request` (`apps/tenants/middleware.py:28`) already resolves `request.tenant` and returns at four separate points. |
+| **Considerations** | **Do not chase the call sites.** Add `Tenant.timezone` (CharField, default `'America/Chicago'`, validated against `zoneinfo.available_timezones()`) and call `timezone.activate(tenant_tz)` once in `TenantMiddleware` — `localtime()`, `get_current_timezone()` and all template rendering then follow automatically, and nearly every one of those 19 sites needs no edit. Two things that middleware does **not** cover, and which are the actual work: **(1) every path with no request** — the EB cron jobs (`send_review_requests`, `check_subscription_alerts`, the reconcilers) and any management command must activate per tenant inside their loop, or they will format a shop's email in Central; **(2) `timezone.deactivate()` in a `finally`**, because `activate()` is thread-local and a pooled worker thread would otherwise leak one shop's timezone into the next request — that is a cross-tenant bug, not a cosmetic one. Also decide what an *owner* sees on the day view when they somehow span shops (they can't today; one tenant per session). `shop_timezone_label()` (`technician_portal/models.py`) already exists and would start returning the right thing for free. |
+| **Decisions needed** | Whether the shop picks its timezone during onboarding (`/owner/setup/`) or it is inferred from the business address/ZIP once and left editable in Owner Settings → General — recommend inferred-then-editable, since a shop owner should not have to know what "America/Chicago" is. |
+| **Acceptance criteria** | Two tenants in different timezones, seeded in one test: each one's day view buckets its own jobs by its own local midnight; an S4 "morning" booking resolves to 8am in each shop's own clock; a cron-sent email states each shop's own local time; and a request handled after another tenant's request does not inherit its timezone (the thread-leak test). |
+| **Out of scope** | Per-*user* timezones (a dispatcher reading the shop's clock is correct behaviour — see S4's Notes). Historical re-interpretation of already-booked times: they are stored UTC and stay correct. |
+
+**Notes**
 
 ## S5 · Dispatch board — TODO
 
