@@ -108,6 +108,20 @@
                     <div><span class="text-gray-500">Scheduled for:</span> <span class="font-medium text-gray-900">{{ replacement.scheduled_for|date:"M d, Y h:i A" }}</span></div>
                     {% endif %}
                     {% comment %}
+                    What the customer asked for (S4) — a wish, never a booking.
+                    It disappears once the job has a real booked time: from
+                    then on the promise above is the fact that matters.
+                    {% endcomment %}
+                    {% with wish=replacement.get_time_preference %}
+                    {% if wish and not replacement.scheduled_for %}
+                    <div class="col-span-2">
+                        <span class="inline-flex items-center gap-1.5 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                            <i class="fas fa-clock"></i>Customer asked for {{ wish }}
+                        </span>
+                    </div>
+                    {% endif %}
+                    {% endwith %}
+                    {% comment %}
                     Field dispatch (S2): phone dials, address opens the maps
                     app — hrefs built by static/js/field_dispatch.js so
                     neither lands in a server-rendered URL. Rows are skipped

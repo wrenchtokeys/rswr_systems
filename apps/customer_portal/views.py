@@ -18,6 +18,8 @@ from django.contrib import messages
 from django.contrib.auth.models import User
 from django.contrib.auth import login, authenticate
 from django.utils import timezone
+from django.utils.dateformat import format as format_date
+from django.utils.dateparse import parse_date, parse_time
 from django.db.models import Sum, Q, Count
 from django.db import models, transaction, IntegrityError
 from django.contrib.auth import update_session_auth_hash
@@ -1710,9 +1712,10 @@ def request_repair(request):
         available_rewards = _get_available_monetary_rewards(customer_user)
 
         # Render the repair request form
-        return render(request, 'customer_portal/request_repair.html', {
-            'available_rewards': available_rewards,
-        })
+        return render(request, 'customer_portal/request_repair.html', dict(
+            _preference_form_context(customer),
+            available_rewards=available_rewards,
+        ))
     except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
@@ -1743,7 +1746,10 @@ def request_replacement(request):
         messages.info(request, f"{tenant.name} doesn't offer glass replacements. You can request a chip repair instead.")
         return redirect('customer_dashboard')
 
-    ctx = {'glass_positions': Replacement.GLASS_POSITION_CHOICES}
+    ctx = dict(
+        _preference_form_context(customer),
+        glass_positions=Replacement.GLASS_POSITION_CHOICES,
+    )
 
     if request.method != 'POST':
         return render(request, 'customer_portal/request_replacement.html', ctx)
@@ -1781,6 +1787,9 @@ def request_replacement(request):
         messages.error(request, "No technicians available. Please try again later.")
         return render(request, 'customer_portal/request_replacement.html', ctx)
 
+    # When they want it and where the vehicle will be (S4).
+    prefs = _read_service_preference(request, customer)
+
     try:
         # No parts/labor cost yet — Replacement.save() leaves cost at 0 and
         # skips tax until the shop prices the job.
@@ -1794,6 +1803,7 @@ def request_replacement(request):
             customer_notes=description,
             customer_submitted_photo=damage_photo,
             queue_status='REQUESTED',
+            **prefs,
         )
 
         # Auto-assign technician based on tenant strategy (may keep the
@@ -1805,7 +1815,12 @@ def request_replacement(request):
 
         _notify_shop_replacement_requested(request, replacement)
 
-        messages.success(request, "Replacement request submitted! The shop will confirm the glass and price before any work begins.")
+        wish = _preference_sentence(prefs)
+        messages.success(request, (
+            "Replacement request submitted! The shop will confirm the glass "
+            "and price before any work begins."
+            + (f" We'll aim for {wish} and confirm your time." if wish else "")
+        ))
         return redirect('customer_dashboard')
     except Exception as e:
         messages.error(request, f"Error creating replacement request: {str(e)}")
@@ -1850,6 +1865,13 @@ def _notify_shop_replacement_requested(request, replacement):
             ('Unit / Vehicle', replacement.unit_number),
             ('Glass', replacement.get_glass_position_display()),
         ]
+        # When they want it and where the vehicle is (S4) — the two facts that
+        # decide whether the shop can say yes.
+        wish = replacement.get_time_preference()
+        if wish:
+            detail_rows.append(('Asked for', wish))
+        if replacement.service_address:
+            detail_rows.append(('Vehicle location', replacement.get_service_location()))
         if replacement.customer_notes:
             detail_rows.append(('Notes', replacement.customer_notes))
         send_branded_email(
@@ -1900,6 +1922,175 @@ def _restore_reward_for_repair(repair):
     return restored
 
 
+def _preference_form_context(customer):
+    """Context the shared when/where card needs (S4).
+
+    `customer_location` is shown as read-only text — the address inputs start
+    empty behind a toggle, so anything typed is a genuine override.
+    """
+    from apps.technician_portal.models import (
+        PREFERRED_WINDOW_CHOICES, shop_timezone_label,
+    )
+
+    parts = [
+        (customer.address or '').strip(),
+        (customer.city or '').strip(),
+        ' '.join(p for p in ((customer.state or '').strip(),
+                             (customer.zip_code or '').strip()) if p),
+    ] if customer else []
+    tenant = getattr(customer, 'tenant', None) if customer else None
+    return {
+        'preferred_windows': PREFERRED_WINDOW_CHOICES,
+        'preference_min_date': timezone.localtime(timezone.now()).date().isoformat(),
+        'customer_location': ', '.join(p for p in parts if p),
+        # An exact time is only unambiguous if you say whose clock it is on.
+        'shop_timezone_label': shop_timezone_label(),
+        'shop_name': getattr(tenant, 'name', ''),
+    }
+
+
+def _read_service_preference(request, customer):
+    """What the customer asked for: when, and where the vehicle will be.
+
+    Returns a dict of model kwargs to splat onto every job this submission
+    creates — ``{}`` when nothing was asked for. One submission carries ONE
+    preference, so a 5-unit batch writes the same wish onto all 5 rows; the
+    rail would otherwise show some rows with the wish and some without.
+
+    Two rules, both learned the expensive way:
+
+    - **Never returns ``scheduled_for``.** A customer repair request
+      auto-approves to APPROVED milliseconds after creation, and APPROVED is
+      on the technician's day sheet, so a wish written to ``scheduled_for``
+      is an unagreed appointment. The shop promotes it through
+      ``services/schedule_booking.confirm_appointment()``.
+
+    - **Only genuine address overrides are persisted** (S2's rule): an address
+      that matches the customer's own is dropped, or every request would
+      freeze a copy of the company address as it stood that day and fixing a
+      typo on the customer record would fix nothing. And because
+      ``get_service_location_parts()`` is all-or-nothing — any job field set
+      wins wholesale — a partial override is completed from the customer
+      record rather than left to silently drop their city from the map link.
+    """
+    from apps.technician_portal.models import PREFERRED_WINDOW_HOURS
+
+    prefs = {}
+
+    raw_date = (request.POST.get('preferred_date') or '').strip()
+    if raw_date:
+        parsed = parse_date(raw_date)
+        # A wish for a day that has already passed is a stale autosaved form,
+        # not a request. Drop it rather than show the shop a date in the past.
+        if parsed and parsed >= timezone.localtime(timezone.now()).date():
+            prefs['preferred_date'] = parsed
+
+    window = (request.POST.get('preferred_window') or '').strip().upper()
+    if window in PREFERRED_WINDOW_HOURS:
+        prefs['preferred_window'] = window
+
+    # The fleet case: a window to the minute. Only read when they actually
+    # picked "a specific window" — a stale pair left in the POST behind a
+    # preset must not quietly override it.
+    if window == 'EXACT':
+        start = parse_time((request.POST.get('preferred_time_start') or '').strip())
+        end = parse_time((request.POST.get('preferred_time_end') or '').strip())
+        # An end at or before the start is a typo, not a window across
+        # midnight. Keep the usable half rather than dropping the whole ask.
+        if start and end and end <= start:
+            end = None
+        if start:
+            prefs['preferred_time_start'] = start
+        if end:
+            prefs['preferred_time_end'] = end
+        if not (start or end):
+            # "Specific window" with no times is no more specific than
+            # nothing — don't store a bucket that lies about its precision.
+            prefs.pop('preferred_window', None)
+
+    street = ' '.join((request.POST.get('service_address') or '').split())
+    if street:
+        city = (request.POST.get('service_city') or '').strip()
+        state = (request.POST.get('service_state') or '').strip()
+        # NOTE: the customer field is `zip_code`, the job field is
+        # `service_zip`. A name-for-name copy is a bug.
+        zip_code = (request.POST.get('service_zip') or '').strip()
+
+        own = (customer.address or '', customer.city or '',
+               customer.state or '', customer.zip_code or '')
+        own_norm = tuple(' '.join(v.split()).lower() for v in own)
+
+        # Fill what they left blank from the customer record, so a job-site
+        # street never lands without a city and kills the map link.
+        city = city or own[1]
+        state = state or own[2]
+        zip_code = zip_code or own[3]
+
+        submitted_norm = tuple(
+            ' '.join(v.split()).lower() for v in (street, city, state, zip_code))
+        if submitted_norm != own_norm:
+            prefs.update({
+                'service_address': street,
+                'service_city': city,
+                'service_state': state,
+                'service_zip': zip_code,
+            })
+
+    return prefs
+
+
+def _request_received_message(count, prefs):
+    """Success copy that does not claim a booking that hasn't been made.
+
+    Until S4 this said "you're on the schedule!" in three places while
+    ``scheduled_for`` stayed null — the shop had promised nothing, and the
+    tech's day sheet showed nothing. When the customer named a time, echo it
+    back so they can see it was heard.
+    """
+    noun = f"{count} repair request{'s' if count != 1 else ''}"
+    lead = ("Repair request received." if count == 1
+            else f"Received {noun}.")
+    wish = _preference_sentence(prefs)
+    if wish:
+        return f"{lead} We'll aim for {wish} and confirm your time shortly."
+    return f"{lead} The shop will confirm your time shortly."
+
+
+def _preference_sentence(prefs):
+    """'Tuesday, Aug 19 (7:00 – 8:30 AM CDT)' style echo, or ''.
+
+    Built from the same prefs dict that was just written, so the customer is
+    read back exactly what was stored — including nothing, when their
+    "specific window" carried no times and was dropped.
+    """
+    from apps.technician_portal.models import (
+        PREFERRED_WINDOW_SHORT, shop_timezone_label,
+    )
+
+    day = prefs.get('preferred_date')
+    start, end = prefs.get('preferred_time_start'), prefs.get('preferred_time_end')
+    if start or end:
+        tz = shop_timezone_label()
+        if start and end:
+            same_half = format_date(start, 'A') == format_date(end, 'A')
+            left = format_date(start, 'g:i' if same_half else 'g:i A')
+            window = f"{left} – {format_date(end, 'g:i A')} {tz}"
+        elif start:
+            window = f"from {format_date(start, 'g:i A')} {tz}"
+        else:
+            window = f"by {format_date(end, 'g:i A')} {tz}"
+    else:
+        window = PREFERRED_WINDOW_SHORT.get(prefs.get('preferred_window', ''), '')
+
+    if day and window:
+        return f"{format_date(day, 'l, M j')} ({window})"
+    if day:
+        return format_date(day, 'l, M j')
+    if window:
+        return window
+    return ''
+
+
 def _auto_accept_customer_repair(repair, customer_user=None):
     """Auto-accept a customer-submitted repair: REQUESTED -> APPROVED.
 
@@ -1947,9 +2138,10 @@ def handle_single_repair_request(request, customer, customer_user=None):
         can_create, limit_msg = UsageService(tenant).can_create_repair()
         if not can_create:
             messages.warning(request, "This shop has reached its repair limit for the month. Please contact the shop for assistance.")
-            return render(request, 'customer_portal/request_repair.html', {
-                'available_rewards': _get_available_monetary_rewards(customer_user) if customer_user else [],
-            })
+            return render(request, 'customer_portal/request_repair.html', dict(
+                _preference_form_context(customer),
+                available_rewards=_get_available_monetary_rewards(customer_user) if customer_user else [],
+            ))
 
     unit_number = request.POST.get('unit_number', '')
     description = request.POST.get('description', '')
@@ -1960,9 +2152,13 @@ def handle_single_repair_request(request, customer, customer_user=None):
     # CODE-211: Previously the error paths called render() with no context, so the
     # reward selection UI disappeared on validation failure — customers who had
     # selected a reward lost it from the form and were confused about what happened.
-    _rewards_ctx = {
-        'available_rewards': _get_available_monetary_rewards(customer_user) if customer_user else [],
-    }
+    # CODE-211/216 pattern: every error-path render must carry the same
+    # context as the GET, or the reward picker (and now the S4 when/where
+    # card) vanishes on a validation failure.
+    _rewards_ctx = dict(
+        _preference_form_context(customer),
+        available_rewards=_get_available_monetary_rewards(customer_user) if customer_user else [],
+    )
 
     if not unit_number:
         messages.error(request, "Unit number is required.")
@@ -1989,6 +2185,10 @@ def handle_single_repair_request(request, customer, customer_user=None):
         messages.error(request, "No technicians available. Please try again later.")
         return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
+    # When they want it and where the vehicle will be (S4). A wish, not a
+    # booking — see _read_service_preference.
+    prefs = _read_service_preference(request, customer)
+
     # Create the repair
     try:
         repair = Repair.objects.create(
@@ -2000,7 +2200,8 @@ def handle_single_repair_request(request, customer, customer_user=None):
             damage_type=damage_type,
             customer_submitted_photo=damage_photo,
             customer_notes=description,
-            queue_status='REQUESTED'
+            queue_status='REQUESTED',
+            **prefs,
         )
 
         # Apply selected monetary reward if provided
@@ -2029,7 +2230,9 @@ def handle_single_repair_request(request, customer, customer_user=None):
         # Auto-accept after assignment so the final technician is settled
         _auto_accept_customer_repair(repair, customer_user)
 
-        messages.success(request, "Repair request received — you're on the schedule!")
+        # Honest copy (S4): the request is accepted, but nothing is booked
+        # until the shop picks a time — scheduled_for is still null here.
+        messages.success(request, _request_received_message(1, prefs))
         return redirect('customer_dashboard')
     except Exception as e:
         messages.error(request, f"Error creating repair request: {str(e)}")
@@ -2045,9 +2248,13 @@ def handle_batch_repair_request(request, customer, customer_user=None):
     # CODE-216: Without this, the reward section disappeared when batch submission
     # hit any validation error — mirrors the same fix applied to handle_single_repair_request
     # in CODE-211.
-    _rewards_ctx = {
-        'available_rewards': _get_available_monetary_rewards(customer_user) if customer_user else [],
-    }
+    # CODE-211/216 pattern: every error-path render must carry the same
+    # context as the GET, or the reward picker (and now the S4 when/where
+    # card) vanishes on a validation failure.
+    _rewards_ctx = dict(
+        _preference_form_context(customer),
+        available_rewards=_get_available_monetary_rewards(customer_user) if customer_user else [],
+    )
 
     # Plan limit check — customer-submitted batch repairs count toward the
     # tenant's monthly cap just like technician-created ones (CODE-243).
@@ -2124,6 +2331,11 @@ def handle_batch_repair_request(request, customer, customer_user=None):
             messages.error(request, "No technicians available. Please try again later.")
             return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
+        # One submission carries ONE preference, written onto every row it
+        # creates — a batch with the wish on some rows and not others would
+        # show up half-wished on the shop's triage rail (S4).
+        prefs = _read_service_preference(request, customer)
+
         # Create all repairs atomically
         created_repairs = []
         with transaction.atomic():
@@ -2187,6 +2399,7 @@ def handle_batch_repair_request(request, customer, customer_user=None):
                             customer_notes=notes,
                             queue_status='REQUESTED',
                             repair_batch_id=batch_id,
+                            **prefs,
                             break_number=break_num,
                             total_breaks_in_batch=break_count,
                             damage_location_x=damage_location_x if break_num == 1 else None,
@@ -2206,6 +2419,7 @@ def handle_batch_repair_request(request, customer, customer_user=None):
                         customer_notes=notes,
                         queue_status='REQUESTED',
                         is_multi_break_estimate=True,
+                        **prefs,
                         damage_location_x=damage_location_x,
                         damage_location_y=damage_location_y,
                     )
@@ -2224,6 +2438,7 @@ def handle_batch_repair_request(request, customer, customer_user=None):
                         queue_status='REQUESTED',
                         damage_location_x=damage_location_x,
                         damage_location_y=damage_location_y,
+                        **prefs,
                     )
                     created_repairs.append(repair)
 
@@ -2243,18 +2458,18 @@ def handle_batch_repair_request(request, customer, customer_user=None):
         for repair in created_repairs:
             _auto_accept_customer_repair(repair, customer_user)
 
-        # Success message
+        # Success message. Honest copy (S4): accepted is not booked — nothing
+        # here writes scheduled_for, so "you're on the schedule" was a claim
+        # the shop had not made.
         count = len(created_repairs)
-        messages.success(
-            request,
-            f"Received {count} repair request{'s' if count != 1 else ''} — you're on the schedule!"
-        )
+        received = _request_received_message(count, prefs)
+        messages.success(request, received)
 
         # Return JSON for AJAX requests (check if multipart form data from fetch)
         if 'multipart/form-data' in request.content_type or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return JsonResponse({
                 'success': True,
-                'message': f"Received {count} repair request{'s' if count != 1 else ''} — you're on the schedule!",
+                'message': received,
                 'repair_count': count,
                 'redirect_url': '/app/'
             })

@@ -17,10 +17,15 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from apps.technician_portal.models import Technician, Repair, Replacement
+from apps.technician_portal.models import (
+    PREFERRED_WINDOW_CHOICES, Technician, Repair, Replacement,
+)
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
 from apps.technician_portal.services.schedule_swap import (
     SwapError, parse_ref, swap_appointments as perform_swap,
+)
+from apps.technician_portal.services.schedule_booking import (
+    BookingError, confirm_appointment as perform_booking, parse_booking_request,
 )
 
 # What belongs on a day sheet: work that is a go, plus what already got done
@@ -149,9 +154,17 @@ def day_schedule(request):
                 'customer', 'technician__user'):
         repl.service_type = 'replacement'
         unscheduled.append(repl)
-    # Newest first, same as the dashboard's request card.
-    unscheduled.sort(
-        key=lambda j: (j.service_date is not None, j.service_date), reverse=True)
+    # Soonest wish first, then newest (S4). The rail is capped at 8, so
+    # sorting purely by recency buried a customer who asked for tomorrow
+    # underneath eight requests that named no day at all.
+    def _rail_key(job):
+        return (
+            job.preferred_date is None,
+            job.preferred_date or date_cls.max,
+            -(job.service_date.timestamp() if job.service_date else 0),
+        )
+
+    unscheduled.sort(key=_rail_key)
     unscheduled_count = len(unscheduled)
     triage_jobs = unscheduled[:TRIAGE_RAIL_CAP] if sees_whole_shop else []
 
@@ -169,6 +182,12 @@ def day_schedule(request):
         'triage_jobs': triage_jobs,
         'triage_overflow': max(0, unscheduled_count - len(triage_jobs)),
         'can_swap': sees_whole_shop,
+        # S4: the rail's inline book control. Same permission as the swap —
+        # scheduling is a dispatch decision, and plain techs cannot even see
+        # REQUESTED work (CODE-081).
+        'can_book': sees_whole_shop,
+        'preferred_windows': PREFERRED_WINDOW_CHOICES,
+        'booking_default_date': day.isoformat(),
     })
 
 
@@ -214,6 +233,51 @@ def swap_appointments(request):
             tenant=tenant, ref_a=ref_a, ref_b=ref_b, actor_user=request.user,
         )
     except SwapError as exc:
+        return JsonResponse({'ok': False, 'error': exc.message},
+                            status=exc.status)
+
+    return JsonResponse({'ok': True, 'message': result['message']})
+
+
+@technician_required
+@require_POST
+def book_appointment(request):
+    """Turn a customer's requested time into a real booking (fieldops S4).
+
+    Same shape and the same reasoning as ``swap_appointments`` above: JSON for
+    every outcome including refusals, authorization checked in-body rather
+    than with @manager_required (which redirects to HTML and queues a stray
+    messages.warning), and the caller must check ``response.ok`` and the
+    content type — SubscriptionEnforcementMiddleware redirects POSTs from a
+    read-only tenant instead of answering JSON.
+    """
+    tenant = getattr(request, 'tenant', None)
+    _technician, sees_whole_shop = _resolve_viewer(request, tenant)
+    if not sees_whole_shop:
+        return JsonResponse(
+            {'ok': False, 'error': "Only managers can book times."},
+            status=403,
+        )
+
+    try:
+        payload = json.loads(request.body or b'{}')
+    except (ValueError, UnicodeDecodeError):
+        payload = None
+    if not isinstance(payload, dict):
+        return JsonResponse(
+            {'ok': False, 'error': "Reload the schedule and try again."},
+            status=400,
+        )
+
+    try:
+        key, pk, day, window, start_time, end_time, expected = (
+            parse_booking_request(payload))
+        result = perform_booking(
+            tenant=tenant, service_type=key, pk=pk, day=day, window=window,
+            start_time=start_time, end_time=end_time,
+            expected=expected, actor_user=request.user,
+        )
+    except BookingError as exc:
         return JsonResponse({'ok': False, 'error': exc.message},
                             status=exc.status)
 

@@ -13,8 +13,10 @@ urlpatterns = [
     path('search/', views.global_search, name='global_search'),
 
     # Day / agenda view (S3) + drag-to-swap two booked times (S7)
+    # + book a customer's requested time onto a job (S4)
     path('schedule/', views.day_schedule, name='day_schedule'),
     path('schedule/swap/', views.swap_appointments, name='schedule_swap'),
+    path('schedule/book/', views.book_appointment, name='schedule_book'),
     
     # Unified jobs surface (repairs + replacements)
     path('jobs/', views.job_list, name='job_list'),

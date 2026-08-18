@@ -59,7 +59,18 @@
                 {% if repair.queue_status == 'REQUESTED' %}
                 {% status_badge repair.queue_status label="Submitted — Awaiting Technician" variant='customer' %}
                 {% elif repair.queue_status == 'APPROVED' and repair.customer_initiated %}
+                {% comment %}
+                S4 honesty pass: this read "Scheduled for Repair" on every
+                auto-approved request, including the ones whose scheduled_for
+                was null — i.e. every one the shop had not actually booked a
+                time for. It is the claim that survives on screen long after
+                the submit toast is gone, so it has to be the true one.
+                {% endcomment %}
+                {% if repair.scheduled_for %}
                 {% status_badge repair.queue_status label="Scheduled for Repair" variant='customer' %}
+                {% else %}
+                {% status_badge repair.queue_status label="Accepted — Time to Be Confirmed" variant='customer' %}
+                {% endif %}
                 {% else %}
                 {% status_badge repair.queue_status variant='customer' %}
                 {% endif %}
@@ -80,6 +91,26 @@
                         <p class="text-xs font-semibold text-gray-500 uppercase">Damage Type</p>
                         <p class="text-sm font-medium text-gray-900 mt-0.5">{{ repair.damage_type }}</p>
                     </div>
+                    {% comment %}
+                    The booked time (S4), and until it exists, what was asked
+                    for — so the customer can see their request was heard and
+                    can tell the difference between "asked" and "booked".
+                    {% endcomment %}
+                    {% if repair.scheduled_for %}
+                    <div>
+                        <p class="text-xs font-semibold text-gray-500 uppercase">Scheduled</p>
+                        <p class="text-sm font-medium text-gray-900 mt-0.5">
+                            {{ repair.scheduled_for|date:"D, M j" }}<br>
+                            <span class="text-gray-600">{{ repair.scheduled_for|date:"g:i A" }}{% if repair.scheduled_window_end %} – {{ repair.scheduled_window_end|date:"g:i A" }}{% endif %}</span>
+                        </p>
+                    </div>
+                    {% elif repair.has_time_preference %}
+                    <div>
+                        <p class="text-xs font-semibold text-gray-500 uppercase">You asked for</p>
+                        <p class="text-sm font-medium text-gray-900 mt-0.5">{{ repair.get_time_preference }}</p>
+                        <p class="text-xs text-gray-500 mt-0.5">Not booked yet</p>
+                    </div>
+                    {% endif %}
                 </div>
 
                 {% if repair.description %}

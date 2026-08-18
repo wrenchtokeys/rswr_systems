@@ -82,34 +82,15 @@
             unscheduled work is a different feature (the follow-on session).
             {% endcomment %}
             <div class="divide-y divide-gray-100" data-swap-group="triage">
+                {% comment %}
+                S4 folded this rail into the shared row partial. It used to be
+                a second, inline copy of the same markup — S7 had to
+                special-case it and the S4 booking control would have been the
+                third divergence. `triage=True` drops the time column and the
+                drag handle and turns on the wish chip + the book control.
+                {% endcomment %}
                 {% for job in triage_jobs %}
-                <div class="px-4 py-3 sm:px-6 hover:bg-gray-50 transition-colors flex items-center gap-4">
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <span class="font-semibold text-gray-900 text-sm">{{ job.customer.name|default:"Walk-in" }}</span>
-                            {% if job.unit_number %}
-                            <span class="text-xs text-gray-500">Unit {{ job.unit_number }}</span>
-                            {% endif %}
-                            {% if shop_service_mix == 'both' %}
-                            {% service_type_chip job.service_type %}
-                            {% endif %}
-                        </div>
-                        <div class="flex items-center gap-2 mt-1">
-                            {% status_badge job.queue_status %}
-                            <span class="text-xs text-gray-500">{{ job.technician.user.get_full_name|default:job.technician.user.username }}</span>
-                        </div>
-                    </div>
-                    <div class="flex-shrink-0">
-                        {% if job.service_type == 'replacement' %}
-                        {% url 'replacement_detail' job.id as job_url %}
-                        {% else %}
-                        {% url 'repair_detail' job.id as job_url %}
-                        {% endif %}
-                        <a href="{{ job_url }}" class="inline-flex items-center min-h-11 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
-                            View
-                        </a>
-                    </div>
-                </div>
+                {% include "technician_portal/includes/schedule_row.html" with triage=True %}
                 {% endfor %}
             </div>
             {% if triage_overflow %}
@@ -194,6 +175,14 @@
 
 {% block extra_js %}
 <script src="{% static 'js/field_dispatch.js' %}" defer></script>
+{% if can_book %}
+{% comment %}
+S4 book-from-the-rail. Managers only, same as the swap; the endpoint
+re-checks authorization regardless.
+{% endcomment %}
+<script src="{% static 'js/schedule_booking.js' %}"
+        data-book-url="{% url 'schedule_book' %}" defer></script>
+{% endif %}
 {% if can_swap %}
 {% comment %}
 S7 drag-to-swap. Managers only — a technician's page never loads this, so
