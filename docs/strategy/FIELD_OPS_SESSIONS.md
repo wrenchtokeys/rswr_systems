@@ -22,6 +22,7 @@ This file is the **work queue** for making field operations real: a technician f
 | S — Where and when | S5 · Dispatch board | L | TODO — **next up** |
 | S — Where and when | S6 · Routing / ETA / lot-walking | — | BACKLOG (deliberately deferred) |
 | S — Where and when | S7 · Drag to swap two appointments | M | DONE (2026-08-17, **PR #192**) |
+| S — Where and when | S8 · Technician working hours | M | TODO — spec pressure-tested 2026-08-19; **runs after S5 merges** |
 | P — Parts | P1 · Mygrant live quotes + ordering | M | IN PROGRESS (steps 3+4 MERGED+DEPLOYED 2026-08-15, PR #184; step 5 quote-only built 2026-08-15, **PR #186**; steps 1–2 wait on the Mygrant IT callback; step 6 ordering waits for quotes to prove out) |
 | P — Parts | P2 · Vehicle→NAGS part lookup | — | BACKLOG (blocked on a NAGS licensing decision — Appendix B) |
 
@@ -688,8 +689,8 @@ Not a session yet — a parking spot so nobody re-litigates scope. PRODUCT_DIREC
 1. **Lot-walking consumer** — `CustomerRepairPreference.lot_walking_*` (`apps/customer_portal/models.py:101-126`) is a complete recurring-visit spec with a UI and zero consumers. Feed it into the S3 day view / S5 board as recurring visit entries. Cheapest item here.
 2. **ETA texts** — "Marcus is on his way, ETA 2:15." Needs two-way SMS (B2, size L, provider work) or at minimum outbound-only ETA sends via the N2 plumbing.
 3. **Route ordering** — order a tech's day geographically (the ROADMAP's "lot-walking scheduler"). Needs S2's structured addresses; probably needs geocoding. Do not start before a shop asks.
-4. **Technician availability / working hours** — per-tech schedules (days off, hours) so S5's conflict display can flag "scheduled outside Marcus's hours," and the eventual prerequisite for any customer-facing slot picking. S5 may ship a minimal version (see its Considerations); the real model lives here until demand is proven.
-5. **Self-service rescheduling** — customers changing a confirmed time from the portal (S4 deliberately excludes this). Needs a notify-shop + re-confirm loop so a reschedule can't silently invalidate a tech's day; pairs naturally with item 4 once slots are real.
+4. ~~**Technician availability / working hours**~~ — **promoted out of the backlog 2026-08-19 and specced as its own session: see S8.** S5 considered a minimal version and deliberately declined to fake it (`Technician.working_hours` exists but is a schema-less empty JSONField), and S4's EXACT windows made the gap bite sooner than this list assumed. Date-ranged time off / PTO stays here.
+5. **Self-service rescheduling** — customers changing a confirmed time from the portal (S4 deliberately excludes this). Needs a notify-shop + re-confirm loop so a reschedule can't silently invalidate a tech's day; pairs naturally with S8 once slots are real.
 
 ---
 
@@ -876,6 +877,115 @@ Not a session yet — a parking spot so nobody re-litigates scope. PRODUCT_DIREC
 
 ---
 
+## S8 · Technician working hours — TODO
+
+*(Added 2026-08-19, promoted out of S6 backlog item 4. S5's Notes call it "the
+highest-value unbuilt thing in this arc" — S4's EXACT windows made it matter
+sooner than the backlog assumed. Like S7, it is a self-contained M that runs on
+surfaces that already exist; unlike S7 it adds no new gesture and no new
+endpoint semantics, only a fact the board is currently missing.)*
+
+| Field | Value |
+|---|---|
+| **Goal** | The shop can say when each technician actually works, and every surface that offers a person or a time knows it: the board stops silently accepting 04:30 for someone who starts at 07:00, and "who's free" becomes a true answer instead of a list of everyone active. |
+| **Size** | M |
+| **Depends on** | **S5 must merge first** — the whole session plugs into `services/schedule_conflicts.py` and the board's roster, which exist only on PR #197. Also S1 (`scheduled_for`), S3 (day view + per-tech groups), S4 (`PREFERRED_WINDOW_HOURS`, `window_bounds()`, `NOMINAL_JOB_LENGTH`). Independent of Phase N and Phase P. |
+| **Why it matters** | S4 lets a fleet ask for 04:30–05:45 to the minute and S5 lets a manager agree to it in one click — and nothing between them knows whether anybody is awake. Everything the board says about capacity is currently a guess: `NOMINAL_JOB_LENGTH` is a constant, "over-committed" compares work against *the span it was booked into* rather than the span the tech is available for, and the technician picker offers every active tech identically at every hour of every day. |
+| **Verified current state** *(2026-08-19)* | **The field already exists and is inert.** `Technician.working_hours = JSONField(default=dict, blank=True)` (`apps/technician_portal/models.py:123-127`), added by `technician_portal/0007`, **zero readers and zero writers** — the only reference in the entire codebase outside the model and that migration is a collapsed Django-admin fieldset (`apps/technician_portal/admin.py:111-116`), whose description already declares a shape: `{"monday": ["9:00", "17:00"], ...}`. No test mentions it. Every row in production therefore holds `{}`. **Nothing else models availability**: `Technician.is_active` (`models.py:118-122`, filed under a `# Availability` comment, help text "Is this technician currently active/available?") is an employment flag, and the only clock the app owns is `ReviewConfig.business_hours_start/end` (`apps/technician_portal/review_models.py:66-72`, defaults 9/19) which is a *review-email send window*, per-tenant, and applied in UTC (see Design notes — it is a live bug). **The consumers are all built:** `annotate_conflicts()` and `technician_load()` (`services/schedule_conflicts.py`, S5) are called once per technician group in `views/schedule.py` (~`:165`), not per row in the template; `roster` (`views/schedule.py:152-156`) is every `is_active=True` Technician and is what the board's picker renders; the day view prints "Nothing scheduled" for an empty group (`templates/technician_portal/schedule.html:162`). **Editing surfaces:** `update_team_member` (`apps/saas/views.py:3085-3175`) is POSTed by **three** separate forms in `templates/saas/owner_settings.html` (manager-edits-member `:472`, edit-my-own-abilities `:521`, invite modal `:1378`) and reads its booleans as `request.POST.get('can_repair') == 'on'`; a tech can also edit their own profile at `/tech/profile/` (`views/api.py:97-129`, `TechnicianForm` in `forms.py:18-45` — name/email/phone/password only). **Timezone:** still one global `TIME_ZONE` (`settings/production.py:197`, America/Chicago), no per-tenant setting. Migration head is `technician_portal/0056_exact_time_preference` (S5 adds none). |
+| **Considerations** | The engineering detail is worth prose — see **"Design notes"** below. The four rules that shape everything else: **(1)** `{}` means *undeclared*, never *never works* — every existing row holds it, so any reader that treats empty as unavailable flags every job in every shop on the day it deploys; **(2)** hours are **informational**, exactly like S5's conflicts — nothing blocks a write, because a shop that calls someone in on their day off is allowed to; **(3)** hours are wall-clock local and compared after `timezone.localtime()`, never stored or compared as UTC hours; **(4)** the new fact belongs in `schedule_conflicts.py` beside the other three signals, not sprinkled across the view and the template. |
+| **Decisions needed** | **(a) Where hours live** — recommend **reusing `working_hours` with a real schema plus helpers on `Technician`**, not a new model: the field exists (no migration), the admin already documents a shape, and a `TechnicianAvailability` table earns its keep only when date-ranged exceptions arrive. **(b) Shape** — recommend adopting the admin's own convention (`{"monday": ["08:00", "17:00"], …}`, a missing day or `null` = off), read tolerantly, written only by the new form. **(c) Who edits** — recommend owner/manager edits anyone and a technician may edit their own, mirroring exactly what `update_team_member` already permits for abilities; but on **its own endpoint** (see Design notes — the existing one erases what its form doesn't carry). **(d) Shop-wide default vs per-tech only** — recommend **per-tech only**, with the form pre-filled Mon–Fri 08:00–17:00: a second config object is a second place to look, and a 1–5 person shop sets this once per person, ever. **(e) One-off days off (vacation, sick)** — recommend **explicitly out of this session**: "doesn't work Tuesdays" is the weekly pattern and answers the S5 gap; "gone next week" is date-ranged, overlaps, and wants coverage rules. Say so out loud in the UI copy rather than half-building it. **(f) Does capacity change?** — recommend yes, and it is the cheapest real win: `technician_load()` should compare booked work against *declared hours* for that weekday when they exist, falling back to today's span-based number when they don't. |
+| **Acceptance criteria** | An owner sets Dana to Mon–Fri 07:00–16:00 and the change is visible without a page hunt. Booking Dana at 04:30 still succeeds — and the board says so, as a chip on the row alongside S5's existing three signals, with the same one-chip-per-row discipline. A tech with no hours declared (`{}`) produces **no new chips anywhere** — asserted by a test, because that is every existing row in production. On a day Dana doesn't work, her group on the board reads "Off today" rather than "Nothing scheduled", and the dispatch picker marks her off-duty without removing her. `technician_load()` reports against declared hours when they exist. Auto-assignment behaviour is unchanged (see Design notes). Hand-typed nonsense in the Django admin JSON box degrades to "no hours declared" and never 500s the board. Tests in `tests/test_fieldops_s8.py`; smoke set plus S1–S5/S7 green. |
+| **Out of scope** | Date-ranged time off / PTO / coverage (decision (e)). Customer-facing slot picking against real availability — that needs this **plus** a duration model, and stays S6 item 5 territory. Route ordering (S6 item 3). Changing who auto-assign picks. Any blocking validation. Per-tenant timezone. Breaks / split shifts / lunch. |
+
+**Design notes** *(from a 2026-08-19 read of the real code — the expensive findings; do not re-derive them)*
+
+- **The field is not a foundation, it is an empty promise — and it already has a
+  shape.** `working_hours` has sat on `Technician` since migration `0007` with
+  `default=dict`, no schema, no validator and no consumer. The one place it is
+  reachable in production is a collapsed Django-admin fieldset whose help text
+  says `{"monday": ["9:00", "17:00"], ...}`. That is worth adopting rather than
+  improving on: it is the only convention any existing data could possibly
+  follow, and choosing a different one silently orphans anything an admin typed.
+  Read it tolerantly (unknown keys ignored, unparseable times = day undeclared),
+  write it only through the new form, and keep the admin box as the escape hatch.
+- **`{}` must mean undeclared.** Every Technician row in every tenant holds the
+  default today. A reader that treats "no hours" as "not available" turns the
+  board into a wall of warnings for every shop the moment it deploys — the exact
+  failure S5 designed against when it collapsed repeated overlap chips into one.
+  The honest default is: no hours declared → the tech is available whenever, and
+  the board says nothing about them. This deserves its own test, not a comment.
+- **Do not add hours to `update_team_member`.** It is POSTed by three different
+  forms in `owner_settings.html` (manager-edits-member, edit-my-own-abilities,
+  invite modal) and reads booleans as `POST.get(...) == 'on'` — absent means
+  false. Any field added to that endpoint is silently cleared by whichever of the
+  three forms doesn't carry it, and the narrow self-edit form carries almost
+  nothing. Give hours a dedicated endpoint and a dedicated small form, and mirror
+  the endpoint's permission rules rather than extending its body: role changes are
+  owner-only, managers may not edit managers or owners (CODE-212), and editing
+  your own abilities is already allowed — which is the precedent for letting a
+  tech set their own hours.
+- **Wall-clock, always. There is still no per-tenant timezone.** Store
+  `"HH:MM"` strings, compare after `timezone.localtime()`, and build any datetime
+  the way S4's `window_bounds()` does — `datetime.combine(day, clock)` made aware
+  per day, never `start + timedelta(hours=n)` — so a DST-transition day stays
+  honest. Storage is UTC; the hours never are.
+- **The only "business hours" the app has today are wrong, and they are live.**
+  `ReviewConfig.business_hours_start/end` (defaults 9 and 19) are applied by
+  `_adjust_to_business_hours` (`review_service.py:319-332`) to
+  `timezone.now() + send_delay_hours` — an **aware UTC** datetime whose `.hour`
+  is the UTC hour. In production (America/Chicago) that clamps review-request
+  emails into 09:00–19:00 **UTC** = 04:00–14:00 local, so a job completed in the
+  afternoon queues its review email for roughly 4 AM the customer's time. It is
+  a one-line fix (`timezone.localtime(...)` before comparing, and convert back)
+  but it belongs to the review system, not here — **S8's job is to not inherit
+  the bug.** Flag it for N3 / a standalone fix; it has been shipping since the
+  review system went live.
+- **Where the new signal plugs in — one module, two functions.**
+  `annotate_conflicts()` gets a fourth signal ("Outside Dana's hours"), subject to
+  the same discipline as the other three: one short chip per row, nothing that
+  fires on a normal day. `technician_load()` gets a truer denominator — today it
+  compares nominal work against *the span the jobs happen to occupy*, which means
+  a tech booked 08:00–08:30 twice looks over-committed while a tech booked
+  07:00–19:00 never does. Declared hours replace the span when present. Both are
+  computed once per group in `views/schedule.py`, so the template needs no new
+  query and no `default` filter.
+- **Mark the off-duty tech; never hide them.** The roster is every active tech and
+  it is deliberately the *dispatch* list — S5 already distinguishes it from the
+  group list (an inactive tech can still appear as a group because they hold work).
+  Off-duty is a third state: still offered, visibly marked. A shop with one truck
+  down calls somebody in, and a picker that silently omits the person the manager
+  is on the phone with reads as broken.
+- **"Off today" is the highest-value line in the session.** S3's manager grouping
+  renders every active tech precisely so "nobody booked Marcus" is visible, and
+  prints "Nothing scheduled" under his name. With hours, that line becomes either
+  a real gap in the day or a person who isn't working — two facts that look
+  identical today and lead to opposite decisions.
+- **Leave auto-assignment alone.** `_get_eligible_techs`
+  (`apps/tenants/services/assignment_service.py:82-92`) and
+  `get_available_technician` (`apps/customer_portal/views.py:2525-2560`) filter on
+  `is_active` plus ability, and the latter's comment records why the
+  `can_replace` fallback exists at all: a customer request must never dead-end
+  unassignable (CODE-160). Adding hours as a *filter* reintroduces that dead end
+  every evening and every weekend — a customer requesting work at 8 PM Saturday
+  is the normal case. If hours touch assignment in a later session it must be as
+  a preference with a guaranteed fallback, never a filter.
+- **Nothing here blocks a write, and nothing here notifies anybody.** Hours change
+  what the board *says*, not what it *does*: no new write path, no new
+  notification, no `on_commit` work, and therefore none of S7/S4's
+  `captureOnCommitCallbacks` testing trap — unless the session invents a
+  notification, in which case that trap applies in full.
+- **Keep the form smaller than the problem.** These shops run 1–5 people. Seven
+  rows of on/off + start + end, pre-filled Mon–Fri 08:00–17:00, is already the
+  largest control in the settings area; breaks, split shifts and per-week
+  variation are how a scheduling product for 200-tech fleets looks, and Drake's
+  bar is that his dad can fill it in once and never think about it again. Any
+  template work needs `./scripts/build_css.sh`, and dynamically composed classes
+  must be safelisted.
+
+**Notes**
+
+---
+
 # Phase P — Parts (added 2026-08-12 from the sourcing investigation — full findings in Appendix B)
 
 The one-sentence version: **live Mygrant quotes and ordering are real and buildable now** (Mygrant publishes a SOAP web-service API, keyed on the NAGS numbers techs already type, authenticated with the shop's own Mygrant account); **an in-app vehicle→NAGS part lookup is the gated, expensive half** (NAGS data only comes via a negotiated Mitchell license at roughly $60–75/NAGS-user/month market rate, and Mitchell doesn't even provide the VIN→part mapping). P1 deliberately does not depend on P2.
@@ -930,6 +1040,8 @@ Not a session yet — the blocker is a contract, not code. To show "2024 F-150 w
 - **Email templates must use the flat notification context and absolute links.** *(N1)* Notification contexts are persisted to a JSONField, so they can never contain model objects — a template referencing `{{ repair.* }}` renders empty and nothing errors. CTA links must be `{{ base_url }}{{ action_url }}`; a bare `{{ action_url }}` is a dead relative link in a mail client.
 - **A schedule-only `save()` re-prices the job and rewrites the customer's invoice.** *(S7 exploration, 2026-08-17)* `Repair.save()` (`apps/technician_portal/models.py:918-1120`) re-runs `calculate_repair_cost()` for any non-COMPLETED job (`:1047-1061`), re-runs `TaxService` whenever `cost > 0` (`:1065-1080`), and calls `sync_lines_for_service()` (`:1116-1120`) — which rewrites line items on every live invoice and recalculates totals, inside a bare `except: pass` that hides it. `Replacement.save()` recomputes cost from parts+labor on every save (`:1755-1770`) and syncs too (`:1816-1821`). **`save(update_fields=[…])` does not help — the whole `save()` body still runs.** Anything that only moves a time must use a queryset `.update()` (and then owns the validation `save()` would have done). Applies to S4 and S5 as much as S7.
 - **`select_for_update()` is a silent no-op in dev.** *(S7, 2026-08-17)* Dev runs SQLite, so lock-ordering and race tests pass green while proving nothing — even a missing `atomic()` won't raise. Any concurrency guard has to be exercised against Postgres or labelled as argued-not-tested.
+- **An empty JSONField that nothing reads is not a foundation.** *(S8 exploration, 2026-08-19)* `Technician.working_hours` has existed since migration `0007` with `default=dict`, no schema, no validator, no writer and no reader outside a collapsed Django-admin fieldset — so every row in production holds `{}`. Its presence made "we sort of have availability" believable for a year. When it gets meaning, `{}` has to mean *undeclared* (available whenever, say nothing), never *unavailable*, or the first deploy flags every job in every shop.
+- **The app's only "business hours" are compared in UTC.** *(S8 exploration, 2026-08-19)* `_adjust_to_business_hours` (`apps/technician_portal/review_service.py:319-332`) clamps `timezone.now() + delay` using `dt.hour` — the UTC hour of an aware datetime — against `ReviewConfig.business_hours_start/end` (defaults 9/19). In prod that is 04:00–14:00 America/Chicago, so review-request emails queue for roughly 4 AM local. Live today; fix belongs to the review system (N3's neighbourhood). Do not copy the helper: schedule work must localize before comparing.
 - **Full suite has ~90–105 pre-existing failures on main.** Compare against a fresh main baseline; never count absolute failures. Another session may share the working tree — print `git branch --show-current` with every run.
 
 ---
@@ -1053,3 +1165,4 @@ Key sources: Mygrant SOAP spec (committed PDF; mirror: aswadtsh.com/wp-content/u
 | 2026-08-14 | Live portal walkthrough on the pilot account (Drake's dad's shop) — **Appendix B.5**. Confirmed: live per-brand shop pricing, 4-warehouse structure, PO-per-line ordering with Freight/Will-Call, PO-searchable history, and that Generate Key is absent until rep API-onboarding (the only real P1 blocker — call the rep). Investigated and **rejected portal automation** (site ToS §8.1). Reworked P1 around the multi-shop "Connect your Mygrant account" design (per-tenant `MygrantConfig` on the `TenantConfig` pattern; encryption-at-rest is a first-in-codebase decision), added Drake's dad's "portal is already easy — win on job context" principle, profit-on-ticket framing, and the ~$1/search cost constraint. Fixed stale `nags_number` line refs. Later same day: added the numbered **P1 order of work** (onboarding → billing → encryption decision → connect → quote-only → ordering); Drake left the onboarding voicemail with Mygrant IT. Later still: **P1 steps 3+4 BUILT (PR #184, `feat/mygrant-connect`)** — `common/encryption.py` (Fernet, `FIELD_ENCRYPTION_KEY`, first secret-storage mechanism in the codebase), `MygrantConfig` migration 0052, owner Settings Parts tab with the Connect card, staging-only Test connection, 20 tests. Deploy needs a one-time `eb setenv FIELD_ENCRYPTION_KEY`. |
 | 2026-08-15 | **PRs #184 + #183 merged and deployed** (health 200); `FIELD_ENCRYPTION_KEY` still pending Drake's one-liner (sandbox can't set prod secrets), Parts card in its designed "not available yet" state until then. **P1 step 5 BUILT (PR #186, `feat/mygrant-quotes`)** — quote button + SKU table + one-tap `parts_cost` + profit-on-this-job on `replacement_detail`, server-side quote cache (one billable search per quote, prices unforgeable), item-level errors surfaced, `mygrant_quote` management command for the staging-first proof. Ships dark behind `is_enabled()` until the Mygrant callback delivers the API key. P1 notes updated with the first-quote runbook and step-6 guidance (reuse the cached-SKU pick for exact-SKU orders). |
 | 2026-08-18 | **P1 onboarding, non-code session.** Owen (Little Rock branch) supplied the Mygrant IT support director's email 2026-08-17; written onboarding request sent (asks: enable API User onboarding on `C027180-001` so Generate Key appears, and confirm whether API Inquiries bill per-search like portal searches). Corrected a standing factual error: **Drake is the account owner** on `C027180-001` — his dad only uses it — so nothing about onboarding needs a third party. 24h of silence prompted the real question, now answered in P1's Considerations: per-shop onboarding is table stakes (every competitor POS works this way and `is_enabled()` keeps it off every other surface), but **the vendor must not be the one making the call** — a shop's own CSR handles this as routine where a cold vendor request has no SLA. Built the Connect card's **"Don't have an API key yet?"** panel (`owner_settings.html` Parts tab, open until a key is saved): who to call, what to ask for (their account number pre-filled), where Generate Key lives, that its *absence* means the rep hasn't finished, and a nudge to ask about search billing on the same call. No new CSS (every class already compiled). Queued for the first Mygrant call that connects: **does Mygrant have an integrator/partner listing for POS vendors** — worth more than our own key. Escalation if silent by ~2026-08-24 is Owen/the sales rep, not IT again. |
+| 2026-08-19 | **S8 specced (doc-only session).** Promoted S6 backlog item 4 — technician working hours — into a full session, pressure-tested against the real code the way S4 and S7 were before their builds. The finding that reframes it: `Technician.working_hours` has existed since migration `0007` and is completely inert (`default=dict`, no schema, no validator, **zero readers and zero writers** outside a collapsed Django-admin fieldset), so every production row holds `{}` — which means the session's first rule is that empty means *undeclared*, not *unavailable*. Recommended shape adopts the convention the admin help text already documents rather than inventing a better one. Named the three places it plugs in (`schedule_conflicts.annotate_conflicts` / `technician_load`, the board's roster, and S3's "Nothing scheduled" line, which should read "Off today"), and the two places it must **not** touch: `update_team_member` (three forms POST it, absent checkbox = false, so a field added there is silently erased) and auto-assignment (hours as a filter re-creates the CODE-160 dead end every evening and weekend). Recorded a live pre-existing bug found on the way: `_adjust_to_business_hours` compares **UTC** hours, so review-request emails clamp to 04:00–14:00 Central and effectively send at ~4 AM local — the fix belongs to the review system, S8's job is not to inherit it. Two traps added. |
