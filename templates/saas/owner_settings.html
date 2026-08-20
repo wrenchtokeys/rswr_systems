@@ -444,6 +444,68 @@
                     </div>
                 </div>
 
+                {% comment %}
+                Working hours (FIELD_OPS S8). Its own form and its own endpoint,
+                never folded into update_team_member: that endpoint is POSTed by
+                three different forms here and reads checkboxes as "absent means
+                off", so a field added to it gets wiped by whichever form omits it.
+                {% endcomment %}
+                {% if member.technician_record %}
+                <div class="mt-3 pt-3 border-t border-gray-100">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <i class="fas fa-clock text-gray-400 text-xs"></i>
+                        {% if member.technician_record.has_working_hours %}
+                        <span class="text-xs text-gray-600">{{ member.technician_record.working_hours_summary }}</span>
+                        {% else %}
+                        <span class="text-xs text-gray-400">Working hours not set — treated as available any time</span>
+                        {% endif %}
+                        {% if member.can_edit_hours %}
+                        <button type="button" onclick="toggleEditForm('hours-{{ member.id }}')"
+                            class="btn-secondary btn-sm">
+                            <i class="fas fa-clock mr-1.5"></i>{% if member.technician_record.has_working_hours %}Edit hours{% else %}Set hours{% endif %}
+                        </button>
+                        {% endif %}
+                    </div>
+
+                    {% if member.can_edit_hours %}
+                    <div id="hours-{{ member.id }}" class="hidden mt-3">
+                        <form method="post" action="{% url 'update_team_member_hours' member.id %}" class="space-y-2">
+                            {% csrf_token %}
+                            {% for row in member.hours_editor.rows %}
+                            <div class="flex flex-wrap items-center gap-2">
+                                <label class="flex items-center gap-2 w-32 cursor-pointer">
+                                    <input type="checkbox" name="works_{{ row.key }}"
+                                        {% if row.works %}checked{% endif %}
+                                        class="h-4 w-4 text-brand-600 rounded border-gray-300">
+                                    <span class="text-sm text-gray-700">{{ row.label }}</span>
+                                </label>
+                                <input type="time" name="start_{{ row.key }}" value="{{ row.start }}"
+                                    class="px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                                <span class="text-xs text-gray-400">to</span>
+                                <input type="time" name="end_{{ row.key }}" value="{{ row.end }}"
+                                    class="px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                            </div>
+                            {% endfor %}
+                            <p class="text-xs text-gray-500">
+                                Used to flag jobs booked outside these hours, and to show who is off on a given day.
+                                Nothing is blocked — you can still book anyone any time.
+                                Uncheck every day to clear the hours.
+                            </p>
+                            <div class="flex flex-wrap gap-2 pt-1">
+                                <button type="submit" class="btn-primary btn-sm">
+                                    <i class="fas fa-save mr-1.5"></i>Save hours
+                                </button>
+                                <button type="button" onclick="toggleEditForm('hours-{{ member.id }}')"
+                                    class="btn-secondary btn-sm">
+                                    Cancel
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
                 {% if member.user != request.user and membership.role == 'owner' %}
                 <div class="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-2">
                     <button onclick="toggleEditForm('edit-{{ member.id }}')"

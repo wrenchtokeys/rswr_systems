@@ -196,6 +196,39 @@ class Technician(models.Model):
             return False
         return self.managed_technicians.filter(id=technician.id).exists()
 
+    # --- Working hours (S8) ------------------------------------------------
+    # Thin delegates to services/working_hours.py, which owns the shape and
+    # the reading rules. The one rule worth repeating here: an empty
+    # ``working_hours`` means NOT DECLARED — this technician is available
+    # whenever and every surface stays silent about them. It is the value
+    # every row in production holds.
+
+    @property
+    def has_working_hours(self):
+        from apps.technician_portal.services import working_hours
+        return working_hours.is_declared(self.working_hours)
+
+    @property
+    def working_hours_summary(self):
+        """'Mon–Fri 8:00 AM – 5:00 PM', or '' when nothing is on file."""
+        from apps.technician_portal.services import working_hours
+        return working_hours.summary(self.working_hours)
+
+    def working_hours_on(self, day):
+        """``(start, end)`` wall-clock times for a date, or None."""
+        from apps.technician_portal.services import working_hours
+        return working_hours.hours_on(self.working_hours, day)
+
+    def is_off_on(self, day):
+        """True only when hours are declared AND this day isn't one of them."""
+        from apps.technician_portal.services import working_hours
+        return working_hours.is_off_on(self.working_hours, day)
+
+    def works_during(self, start, end):
+        """True / False / **None** — None means 'no hours on file, no opinion'."""
+        from apps.technician_portal.services import working_hours
+        return working_hours.covers(self.working_hours, start, end)
+
     def get_team_repairs(self):
         """Get all repairs assigned to technicians this manager supervises.
 

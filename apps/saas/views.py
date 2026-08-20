@@ -2394,9 +2394,23 @@ def owner_settings_view(request):
         technicians_by_user[tech.user_id] = tech
 
     # Annotate members with technician abilities and pending invite status
+    from apps.technician_portal.services import working_hours as wh
     for member in members:
         member.technician_record = technicians_by_user.get(member.user_id)
         member.has_unusable_password = not member.user.has_usable_password()
+        # S8: working hours. Only people who work jobs have them, and a
+        # manager may not edit a peer manager or the owner (CODE-212) — the
+        # same rule the endpoint enforces, resolved here so the template
+        # doesn't have to re-derive it three times.
+        member.can_edit_hours = bool(member.technician_record) and not (
+            membership.role == 'manager'
+            and member.role in ('manager', 'owner')
+            and member.user != request.user
+        )
+        member.hours_editor = (
+            wh.editor_rows(member.technician_record.working_hours)
+            if member.technician_record else None
+        )
 
     # Shop join URL for customer portal
     shop_join_url = request.build_absolute_uri(f'/join/{tenant.slug}/')
@@ -3233,6 +3247,83 @@ def update_team_member(request, membership_id):
     member_name = target.user.get_full_name() or target.user.email
     messages.success(request, f'Updated {member_name} to {target.get_role_display()}.')
     return redirect('owner_settings')
+
+
+@owner_or_manager_required
+@require_POST
+def update_team_member_hours(request, membership_id):
+    """POST: Set (or clear) one technician's weekly working hours. FIELD_OPS S8.
+
+    **Deliberately NOT part of ``update_team_member``.** That endpoint is
+    POSTed by three different forms in owner_settings.html and reads its
+    booleans as ``POST.get(...) == 'on'``, so any field added to it is
+    silently cleared by whichever form doesn't carry it — and the narrow
+    "edit what I work on" form carries almost nothing. Hours get their own
+    endpoint and their own form; the permission rules are copied deliberately
+    so the two doors cannot disagree about who may edit whom.
+
+    Unchecking every day CLEARS the record back to "not declared", which means
+    available whenever — not "works no days". Taking somebody off the board is
+    what ``is_active`` is for.
+    """
+    from apps.technician_portal.services import working_hours as wh
+
+    tenant, my_membership = _get_owner_tenant(request)
+    if not tenant or not my_membership:
+        messages.error(request, 'Access denied.')
+        return redirect('owner_settings')
+
+    target = get_object_or_404(
+        TenantMembership, id=membership_id, tenant=tenant, is_active=True)
+
+    # Same rule as update_team_member (CODE-212): a manager may edit
+    # technicians and viewers, plus their own row — never a peer manager or
+    # the owner.
+    if (
+        my_membership.role == 'manager'
+        and target.role in ('manager', 'owner')
+        and target.user != request.user
+    ):
+        messages.error(request, 'Managers can only update technician team members.')
+        return redirect('/owner/settings/?tab=team')
+
+    technician = Technician.objects.filter(user=target.user, tenant=tenant).first()
+    if technician is None:
+        messages.error(
+            request, 'Only team members who work jobs can have working hours.')
+        return redirect('/owner/settings/?tab=team')
+
+    days = {}
+    for index, key in enumerate(wh.WEEKDAY_KEYS):
+        if request.POST.get(f'works_{key}') != 'on':
+            continue
+        start = wh.parse_clock(request.POST.get(f'start_{key}', ''))
+        end = wh.parse_clock(request.POST.get(f'end_{key}', ''))
+        if start is None or end is None:
+            messages.error(
+                request,
+                f'{wh.WEEKDAY_FULL[index]} needs both a start and an end time.')
+            return redirect('/owner/settings/?tab=team')
+        if end <= start:
+            messages.error(
+                request, f'{wh.WEEKDAY_FULL[index]} ends before it starts.')
+            return redirect('/owner/settings/?tab=team')
+        days[index] = (start, end)
+
+    who = target.user.get_full_name() or target.user.username
+    technician.working_hours = wh.to_storage(days) if days else {}
+    technician.save(update_fields=['working_hours'])
+
+    if days:
+        messages.success(
+            request,
+            f'Working hours saved for {who}: {technician.working_hours_summary}.')
+    else:
+        messages.success(
+            request,
+            f'Working hours cleared for {who} — the schedule screens will treat '
+            f'them as available any time.')
+    return redirect('/owner/settings/?tab=team')
 
 
 @owner_or_manager_required
