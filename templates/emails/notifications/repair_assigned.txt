@@ -5,6 +5,7 @@
 {% if customer_name %}  {{ "Customer"|pad_label }}{{ customer_name }}
 {% endif %}{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
 {% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% if scheduled_when %}  {{ "When"|pad_label }}{{ scheduled_when }}
 {% endif %}{% if description %}  {{ "Damage"|pad_label }}{{ description }}
 {% endif %}{% if service_location %}  {{ "Where"|pad_label }}{{ service_location }}
 {% endif %}{% if status %}  {{ "Status"|pad_label }}{{ status }}

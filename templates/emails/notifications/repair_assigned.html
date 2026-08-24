@@ -1,16 +1,19 @@
 {% extends "emails/base.html" %}
 {% comment %}
-Technician, new job. Read one-handed in a parking lot, so the two things
-needed before driving — who and where — are in the headline and the first
-rows, above the fold on a phone.
+Technician, new job. Read one-handed in a parking lot, so the three things
+needed before driving — who, where and when — are in the headline and the
+first rows, above the fold on a phone.
+
 Context: job_type, job_id/repair_id, unit_number, customer_name, status,
-description, action_url. service_location and the vehicle label are
-injected by NotificationService when a repair is passed.
+description, action_url, and scheduled_when (fieldops S5 — the dispatch
+board sets who and when in one click, so the assignment email carries the
+booked time rather than sending a second message about it). The vehicle
+label and service_location are derived by NotificationService.
 {% endcomment %}
 
 {% block email_title %}New {{ job_type|default:"repair" }} assignment{% endblock %}
 {% block header_meta %}{{ job_type|default:"Repair" }} #{% firstof job_id repair_id %}{% endblock %}
-{% block preheader %}{% if customer_name %}{{ customer_name }}{% endif %}{% if vehicle_identifier %} — {{ vehicle_identifier }}{% endif %}{% endblock %}
+{% block preheader %}{% if customer_name %}{{ customer_name }}{% endif %}{% if scheduled_when %} — {{ scheduled_when }}{% endif %}{% endblock %}
 {% block unsubscribe_url %}/tech/notifications/preferences/{% endblock %}
 
 {% block content %}
@@ -20,6 +23,7 @@ injected by NotificationService when a repair is passed.
 {% include "emails/components/rows_start.html" %}
     {% if customer_name %}{% include "emails/components/row.html" with label="Customer" value=customer_name %}{% endif %}
     {% include "emails/components/vehicle_row.html" %}
+    {% if scheduled_when %}{% include "emails/components/row.html" with label="When" value=scheduled_when strong=1 %}{% endif %}
     {% if description %}{% include "emails/components/row.html" with label="Damage" value=description %}{% endif %}
     {% if service_location %}{% include "emails/components/row.html" with label="Where" value=service_location %}{% endif %}
     {% if status %}{% include "emails/components/row.html" with label="Status" value=status %}{% endif %}

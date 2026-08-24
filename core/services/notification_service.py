@@ -75,13 +75,11 @@ def job_display_context(job):
         context['requested_on'] = (
             formats.date_format(requested, 'F j, Y') if requested else ''
         )
-        scheduled = getattr(job, 'scheduled_for', None)
-        # Raw string: Django escapes a literal in a date format with a
-        # backslash, and '\a' in a normal Python string is a bell character.
-        context['scheduled_display'] = (
-            formats.date_format(timezone.localtime(scheduled), r'F j, Y \a\t g:i A')
-            if scheduled else ''
-        )
+        # No scheduled-time value here on purpose. assignments._booked_when()
+        # already formats one ('Tue Aug 19, 8:00 AM – 12:00 PM', window
+        # included) and passes it as `scheduled_when`; a second formatter
+        # would be a fourth helper for a job the third already does, and the
+        # two would drift.
         return context
     except Exception:
         logger.warning(
