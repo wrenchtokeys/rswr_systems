@@ -25,6 +25,9 @@ session with no memory of this work can pick exactly one up and finish it.
 | 4 | S15 · Landing: trust bar rewrite | TODO |
 | 4 | S16 · Landing: rhythm, dark section, sharper promise | TODO |
 | — | S17 · Stop shipping the Tailwind source to production | TODO |
+| Out | Email + notification chassis, replacement lifecycle | **DONE** 2026-08-24 (PR #200) |
+| Out | Invoice email onto the chassis | **DONE** 2026-08-24 (PR #202, merged — check deploy, see below) |
+| Out | In-app surfaces: notification bell + notification history | TODO — **next** |
 
 ---
 
@@ -689,7 +692,7 @@ and is the main security dividend of Phase 1 — don't leave it on the table.
 
 ---
 
-# Phase 3 — Outbound: email and notifications ✅ DONE (PR #200)
+# Phase 3 — Outbound: email and notifications ✅ DONE (PRs #200 + #202)
 
 The design canvas that drove this:
 https://claude.ai/code/artifact/e43f623b-2e7c-4ea1-959e-93d17dbd7b6d
@@ -745,7 +748,22 @@ chip repair sent five emails. Seven new templates (`replacement_*`), seeded by
 - **Buttons must resolve against `base_url`.** Nine templates passed a bare
   relative `action_url`; a relative href is dead in every mail client.
 
-## The invoice email — the third shell (2026-08-24)
+## The invoice email — the third shell (2026-08-24, PR #202)
+
+> **Status: MERGED 2026-08-24 12:15 CDT. Not deployed as of 12:16 CDT** —
+> main was redeployed twice that hour and both cuts landed just ahead of this
+> merge. **Do not trust that sentence; re-check it**, because production moved
+> under it twice while it was being written:
+>
+> ```bash
+> eb status rs-systems-production | grep 'Deployed Version'   # app-<sha>-<stamp>
+> git log --first-parent origin/main                          # what should be there
+> gh pr view 202 --json mergedAt                              # NOT gh pr list
+> ```
+>
+> `gh pr list`'s fourth column is *updated*, not *merged*. Reading it as a
+> merge date has now put a wrong claim in a strategy doc three times.
+
 
 Found the way these things are always found: Drake deployed #200, sent a real
 invoice to himself, and the invoice looked exactly the same as before.
@@ -805,11 +823,24 @@ Tests: `tests/test_invoice_email_chassis.py` (21).
 ## Still open
 
 - **The in-app surfaces** in the canvas (notification bell, notifications page)
-  are designed but NOT built. The bell still shows an unread row three ways at
-  once — tinted background, "New" pill and bold title — and loses all of it on
-  the 30-second poll that rewrites the list. `timesince` renders "0 minutes
-  ago". This is the obvious next session, and with the invoice email folded in
-  it is the last thing standing between this phase and done.
+  are designed but NOT built. This is the next session, and with the invoice
+  email folded in it is the last thing standing between this phase and done.
+  Where to start, verified 2026-08-24:
+  - `templates/includes/notification_bell.html` — the whole bell, markup and
+    script in one file. An unread row is marked **three ways at once** (tinted
+    background, "New" pill, bold title), and the `setInterval` at `:226` rewrites
+    the list every 30s (`:242`), so the unread state the reader was looking at
+    disappears under them mid-glance. Decide what unread looks like *once*, and
+    make the poll reconcile rather than replace.
+  - `timesince` renders "0 minutes ago" for anything under a minute — it wants
+    "Just now".
+  - Two notification history pages, not one:
+    `templates/technician_portal/notification_history.html` and
+    `templates/customer_portal/notification_history.html`. They are separate
+    audiences on purpose (see the platform-vs-shop rule above); check whether
+    they should share a component before rewriting either.
+  - The design canvas that drove #200 covers these screens:
+    https://claude.ai/code/artifact/e43f623b-2e7c-4ea1-959e-93d17dbd7b6d
 - **The invoice's plain-text half** is still built in Python
   (`_build_email_body`) rather than rendered from the same context as the HTML.
   Accepted, not forgotten: it is correct today and two bug-fix suites pin it.
