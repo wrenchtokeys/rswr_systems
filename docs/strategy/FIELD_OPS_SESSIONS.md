@@ -19,7 +19,7 @@ This file is the **work queue** for making field operations real: a technician f
 | S — Where and when | S2 · Field dispatch (executes B1) | M | DONE (2026-08-15, PR #189) |
 | S — Where and when | S3 · Day / agenda view | M | DONE (2026-08-16, PR #190) |
 | S — Where and when | S4 · Customer requests carry when + where | M | DONE (2026-08-18, **PR #195**, deployed same day) |
-| S — Where and when | S5 · Dispatch board | L | TODO — **next up** |
+| S — Where and when | S5 · Dispatch board | L | DONE (2026-08-18, **PR #197**) — merged, NOT yet deployed |
 | S — Where and when | S6 · Routing / ETA / lot-walking | — | BACKLOG (deliberately deferred) |
 | S — Where and when | S7 · Drag to swap two appointments | M | DONE (2026-08-17, **PR #192**) |
 | P — Parts | P1 · Mygrant live quotes + ordering | M | IN PROGRESS (steps 3+4 MERGED+DEPLOYED 2026-08-15, PR #184; step 5 quote-only built 2026-08-15, **PR #186**; steps 1–2 wait on the Mygrant IT callback; step 6 ordering waits for quotes to prove out) |
@@ -28,7 +28,38 @@ This file is the **work queue** for making field operations real: a technician f
 **Suggested sequence:** N1 → N4 (start the review clock early — it's days-to-weeks of waiting either way) → S1 → S2 → S3 → N2 (whenever the TFN approves) → S4 → N3 → S5 → (S6 stays backlog until S3/S5 prove demand). **S7 slots in any time after S3** — it needs neither S4 nor S5, and S5 inherits its endpoint. P1 is independent of both arcs and can slot anywhere once Mygrant API onboarding is done (like N4, start that clock early — it's a phone call to the rep).
 Rationale: N1 is the reported bug and pays off alone. S1 is the schema foundation every S-session builds on. S2 is IMPROVEMENT_SESSIONS' "biggest daily-felt gain per hour spent." S4 before S5 because the board is only as good as the data flowing into it.
 
-**Where we are (2026-08-18):** N1, N4, S1, S2, S3, S7 and S4 are done, **and every one of them is now live in production** — the deploy backlog this line used to warn about is cleared. #190/#191/#192/#193 went out at 10:20 CDT (version `app-ab584-…`, commit `ab5849e2`) and S4/#195 at 10:32 CDT (`app-c407-…`, commit `c40701c9`), carrying four migrations: `technician_portal/0055` + `0056` (preferred date/window, exact times) and `core/0030` + `0031` (`job_rescheduled` generalized, request-template priorities uppercased). **Note what that last one switched on:** the customer "request received" email had never sent on any migration-seeded database, production included — as of this deploy it does, so the first shop-visible effect of S4 is customers getting an email that was silently discarded before. N2 is parked until the toll-free number clears review (Appendix A), so **S5 (the dispatch board) is next**, and it inherits real data from S4: booking is a solved, tested write path (`services/schedule_booking.py`) and the triage rail is now a shared partial with a working inline control, so the board is assembly rather than invention. N3 is worth doing before or alongside S5 — S4 found a live notification bug (lowercase template priorities, see its Notes) that N3's inventory would have caught.
+**Where we are (2026-08-18, after S5):** the whole **S arc is built except S6**
+— N1, N4, S1, S2, S3, S4, S5 and S7 are done. A manager can now run the morning
+from one screen: the rail shows what the customer asked for, one click names a
+tech and a time, the tech is notified once, and accidental double-bookings are
+flagged.
+
+**Deploy state.** Everything through S4 is live: #190/#191/#192/#193 went out at
+10:20 CDT (version `app-ab584-…`, commit `ab5849e2`) and S4/#195 at 10:32 CDT
+(`app-c407-…`, commit `c40701c9`), carrying four migrations —
+`technician_portal/0055` + `0056` (preferred date/window, exact times) and
+`core/0030` + `0031` (`job_rescheduled` generalized, request-template
+priorities uppercased). **Note what that last one switched on:** the customer
+"request received" email had never sent on any migration-seeded database,
+production included — as of that deploy it does, so the first shop-visible
+effect of S4 is customers getting an email that was silently discarded before.
+**S5/#197 is merged but deliberately NOT deployed** (Drake's call, 2026-08-18);
+it adds no migrations, so the deploy is code-only whenever he wants it.
+
+What's left:
+
+- **N2** is parked until the toll-free number clears review (Appendix A).
+- **N3** is the next code session by default, and S4/S5 both fed it: S4 found
+  the lowercase-priority bug that killed the customer's "request received"
+  email, and S5 left `repair_request_submitted` still on `['in_app','sms']`
+  (visible now, not hidden). N3's inventory is also where the two-notification-
+  systems drift gets settled.
+- **S6 item 4 (technician availability) is now the highest-value unbuilt item
+  in this arc**, not a backlog nicety. S4's EXACT windows let a fleet ask for
+  04:30 and S5 lets the shop agree to it, and nothing anywhere knows whether
+  anyone works then. S5's conflict signals are honest about this but cannot
+  fix it — see its Notes for why `Technician.working_hours` (a real, empty,
+  schema-less column) was deliberately left alone.
 
 Sizes: **S** ≈ half a day · **M** ≈ 1–2 days · **L** ≈ 3–5 days.
 
@@ -73,8 +104,8 @@ RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration
 
 **Planned but unbuilt:** B1 field dispatch (`IMPROVEMENT_SESSIONS.md:376-420`) puts address + `tel:` + a Google Maps link on the job card and adds `service_address` to `GlassService` — explicitly *not* a calendar. `PRODUCT_DIRECTION.md:96-142` sketches a ~3–4-week minimum-viable calendar: a day/week view over existing data plus a scheduled date/time field, with route optimization explicitly deferred and the success bar "a shop can run its day from the calendar view."
 
-**Update 2026-08-17 — what is built now.** The paragraph below is the original
-(2026-08-11) survey and is kept as the diagnosis; four sessions have since landed
+**Update 2026-08-18 — what is built now.** The paragraph below is the original
+(2026-08-11) survey and is kept as the diagnosis; five sessions have since landed
 on top of it, and a fresh session should start from these rather than re-derive:
 
 - **S1** added `GlassService.scheduled_for` + `scheduled_window_end`
@@ -102,9 +133,18 @@ on top of it, and a fresh session should start from these rather than re-derive:
   multi-break batch as one visit, and is what S5 should call. It also folded
   the triage rail into `schedule_row.html` (`triage=True`) and gave it an
   inline date+window+Book control.
-- Still true and still unbuilt: no `Appointment`/`Availability` model, no
-  technician working hours, no dispatch board (S5), and no customer-facing
-  rescheduling.
+- **S5** turned the manager's day view *into* the dispatch board rather than
+  building a second surface: `services/dispatch.py` +
+  `POST /tech/schedule/dispatch/` sets who and when in one transaction by
+  composing N1's `assign_job` with S4's `confirm_appointment` (one
+  notification, two optimistic locks), and `services/schedule_conflicts.py`
+  flags double-bookings, over-committed days and bookings that miss the
+  customer's ask — informational only, nothing blocks a write. The rail grew a
+  technician picker and expands in place (`?rail=all`).
+- Still true and still unbuilt: no `Appointment`/`Availability` model and **no
+  technician working hours** (`Technician.working_hours` exists but is an
+  empty, schema-less JSONField with no consumer — see S5's Notes), and no
+  customer-facing rescheduling.
 
 **Built (as of 2026-08-11): essentially nothing.**
 - `GlassService.service_date` (`apps/technician_portal/models.py:326`) is the only date on a job — a *completion* timestamp defaulting to `now()`. The primary QuickJobForm (`forms.py:872-1060`) has **no date input at all**; only the legacy RepairForm (:407-410) and the multi-break form expose one.
@@ -665,7 +705,7 @@ on top of it, and a fresh session should start from these rather than re-derive:
   time (the S7 follow-on), customer-facing notice of a confirmed time beyond the
   portal, and rescheduling from the customer side (S6 item 5).
 
-## S5 · Dispatch board — TODO
+## S5 · Dispatch board — DONE (2026-08-18)
 
 | Field | Value |
 |---|---|
@@ -679,7 +719,110 @@ on top of it, and a fresh session should start from these rather than re-derive:
 | **Acceptance criteria** | (Draft) A manager can take a REQUESTED/unassigned job from the rail, pick tech + time, and the tech is notified — without leaving the board. Double-booking is visibly flagged. |
 | **Out of scope** | Route optimization, capacity math, customer self-scheduling (S6/backlog). |
 
-**Notes**
+**Notes** *(session run 2026-08-18, branch `feat/fieldops-s5-dispatch-board`)*
+
+- **The board is `/tech/schedule/`, not a new screen.** For a manager the S3 day
+  view now *is* the dispatch board: rail on top, one card per tech below,
+  conflicts inline. Building a second surface would have meant a second set of
+  queries, a second row partial and a second answer to "where do I look in the
+  morning". Everything S5 added is one more control on rows that already
+  existed.
+- **One endpoint, one motion: `POST /tech/schedule/dispatch/`**
+  (`services/dispatch.py::apply_dispatch`). It writes nothing itself — it
+  composes N1's `assign_job` and S4's `confirm_appointment` inside one
+  transaction. The doc's plan was two POSTs (one per helper); that turned out
+  to be wrong in a way worth recording: **two endpoints means a half-applied
+  dispatch** — assigned but not booked when the second call fails — and two
+  notifications for one decision. One transaction fixes both, and neither
+  helper's rules were copied.
+- **One motion, one message.** When a dispatch also reassigns, the booking
+  notification is suppressed (`confirm_appointment(notify=False)`) and the
+  assignment email carries the time instead — `_booked_when()` fills a new
+  `scheduled_when` context key, rendered as a guarded `Scheduled:` row in both
+  `repair_assigned` templates. Any assignment of an already-booked job now
+  states its time, which is a small win beyond the board. Book-only still uses
+  S4's `job_rescheduled`; assign-only still uses N1's pair (new tech +
+  reassigned-away). Verified live: one mail to the new tech reading
+  `SCHEDULED: Wed Aug 19, 4:30 AM – 5:45 AM`, one reassigned-away to the old.
+- **Two gates, not one — and the wider one already existed.** Booking needs
+  `sees_whole_shop` (S4's rule); reassigning additionally needs
+  `can_assign_work`, because `assign_repair` has gated on it since CODE-079 and
+  a second door to the same action must not be a weaker one. A manager with
+  only the first gets S4's narrower `/tech/schedule/book/` endpoint rendered
+  into their row form and no technician picker at all — **which is why both
+  endpoints stay live**: the split is a permission, not dead code. Note
+  `is_tenant_admin` returns True for a *membership* role of manager, so the
+  `can_assign_work` flag only bites a Technician-record manager — same as
+  `assign_repair`.
+- **`data-technician-id` is the second optimistic lock**, folded in beside
+  S4's `data-scheduled-for`. Two managers working the same rail row at once is
+  the realistic race, and the loser now gets a 409 instead of silently winning.
+  A refused dispatch books nothing: the assign half rolls back with the
+  booking half (asserted).
+- **Conflict display, and the finding that shaped it.** Plain interval overlap
+  is useless here: S4 books presets into real hours (MORNING = 08:00–12:00),
+  so *every* pair of morning jobs overlaps exactly and a board that flagged
+  that would flag a normal day end to end. `services/schedule_conflicts.py`
+  therefore splits the question in two:
+  - **Double-booked** — only between windows ≤ `PRECISE_WINDOW_MAX` (2h), i.e.
+    the ones that assert a clock. That's the one that matters, and EXACT
+    windows made it real. Rows of one `repair_batch_id` never flag each other
+    (S4 books them as one visit on purpose). A pile-up collapses to one chip
+    ("Overlaps 2 other jobs at this time") — the first live check printed the
+    same sentence twice on every row, and a wall of identical warnings reads
+    as decoration.
+  - **Over-committed** — per tech, nominal work vs the span it was booked
+    into ("3h of work booked into 1h"). This is where the coarse case belongs:
+    it's a capacity question, not a collision.
+  - **Off the customer's ask** — booked outside the S4 preference. The most
+    actionable of the three, because someone can still call them.
+  Nothing blocks a write. A shop with two people in a truck is allowed to
+  double-book on purpose; the board's job is to stop it happening by accident.
+- **Availability decision (the one the table asked for): not built, and not
+  faked.** `Technician.working_hours` **already exists** — a `JSONField` with
+  `default=dict`, no schema, no consumer, and no UI outside Django admin (only
+  hit is `admin.py:112`). Giving it meaning means inventing a shape, a
+  settings screen and a validator, which is the availability model S6 owns.
+  A free-text "usual schedule" note was considered and rejected: it can't be
+  checked, so it would put a claim on the board that the board can't stand
+  behind. Consequence to accept: `NOMINAL_JOB_LENGTH` (1h, S4's constant) is a
+  placeholder not a measurement, so the capacity signal is directional, and a
+  fleet can still be promised 04:30 with nobody starting before 07:00. **S6
+  item 4 is now the highest-value unbuilt thing in this arc** — EXACT windows
+  made it matter sooner than the backlog assumed.
+- **Smaller things worth knowing:**
+  - The rail's overflow used to link to the job list, which has no wish, no
+    picker and no Book button — the three things a manager came here for. It
+    expands in place now (`?rail=all`, "Show fewer" to collapse). The cap of 8
+    stays the default so an 80-row rail can't bury the day.
+  - The Move control on a booked row stays hidden until the picker names
+    somebody else. A `<select>` is one tap from a misfire and this write emails
+    two people.
+  - `schedule_booking.js` → `schedule_dispatch.js`, and its `data-book-*`
+    attributes → `data-dispatch-*`; two S4 tests assert those names and were
+    updated with the reason inline. Each form now names its own endpoint in
+    `data-post-url` rather than the script choosing.
+  - **REQUESTED work still notifies nobody** when dispatched. That is N1's rule
+    (a tech can't open REQUESTED work at all — CODE-081) and S4's booking
+    notification is already silent the same way; it is consistent, not an
+    oversight, but it means a manager who dispatches a REQUESTED replacement
+    should expect the tech to hear about it when the shop accepts it.
+  - Dispatching a batch moves and books **every** row of the visit, and a batch
+    someone else half-moved refuses rather than splitting — S4's rule, extended
+    to the technician.
+- **Tests:** `tests/test_fieldops_s5.py` (46). Green alongside S1/S2/S3/S4/S7
+  and N1 (148 total), plus the smoke set, unified dashboard, touch targets,
+  view transitions and step5-nav. The one failure in that sweep —
+  `test_unified_dashboard.…test_replacement_only_shop_queue_has_no_repair_wording`
+  — is the same pre-existing baseline failure S3 and S4 both recorded. Verified
+  live against a scratch DB: rail → Dana at 04:30–05:45 in one click, overlap
+  and wish-miss chips on the right rows, Move reveal/hide, and the single
+  assignment email carrying the booked time.
+- **Not done, deliberately:** dragging a rail row onto a time (still the S7
+  follow-on — S5 uses plain controls, as the table asked), technician
+  availability (above), route/capacity math (S6), and any customer-facing
+  notice that their job was booked or moved (S6 item 5 territory, and CLAUDE.md
+  says don't open a new customer email stream without asking).
 
 ## S6 · Routing / ETA / lot-walking — BACKLOG (deliberately deferred)
 

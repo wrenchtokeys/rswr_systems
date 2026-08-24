@@ -57,6 +57,20 @@
                                     <span style="color: #666666;">{{ unit_number }}</span>
                                 </td>
                             </tr>
+                            {% if scheduled_when %}
+                            {% comment %}
+                            The dispatch board (S5) can set the technician and
+                            the time in one click, so the assignment mail
+                            carries the time when there is one — two emails for
+                            one decision is how a tech learns to skim them.
+                            {% endcomment %}
+                            <tr>
+                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
+                                    <strong style="color: {{ branding.text_color }};">Scheduled:</strong>
+                                    <span style="color: #666666;">{{ scheduled_when }}</span>
+                                </td>
+                            </tr>
+                            {% endif %}
                             <tr>
                                 <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
                                     <strong style="color: {{ branding.text_color }};">Status:</strong>

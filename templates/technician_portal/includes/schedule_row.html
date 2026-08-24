@@ -22,10 +22,19 @@ A triage row has no booked time (so no time column and no drag handle) and
 instead shows what the customer asked for, plus the inline control that books
 it. `data-scheduled-for` is empty on these rows, which is exactly the
 "unscheduled" expectation the booking endpoint's optimistic lock wants.
+
+S5 adds the *who*. `data-technician-id` is the second optimistic lock: the
+dispatch endpoint refuses if the row's technician changed under the manager,
+the same way `data-scheduled-for` guards the time. Both controls live in one
+form per row, so a rail row can name a tech and a time in one submit, and a
+booked row can hand the job to someone else without touching its time.
+`job.conflicts` (a list, always present on a booked row) is what the board
+flags — see services/schedule_conflicts.py for what it deliberately doesn't.
 {% endcomment %}
 <div class="px-4 py-3 sm:px-6 hover:bg-gray-50 transition-colors flex items-center gap-4{% if job.queue_status == 'COMPLETED' %} opacity-60{% endif %}"
      data-job-key="{{ job.service_type }}-{{ job.id }}"
      data-scheduled-for="{{ job.scheduled_for|date:'c' }}"
+     data-technician-id="{{ job.technician_id }}"
      data-job-name="{{ job.customer.name|default:'Walk-in' }}"
      {% if job.queue_status == 'COMPLETED' %}data-swap-block="completed"{% elif job.repair_batch_id %}data-swap-block="batch"{% endif %}>
 
@@ -99,6 +108,22 @@ it. `data-scheduled-for` is empty on these rows, which is exactly the
         {% endif %}
         {% endwith %}
 
+        {% comment %}
+        S5 conflict chips. Informational only — nothing here blocked the write
+        that created them, because a shop with two people in a truck is
+        allowed to double-book on purpose. Red rather than amber: unlike the
+        wish chip above, every one of these means two facts already disagree.
+        {% endcomment %}
+        {% if job.conflicts %}
+        <div class="flex flex-wrap gap-1.5 mt-1">
+            {% for conflict in job.conflicts %}
+            <span class="inline-flex items-center gap-1.5 text-xs font-medium text-red-800 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
+                <i class="fas fa-triangle-exclamation"></i>{{ conflict }}
+            </span>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         {% with location=job.get_service_location %}
         {% if location or job.customer.phone %}
         <div class="flex items-center gap-4 mt-1 min-w-0">
@@ -117,20 +142,26 @@ it. `data-scheduled-for` is empty on these rows, which is exactly the
         {% endwith %}
 
         {% comment %}
-        The one write on the rail: pick a day and a window, and the job gets a
-        real booked time. Prefilled with the customer's wish when there is one
-        — confirming what they asked for is one tap, and changing it is two.
-        A plain <form> so a JS failure reloads the page instead of doing
-        nothing silently; static/js/schedule_booking.js intercepts it.
+        The one write on the rail: pick a day, a window and (S5) a technician,
+        and the job gets a real booked time with a name on it. Prefilled with
+        the customer's wish when there is one — confirming what they asked for
+        is one tap, and changing it is two. A plain <form> so a JS failure
+        reloads the page instead of doing nothing silently;
+        static/js/schedule_dispatch.js intercepts it.
+
+        The endpoint is chosen here rather than in the script: a manager
+        without can_assign_work gets S4's booking form and S4's endpoint,
+        which is exactly what their permission is. Neither path is dead code.
         {% endcomment %}
         {% if triage and can_book %}
-        <form class="mt-2 flex flex-wrap items-center gap-2" data-book-form>
+        <form class="mt-2 flex flex-wrap items-center gap-2" data-dispatch-form
+              data-post-url="{% if can_assign %}{% url 'schedule_dispatch' %}{% else %}{% url 'schedule_book' %}{% endif %}">
             <label class="sr-only" for="book-date-{{ job.service_type }}-{{ job.id }}">Date for {{ job.customer.name|default:"this job" }}</label>
-            <input type="date" data-book-date id="book-date-{{ job.service_type }}-{{ job.id }}"
+            <input type="date" data-dispatch-date id="book-date-{{ job.service_type }}-{{ job.id }}"
                    value="{{ job.preferred_date|date:'Y-m-d'|default:booking_default_date }}"
                    class="min-h-11 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
             <label class="sr-only" for="book-window-{{ job.service_type }}-{{ job.id }}">Time of day for {{ job.customer.name|default:"this job" }}</label>
-            <select data-book-window id="book-window-{{ job.service_type }}-{{ job.id }}"
+            <select data-dispatch-window id="book-window-{{ job.service_type }}-{{ job.id }}"
                     class="min-h-11 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
                 {% for value, label in preferred_windows %}
                 <option value="{{ value }}"{% if job.preferred_window == value %} selected{% elif not job.preferred_window and value == 'ANYTIME' %} selected{% endif %}>{{ label }}</option>
@@ -142,20 +173,59 @@ it. `data-scheduled-for` is empty on these rows, which is exactly the
             four-hour "morning" block is the same broken promise as not
             asking. Prefilled from their ask, so confirming it is one tap.
             {% endcomment %}
-            <span data-book-exact class="{% if job.preferred_window != 'EXACT' %}hidden {% endif %}inline-flex items-center gap-2">
+            <span data-dispatch-exact class="{% if job.preferred_window != 'EXACT' %}hidden {% endif %}inline-flex items-center gap-2">
                 <label class="sr-only" for="book-from-{{ job.service_type }}-{{ job.id }}">Start time</label>
-                <input type="time" data-book-start id="book-from-{{ job.service_type }}-{{ job.id }}"
+                <input type="time" data-dispatch-start id="book-from-{{ job.service_type }}-{{ job.id }}"
                        value="{{ job.preferred_time_start|time:'H:i' }}"
                        class="min-h-11 px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
                 <span class="text-xs text-gray-400">to</span>
                 <label class="sr-only" for="book-to-{{ job.service_type }}-{{ job.id }}">End time</label>
-                <input type="time" data-book-end id="book-to-{{ job.service_type }}-{{ job.id }}"
+                <input type="time" data-dispatch-end id="book-to-{{ job.service_type }}-{{ job.id }}"
                        value="{{ job.preferred_time_end|time:'H:i' }}"
                        class="min-h-11 px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
             </span>
+            {% comment %}
+            S5: who, beside when. Defaulted to whoever already holds the job —
+            every job has a technician (there is no null "unassigned" state),
+            so this is always a reassignment, and leaving it alone books
+            without moving anything.
+            {% endcomment %}
+            {% if can_assign and roster %}
+            <label class="sr-only" for="book-tech-{{ job.service_type }}-{{ job.id }}">Technician for {{ job.customer.name|default:"this job" }}</label>
+            <select data-dispatch-tech id="book-tech-{{ job.service_type }}-{{ job.id }}"
+                    class="min-h-11 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                {% for tech in roster %}
+                <option value="{{ tech.pk }}"{% if tech.pk == job.technician_id %} selected{% endif %}>{{ tech.user.get_full_name|default:tech.user.username }}</option>
+                {% endfor %}
+            </select>
+            {% endif %}
             <button type="submit"
                     class="inline-flex items-center min-h-11 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors shadow-sm press">
                 Book
+            </button>
+        </form>
+        {% endif %}
+
+        {% comment %}
+        A booked row can change hands without changing its time — the other
+        half of the morning triage ("Marcus has six, give two to Dana"). The
+        Move button stays hidden until the picker actually names someone else,
+        so a stray tap on a <select> can never email two technicians about a
+        job that did not move.
+        {% endcomment %}
+        {% if not triage and can_assign and roster and job.queue_status != 'COMPLETED' %}
+        <form class="mt-2 flex flex-wrap items-center gap-2" data-dispatch-form
+              data-post-url="{% url 'schedule_dispatch' %}">
+            <label class="sr-only" for="move-tech-{{ job.service_type }}-{{ job.id }}">Move {{ job.customer.name|default:"this job" }} to another technician</label>
+            <select data-dispatch-tech id="move-tech-{{ job.service_type }}-{{ job.id }}"
+                    class="min-h-11 px-3 py-2 border border-gray-200 rounded-lg text-xs bg-white text-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                {% for tech in roster %}
+                <option value="{{ tech.pk }}"{% if tech.pk == job.technician_id %} selected{% endif %}>{{ tech.user.get_full_name|default:tech.user.username }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" data-dispatch-submit
+                    class="hidden inline-flex items-center min-h-11 px-4 py-2 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 transition-colors shadow-sm press">
+                Move
             </button>
         </form>
         {% endif %}

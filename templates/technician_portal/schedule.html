@@ -93,10 +93,23 @@
                 {% include "technician_portal/includes/schedule_row.html" with triage=True %}
                 {% endfor %}
             </div>
+            {% comment %}
+            S5: the overflow used to send the manager to the job list, which
+            has no wish, no tech picker and no Book button — the three things
+            they came here to use. It expands the rail in place instead.
+            {% endcomment %}
             {% if triage_overflow %}
             <div class="px-6 py-3 border-t border-gray-100">
-                <a href="{% url 'job_list' %}" class="text-sm font-medium text-brand-600 hover:text-brand-800">
-                    {{ triage_overflow }} more unscheduled job{{ triage_overflow|pluralize }} →
+                <a href="{% url 'day_schedule' %}?date={{ day|date:'Y-m-d' }}&rail=all"
+                   class="text-sm font-medium text-brand-600 hover:text-brand-800">
+                    Show {{ triage_overflow }} more unscheduled job{{ triage_overflow|pluralize }} →
+                </a>
+            </div>
+            {% elif show_all_rail and unscheduled_count > 8 %}
+            <div class="px-6 py-3 border-t border-gray-100">
+                <a href="{% url 'day_schedule' %}?date={{ day|date:'Y-m-d' }}"
+                   class="text-sm font-medium text-gray-500 hover:text-gray-700">
+                    Show fewer
                 </a>
             </div>
             {% endif %}
@@ -111,11 +124,24 @@
         {% for group in groups %}
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
             <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                <div class="flex items-center gap-2.5">
+                <div class="flex items-center gap-2.5 flex-wrap">
                     <h2 class="text-lg font-semibold text-gray-900">{{ group.technician.user.get_full_name|default:group.technician.user.username }}</h2>
                     {% if group.jobs %}
                     <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
                         {{ group.jobs|length }} job{{ group.jobs|length|pluralize }}
+                    </span>
+                    {% endif %}
+                    {% comment %}
+                    S5 capacity signal. Only printed when the day is
+                    over-committed: "5h of work booked into 4h" is the honest
+                    version of a conflict for coarse windows, where plain
+                    interval overlap would flag every normal morning. Nominal
+                    job length is a placeholder, not a measurement — nothing
+                    models how long a job takes yet.
+                    {% endcomment %}
+                    {% if group.load.over_committed %}
+                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-800 border border-red-200">
+                        <i class="fas fa-triangle-exclamation"></i>{{ group.load.summary }}
                     </span>
                     {% endif %}
                 </div>
@@ -177,11 +203,11 @@
 <script src="{% static 'js/field_dispatch.js' %}" defer></script>
 {% if can_book %}
 {% comment %}
-S4 book-from-the-rail. Managers only, same as the swap; the endpoint
-re-checks authorization regardless.
+S4 book-from-the-rail, plus S5's who. Managers only, same as the swap; each
+row form names its own endpoint (see the partial) and both endpoints re-check
+authorization regardless.
 {% endcomment %}
-<script src="{% static 'js/schedule_booking.js' %}"
-        data-book-url="{% url 'schedule_book' %}" defer></script>
+<script src="{% static 'js/schedule_dispatch.js' %}" defer></script>
 {% endif %}
 {% if can_swap %}
 {% comment %}

@@ -195,11 +195,15 @@ def _display_name(job):
 @transaction.atomic
 def confirm_appointment(*, tenant, service_type, pk, day, window,
                         start_time=None, end_time=None,
-                        expected=None, actor_user=None):
+                        expected=None, actor_user=None, notify=True):
     """Book ``day`` + ``window`` onto a job (and its whole batch).
 
     Returns ``{'message': str, 'count': int, 'scheduled_for': datetime}``.
     Raises ``BookingError`` for every refusal.
+
+    ``notify=False`` is for the dispatch board (S5), which can set the
+    technician in the same click: the tech then hears both facts in one
+    assignment notification instead of a booking message chasing it.
     """
     models = _job_models()
 
@@ -302,6 +306,7 @@ def confirm_appointment(*, tenant, service_type, pk, day, window,
                 service_type, anchor.pk,
             )
 
-    transaction.on_commit(_notify)
+    if notify:
+        transaction.on_commit(_notify)
 
     return {'message': message, 'count': len(jobs), 'scheduled_for': start}

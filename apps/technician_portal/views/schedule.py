@@ -1,12 +1,16 @@
 """
-Day / agenda view (FIELD_OPS S3) and the drag-to-swap endpoint (S7).
+Day / agenda view (FIELD_OPS S3), and the writes that turned it into a
+dispatch board (S4 book, S5 assign, S7 swap).
 
-A technician sees their day in scheduled order; owners and managers see
-every tech's day, with unscheduled work surfaced for triage. The day view
-itself is read-only — entries link to the detail pages, and the S2 map/call
-actions ride along on each row. The one write here is ``swap_appointments``,
-which lets a manager drag one booked job onto another in the same tech's day
-so the two trade times; all of its logic lives in ``services/schedule_swap``.
+A technician sees their day in scheduled order; owners and managers see every
+tech's day, with unscheduled work surfaced for triage. For a manager this page
+*is* the dispatch board — S5 added the missing half of a dispatch decision
+(who) beside the one S4 shipped (when), so a job can go from the rail to a
+named tech at a named time in one click, and made the collisions that creates
+visible. Every write is a thin endpoint over a service:
+``services/schedule_swap`` (S7), ``services/schedule_booking`` (S4) and
+``services/dispatch`` (S5, which composes the other two with N1's
+``assign_job``). None of them duplicates another's rules.
 """
 
 import json
@@ -27,6 +31,12 @@ from apps.technician_portal.services.schedule_swap import (
 from apps.technician_portal.services.schedule_booking import (
     BookingError, confirm_appointment as perform_booking, parse_booking_request,
 )
+from apps.technician_portal.services.dispatch import (
+    DispatchError, apply_dispatch, parse_dispatch_request,
+)
+from apps.technician_portal.services.schedule_conflicts import (
+    annotate_conflicts, technician_load,
+)
 
 # What belongs on a day sheet: work that is a go, plus what already got done
 # that day (a schedule with its finished jobs missing looks un-run, not run).
@@ -44,7 +54,7 @@ def _resolve_viewer(request, tenant):
 
     Tenant-scoped Technician lookup — same rule as the dashboard (CODE-081):
     never resolve request.user.technician globally when a tenant is known.
-    Shared by the day view and the swap endpoint so the two cannot disagree
+    Shared by the day view and every write endpoint so they cannot disagree
     about who is a manager.
     """
     technician = None
@@ -58,6 +68,22 @@ def _resolve_viewer(request, tenant):
     is_admin = is_tenant_admin(request.user, tenant=tenant)
     sees_whole_shop = is_admin or bool(technician and technician.is_manager)
     return technician, sees_whole_shop
+
+
+def _can_assign(request, tenant, technician, sees_whole_shop):
+    """Moving work between people needs more than seeing the whole shop.
+
+    ``assign_repair`` has always gated on ``can_assign_work`` on top of
+    ``is_manager`` (CODE-079); the board is a second door to the same action
+    and must not be a weaker one. Owners/admins keep the bypass they have
+    there — a shop with one owner and no manager still has to be able to
+    dispatch.
+    """
+    if not sees_whole_shop:
+        return False
+    if is_tenant_admin(request.user, tenant=tenant):
+        return True
+    return bool(technician and technician.can_assign_work)
 
 
 @technician_required
@@ -118,17 +144,25 @@ def day_schedule(request):
     # Managers see one group per tech — every active tech, so "nobody booked
     # Marcus today" is visible, plus any inactive tech who still holds a job.
     groups = None
+    roster = []
     if sees_whole_shop:
         by_tech = {}
         for job in jobs:
             by_tech.setdefault(job.technician_id, []).append(job)
         group_techs = {t.pk: t for t in Technician.objects.filter(
             tenant=tenant, is_active=True).select_related('user')} if tenant else {}
+        # The roster is who a job can be dispatched TO: active techs only. An
+        # inactive tech may still appear as a group below (they hold work
+        # today) without being a place to send more.
+        roster = list(group_techs.values())
         for job_list in by_tech.values():
             tech = job_list[0].technician
             group_techs.setdefault(tech.pk, tech)
         groups = [
-            {'technician': tech, 'jobs': by_tech.get(pk, [])}
+            {'technician': tech, 'jobs': by_tech.get(pk, []),
+             # S5: conflicts are per-technician-day, so they are computed
+             # here, once per group, rather than per row in the template.
+             'load': technician_load(annotate_conflicts(by_tech.get(pk, [])))}
             for pk, tech in group_techs.items()
         ]
         groups.sort(key=lambda g: (
@@ -136,6 +170,10 @@ def day_schedule(request):
             (g['technician'].user.get_full_name()
              or g['technician'].user.username).lower(),
         ))
+    else:
+        # A tech's own day gets the same flags — being double-booked is
+        # something the person driving to both should see first.
+        annotate_conflicts(jobs)
 
     # Unscheduled work: the honest empty state for techs ("nothing scheduled
     # — 4 unscheduled jobs"), the triage rail for managers. Managers' rail
@@ -166,7 +204,16 @@ def day_schedule(request):
 
     unscheduled.sort(key=_rail_key)
     unscheduled_count = len(unscheduled)
-    triage_jobs = unscheduled[:TRIAGE_RAIL_CAP] if sees_whole_shop else []
+    # S5: the rail is the pile a manager works down, so it has to be possible
+    # to see all of it. The cap stays the default — an 80-row rail above the
+    # day would bury the day itself — but "show all" now expands in place
+    # instead of bouncing to the job list, which loses the wish, the tech
+    # picker and the Book button.
+    show_all_rail = request.GET.get('rail') == 'all'
+    triage_jobs = []
+    if sees_whole_shop:
+        triage_jobs = (unscheduled if show_all_rail
+                       else unscheduled[:TRIAGE_RAIL_CAP])
 
     return render(request, 'technician_portal/schedule.html', {
         'technician': technician,
@@ -181,11 +228,17 @@ def day_schedule(request):
         'unscheduled_count': unscheduled_count,
         'triage_jobs': triage_jobs,
         'triage_overflow': max(0, unscheduled_count - len(triage_jobs)),
+        'show_all_rail': show_all_rail,
         'can_swap': sees_whole_shop,
         # S4: the rail's inline book control. Same permission as the swap —
         # scheduling is a dispatch decision, and plain techs cannot even see
         # REQUESTED work (CODE-081).
         'can_book': sees_whole_shop,
+        # S5: the who half. Strictly narrower than can_book — a manager
+        # without can_assign_work schedules the shop's work but does not move
+        # it between people.
+        'can_assign': _can_assign(request, tenant, technician, sees_whole_shop),
+        'roster': roster,
         'preferred_windows': PREFERRED_WINDOW_CHOICES,
         'booking_default_date': day.isoformat(),
     })
@@ -278,6 +331,59 @@ def book_appointment(request):
             expected=expected, actor_user=request.user,
         )
     except BookingError as exc:
+        return JsonResponse({'ok': False, 'error': exc.message},
+                            status=exc.status)
+
+    return JsonResponse({'ok': True, 'message': result['message']})
+
+
+@technician_required
+@require_POST
+def dispatch_job(request):
+    """Set who and/or when for a job in one motion (fieldops S5).
+
+    The board's single write. Same shape and reasoning as the two endpoints
+    above — JSON for every outcome including refusals, authorization in-body
+    rather than via a redirecting decorator, and the caller must check
+    ``response.ok`` and the content type because
+    SubscriptionEnforcementMiddleware redirects a read-only tenant's POST
+    instead of answering JSON.
+
+    Two gates, not one: booking needs ``sees_whole_shop``, moving work between
+    people additionally needs ``can_assign_work``. A payload carrying a
+    technician is refused for a manager who only has the first.
+    """
+    tenant = getattr(request, 'tenant', None)
+    technician, sees_whole_shop = _resolve_viewer(request, tenant)
+    if not sees_whole_shop:
+        return JsonResponse(
+            {'ok': False, 'error': "Only managers can dispatch jobs."},
+            status=403,
+        )
+
+    try:
+        payload = json.loads(request.body or b'{}')
+    except (ValueError, UnicodeDecodeError):
+        payload = None
+    if not isinstance(payload, dict):
+        return JsonResponse(
+            {'ok': False, 'error': "Reload the board and try again."},
+            status=400,
+        )
+
+    try:
+        parsed = parse_dispatch_request(payload)
+        if (parsed['technician_id'] is not None
+                and not _can_assign(request, tenant, technician,
+                                    sees_whole_shop)):
+            return JsonResponse(
+                {'ok': False,
+                 'error': "You can schedule work but not reassign it."},
+                status=403,
+            )
+        result = apply_dispatch(
+            tenant=tenant, actor_user=request.user, **parsed)
+    except DispatchError as exc:
         return JsonResponse({'ok': False, 'error': exc.message},
                             status=exc.status)
 
