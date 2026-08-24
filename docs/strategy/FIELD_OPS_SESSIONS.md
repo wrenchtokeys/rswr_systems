@@ -13,7 +13,7 @@ This file is the **work queue** for making field operations real: a technician f
 |-------|---------|------|--------|
 | N — The tech finds out | N1 · Assignment notifications that deliver | M | DONE (2026-08-12, PR #179) |
 | N — The tech finds out | N2 · Fix dead verification SMS + tech texts | S | TODO (prod effect blocked on N4 — Appendix A) |
-| N — The tech finds out | N3 · Notification coverage audit | S | DONE (2026-08-24, **PR #202**) — grew well past S; see Notes |
+| N — The tech finds out | N3 · Notification coverage audit | S | DONE (2026-08-24, **PR #204**) — grew well past S; see Notes |
 | N — The tech finds out | N4 · SMS opt-in compliance + registration v2 | S | CODE DONE + DEPLOYED (**PR #180**, merged 2026-08-13) — the deploy half is finished; v2 submission now waits on Drake alone (see Notes) |
 | S — Where and when | S1 · A real "booked time" | M | DONE (2026-08-15, **PR #188**) |
 | S — Where and when | S2 · Field dispatch (executes B1) | M | DONE (2026-08-15, PR #189) |
@@ -44,7 +44,7 @@ which carries everything through S8: #197 (S5 dispatch board), #198 (S8 spec),
 #199, #200 (the email/notification chassis) and #201 (S8 working hours). The
 four-PR backlog described here earlier went out in that single deploy.
 
-**N3 (PR #202) is the one thing built and not yet deployed.** It carries
+**N3 (PR #204) is the one thing built and not yet deployed.** It carries
 `core/0033`, a data migration, and it is the only change in this arc with a
 **shop-visible first effect**: two customer emails that have never sent on
 production start sending. Read N3's Notes before deploying it.
@@ -255,7 +255,7 @@ on top of it, and a fresh session should start from these rather than re-derive:
 
 **Notes**
 
-## N3 · Notification coverage audit — DONE (2026-08-24, PR #202)
+## N3 · Notification coverage audit — DONE (2026-08-24, PR #204)
 
 | Field | Value |
 |---|---|
@@ -275,7 +275,7 @@ on top of it, and a fresh session should start from these rather than re-derive:
 2. **`ReviewConfig` business hours are compared in UTC.** *(found by S8)* `_adjust_to_business_hours` (`apps/technician_portal/review_service.py:319-332`) clamps an aware UTC datetime by `.hour` against `business_hours_start/end` (defaults 9/19), so in production review-request emails queue for roughly **4 AM local**. Live today, shipping since the review system launched. One-line fix (`timezone.localtime()` before comparing, convert back), but it needs a test that would have caught it, which is why it belongs in an audit rather than in a drive-by.
 3. **`repair_request_submitted` still maps to `['in_app','sms']`.** *(found by S5)* Visible rather than hidden now, but nothing texts anybody until N2, so that event effectively has no channel.
 
-**Notes** *(session run 2026-08-24, branch `feat/fieldops-n3-notification-coverage`, PR #202)*
+**Notes** *(session run 2026-08-24, branch `feat/fieldops-n3-notification-coverage`, PR #204)*
 
 **All three starting defects were real, and the audit found five more.** The
 three inherited ones were the cheap part; what the inventory turned up is that
