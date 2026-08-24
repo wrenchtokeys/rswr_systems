@@ -1,0 +1,35 @@
+{% extends "emails/base.html" %}
+{% comment %}
+Customer, replacement finished.
+
+Deliberately says nothing about when the car is safe to drive. Cure time
+depends on the urethane, the temperature and the installer, and RS Systems
+cannot estimate it on a shop's behalf without taking on their liability.
+The shop tells the customer directly. Do not add a safe-drive-away line
+here without Drake's sign-off.
+{% endcomment %}
+
+{% block email_title %}Replacement completed{% endblock %}
+{% block header_meta %}Replacement #{{ replacement_id }}{% endblock %}
+{% block preheader %}{% if vehicle_identifier %}{{ vehicle_identifier }} is done.{% else %}The replacement is finished.{% endif %}{% endblock %}
+
+{% block content %}
+{% include "emails/components/pill.html" with label="Completed" tone="green" %}
+{% include "emails/components/headline.html" with headline="Your glass replacement is done." lede="The new glass is in and the job is finished." %}
+
+{% include "emails/components/rows_start.html" %}
+    {% include "emails/components/vehicle_row.html" %}
+    {% if glass_position %}{% include "emails/components/row.html" with label="Glass" value=glass_position %}{% endif %}
+    {% if glass_type %}{% include "emails/components/row.html" with label="Glass type" value=glass_type %}{% endif %}
+    {% if needs_adas %}{% include "emails/components/row.html" with label="ADAS recalibration" value="Completed" %}{% endif %}
+    {% if technician_name %}{% include "emails/components/row.html" with label="Technician" value=technician_name %}{% endif %}
+    {% if completed_on %}{% include "emails/components/row.html" with label="Completed" value=completed_on %}{% endif %}
+    {% if warranty_display %}{% include "emails/components/row.html" with label="Warranty" value=warranty_display %}{% endif %}
+    {% if job_cost_display %}{% include "emails/components/row.html" with label="Total" value=job_cost_display strong=1 %}{% endif %}
+{% include "emails/components/rows_end.html" %}
+
+{% with url=base_url|add:action_url %}
+{% include "emails/components/button.html" with text="View the details" url=url color=branding.primary_color %}
+{% endwith %}
+{% include "emails/components/note.html" with text="Your technician will have told you how long to wait before driving." %}
+{% endblock %}

@@ -1,31 +1,20 @@
-REPAIR REQUEST RECEIVED - Unit {{ unit_number }}
+{% load email_ui %}{% autoescape off %}We have your repair request.
 
-Dear {{ customer_name }},
+Nothing further is needed from you. We will confirm the time shortly.
 
-Thank you for submitting your windshield repair request. We've got it{% if preferred_time %} and we'll aim for {{ preferred_time }}{% endif %} — we'll confirm your time shortly. No further action is needed from you.
-
-REQUEST DETAILS
-===============
-Request ID: #{{ repair_id }}
-Unit Number: {{ unit_number }}
-Damage Type: {{ damage_type }}
-{% if preferred_time %}You asked for: {{ preferred_time }}
-{% endif %}Status: Accepted
-
-WHAT HAPPENS NEXT
-=================
-1. A technician has been assigned to your request
-2. We'll confirm the time we're coming
-3. You'll be notified when the work starts
-4. You'll receive a confirmation when the repair is complete
-
-View your request status here:
+{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% if damage_type %}  {{ "Damage"|pad_label }}{{ damage_type }}
+{% endif %}{% if preferred_time %}  {{ "You asked for"|pad_label }}{{ preferred_time }}
+{% endif %}
+Track your request
 {{ base_url }}{{ action_url }}
 
-Questions? You can check the status of your request anytime in your customer dashboard or contact us if you have any questions.
+--
+{{ branding.company_name }}{% if branding.company_address %}
+{{ branding.company_address }}{% endif %}{% if branding.support_phone %}
+{{ branding.support_phone }}{% endif %}
 
----
-{{ branding.company_name }}
-{{ branding.company_address }}
-
-To manage your notification preferences, visit your account settings.
+Manage notification preferences
+{{ base_url }}/app/notifications/preferences/
+{% endautoescape %}

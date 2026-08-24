@@ -1,0 +1,21 @@
+{% load email_ui %}{% autoescape off %}Work has started on your glass.
+
+A replacement usually takes a couple of hours. We will let you know as
+soon as it is done.
+
+{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% if glass_position %}  {{ "Glass"|pad_label }}{{ glass_position }}
+{% endif %}{% if technician_name %}  {{ "Technician"|pad_label }}{{ technician_name }}
+{% endif %}
+Track this job
+{{ base_url }}{{ action_url }}
+
+--
+{{ branding.company_name }}{% if branding.company_address %}
+{{ branding.company_address }}{% endif %}{% if branding.support_phone %}
+{{ branding.support_phone }}{% endif %}
+
+Manage notification preferences
+{{ base_url }}/app/notifications/preferences/
+{% endautoescape %}

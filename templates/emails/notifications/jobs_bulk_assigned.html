@@ -1,45 +1,33 @@
 {% extends "emails/base.html" %}
+{% comment %}
+Technician, several jobs assigned at once. Context: job_count, job_summary,
+action_url.
 
-{% block email_title %}You have been assigned {{ job_count }} job{{ job_count|pluralize }}{% endblock %}
+The count is branched rather than interpolated because an {% include %}
+argument cannot build a string — and "1 new jobs" is exactly the kind of
+detail that makes software feel unfinished.
+{% endcomment %}
 
-{% block preheader %}You have been assigned {{ job_count }} job{{ job_count|pluralize }}: {{ job_summary }}.{% endblock %}
+{% block email_title %}{{ job_count }} new assignment{{ job_count|pluralize }}{% endblock %}
+{% block header_meta %}{{ job_count }} job{{ job_count|pluralize }}{% endblock %}
+{% block preheader %}{{ job_summary }}{% endblock %}
+{% block unsubscribe_url %}/tech/notifications/preferences/{% endblock %}
 
 {% block content %}
-<!-- Assignment Badge -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-    <tr>
-        <td style="text-align: center; padding-bottom: 20px;">
-            <div style="display: inline-block; background-color: {{ branding.primary_color }}; color: white; padding: 10px 20px; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 14px; font-weight: bold; letter-spacing: 0.5px;">
-                NEW ASSIGNMENTS
-            </div>
-        </td>
-    </tr>
-</table>
+{% include "emails/components/pill.html" with label="Assigned to you" tone="indigo" %}
+{% if job_count == 1 %}
+    {% include "emails/components/headline.html" with headline="You have a new job." %}
+{% else %}
+    {% with h=job_count|stringformat:"s"|add:" new jobs on your list." %}
+    {% include "emails/components/headline.html" with headline=h %}
+    {% endwith %}
+{% endif %}
 
-<!-- Main Heading -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-    <tr>
-        <td style="padding-bottom: 20px;">
-            <h1 style="margin: 0; color: {{ branding.text_color }}; font-family: {{ branding.heading_font }}; font-size: 24px; font-weight: bold; line-height: 1.3;">
-                You have been assigned {{ job_count }} job{{ job_count|pluralize }}
-            </h1>
-            <p style="margin: 10px 0 0 0; color: #666666; font-family: {{ branding.body_font }}; font-size: 16px; line-height: 24px;">
-                {{ job_summary }}.
-            </p>
-        </td>
-    </tr>
-</table>
+{% include "emails/components/rows_start.html" %}
+    {% include "emails/components/row.html" with label="Jobs" value=job_summary %}
+{% include "emails/components/rows_end.html" %}
 
-<!-- CTA Button -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 30px;">
-    <tr>
-        <td style="text-align: center;">
-            <a href="{{ base_url }}{{ action_url }}" style="display: inline-block; background-color: {{ branding.primary_color }}; color: white; padding: 14px 36px; text-decoration: none; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 16px; font-weight: bold;">
-                View Your Jobs
-            </a>
-        </td>
-    </tr>
-</table>
+{% with url=base_url|add:action_url %}
+{% include "emails/components/button.html" with text="View your day" url=url color=branding.primary_color %}
+{% endwith %}
 {% endblock %}
-
-{% block unsubscribe_url %}/tech/notifications/preferences/{% endblock %}

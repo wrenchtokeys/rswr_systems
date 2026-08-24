@@ -9,7 +9,6 @@ from email.utils import formataddr, parseaddr
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
-from django.utils.html import escape
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +37,40 @@ def shop_sender(shop_name=None, reply_to_email=None):
     return from_email, reply_to
 
 
+def _normalize_detail_rows(detail_rows):
+    """Accept the row shapes callers use and hand the template one of them.
+
+    ('Total', '$84.75')                       -> plain row
+    ('Total', '$84.75', 'strong')             -> label goes dark too
+    ('Balance', '$0.00', 'strong money')      -> value goes green
+    {'label': ..., 'value': ..., 'money': 1}  -> passed through
+
+    Two-tuples are what every existing caller passes and stay the default;
+    the flags exist so a summary row (Total, Balance, Amount paid) can carry
+    the weight it has on the invoice itself instead of looking like one more
+    line of metadata.
+    """
+    rows = []
+    for row in detail_rows or []:
+        if isinstance(row, dict):
+            rows.append({
+                'label': row.get('label', ''),
+                'value': row.get('value', ''),
+                'strong': row.get('strong', ''),
+                'money': row.get('money', ''),
+            })
+            continue
+        label, value, flags = (list(row) + [''])[:3]
+        flags = flags or ''
+        rows.append({
+            'label': label,
+            'value': value,
+            'strong': 'strong' in flags,
+            'money': 'money' in flags,
+        })
+    return rows
+
+
 def send_branded_email(
     subject,
     recipient_list,
@@ -45,6 +78,14 @@ def send_branded_email(
     body_paragraphs,
     *,
     tenant=None,
+    platform=False,
+    lede=None,
+    note=None,
+    preheader=None,
+    pill_label=None,
+    pill_tone=None,
+    header_meta=None,
+    unsubscribe_path=None,
     button_text=None,
     button_url=None,
     secondary_button_text=None,
@@ -59,145 +100,94 @@ def send_branded_email(
     headers=None,
 ):
     """
-    Send a branded HTML email with consistent styling.
+    Send an email through the shared chassis (templates/emails/base.html).
+
+    This used to build its own HTML in an f-string, which meant RS Systems
+    had two unrelated email designs — this one and the Django notification
+    templates — that shared no header, button, type scale or colour. Both
+    now render through emails/base.html, so a fix lands once.
 
     Args:
         subject: Email subject line
         recipient_list: List of email addresses
-        headline: Big text at top of email (e.g. "Welcome to RS Systems!")
-        body_paragraphs: List of paragraph strings (plain text, will be escaped)
-        tenant: Optional Tenant for branding (company name, logo, etc.)
-        button_text: Optional primary CTA button text
-        button_url: Optional primary CTA button URL
-        secondary_button_text: Optional secondary button text
-        secondary_button_url: Optional secondary button URL
-        detail_rows: Optional list of (label, value) tuples for a detail box
-        plain_text: Optional override for plain-text version
+        headline: The news, as a sentence — say what the subject line says
+        body_paragraphs: List of paragraph strings (escaped on render)
+        tenant: Optional Tenant for branding (company name, logo, colour)
+        platform: True for mail from RS Systems itself (subscription,
+            billing, account). Forces the platform identity and colour and
+            puts the shop's name in `header_meta` instead — a shop's brand
+            colour must never appear on a platform email.
+        lede: Optional one-sentence subhead under the headline
+        note: Optional quiet closing line under the action
+        preheader: Optional inbox preview line (defaults to the lede)
+        pill_label / pill_tone: Optional status pill. Tones are in
+            core/templatetags/email_ui.py.
+        header_meta: Optional right side of the header (a job or invoice ref)
+        unsubscribe_path: Optional path for the preferences link
+        button_text / button_url: The one primary action
+        secondary_button_text / secondary_button_url: Rendered as a plain
+            link under the primary, not a competing button
+        detail_rows: Rows for the detail block — see _normalize_detail_rows
+        plain_text: Optional override for the plain-text alternative
         from_email: Override from address
         cc: Optional CC list
         attachments: Optional list of (filename, content, mimetype) tuples
         fail_silently: Whether to suppress send errors
+        tracking_pixel_url: Optional open-tracking pixel (invoice emails)
         headers: Optional dict of extra message headers (e.g. List-Unsubscribe,
             X-SES-MESSAGE-TAGS for SES event correlation)
 
     Returns:
         int: Number of emails sent (0 or 1)
     """
-    # Branding
-    company_name = 'RS Systems'
-    company_phone = ''
-    company_address = ''
-    primary_color = '#1e40af'
-    button_color = '#2563eb'
-    reply_to_email = ''
-    if tenant:
-        company_name = tenant.name or company_name
-        company_phone = tenant.business_phone or ''
-        company_address = tenant.business_address or ''
-        reply_to_email = tenant.business_email or ''
-        if getattr(tenant, 'brand_color', '') and tenant.branding_enabled:
-            primary_color = tenant.brand_color
-            button_color = tenant.brand_color
+    from django.template.loader import render_to_string
 
-    # Build plain text fallback
+    from core.models.email_branding import EmailBrandingConfig
+
+    # Identity. A platform email (subscription, billing, account) is from
+    # RS Systems, so it resolves branding with no tenant — platform name,
+    # platform blue — and carries the shop's name on the right of the header
+    # instead. Letting a shop's brand colour onto a platform email is how
+    # an owner ends up unable to tell who is asking them for money.
+    branding = EmailBrandingConfig.get_tenant_context(None if platform else tenant)
+    if platform and tenant is not None and not header_meta:
+        header_meta = tenant.name or ''
+    reply_to_email = '' if platform else (tenant.business_email or '' if tenant else '')
+
+    rows = _normalize_detail_rows(detail_rows)
+    context = {
+        'subject': subject,
+        'headline': headline,
+        'lede': lede,
+        'note': note,
+        'preheader': preheader or lede or '',
+        'pill_label': pill_label,
+        'pill_tone': pill_tone,
+        'header_meta': header_meta,
+        'unsubscribe_path': unsubscribe_path,
+        'body_paragraphs': body_paragraphs or [],
+        'detail_rows': rows,
+        'button_text': button_text,
+        'button_url': button_url,
+        'secondary_button_text': secondary_button_text,
+        'secondary_button_url': secondary_button_url,
+        'tracking_pixel_url': tracking_pixel_url,
+        'branding': branding,
+        'base_url': getattr(settings, 'SITE_URL', 'https://rssystems.io').rstrip('/'),
+    }
+
+    html = render_to_string('emails/generic.html', context)
     if not plain_text:
-        plain_text = f"{headline}\n\n"
-        plain_text += "\n\n".join(body_paragraphs)
-        if detail_rows:
-            plain_text += "\n\n"
-            for label, value in detail_rows:
-                plain_text += f"  {label}: {value}\n"
-        if button_url:
-            plain_text += f"\n{button_text or 'Click here'}: {button_url}\n"
-        plain_text += f"\n\n— {company_name}"
-        if company_phone:
-            plain_text += f"\n{company_phone}"
+        # Rendered from the same context as the HTML, so the two halves
+        # cannot say different things. The template owns the layout — the
+        # rows of '=' rulers this used to emit are gone for good.
+        plain_text = render_to_string('emails/generic.txt', context).strip() + '\n'
 
-    # Build paragraphs HTML
-    paragraphs_html = ''
-    for p in body_paragraphs:
-        paragraphs_html += f'<p style="font-size:15px;color:#374151;margin:0 0 16px;line-height:1.6;">{escape(p)}</p>'
-
-    # Detail box
-    details_html = ''
-    if detail_rows:
-        rows = ''
-        for label, value in detail_rows:
-            rows += f'<tr><td style="padding:4px 0;color:#6b7280;">{escape(str(label))}</td><td style="text-align:right;font-weight:600;color:#111827;">{escape(str(value))}</td></tr>'
-        details_html = f'''
-        <div style="background-color:#f9fafb;border-radius:8px;padding:16px;margin-bottom:20px;">
-            <table style="width:100%;font-size:14px;">{rows}</table>
-        </div>'''
-
-    # Primary button
-    button_html = ''
-    if button_text and button_url:
-        button_html = f'''
-        <div style="text-align:center;margin:24px 0;">
-            <a href="{escape(button_url)}" style="display:inline-block;padding:14px 32px;background-color:{button_color};color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;border-radius:8px;">
-                {escape(button_text)}
-            </a>
-        </div>'''
-
-    # Secondary button
-    secondary_html = ''
-    if secondary_button_text and secondary_button_url:
-        secondary_html = f'''
-        <div style="text-align:center;margin:16px 0;">
-            <a href="{escape(secondary_button_url)}" style="display:inline-block;padding:10px 24px;background-color:#ffffff;color:{button_color};text-decoration:none;font-size:14px;font-weight:500;border:2px solid {button_color};border-radius:8px;">
-                {escape(secondary_button_text)}
-            </a>
-        </div>'''
-
-    # Footer
-    footer_parts = [f'<p style="margin:0;font-size:13px;color:#6b7280;font-weight:600;">{escape(company_name)}</p>']
-    if company_address:
-        footer_parts.append(f'<p style="margin:4px 0 0;font-size:12px;color:#9ca3af;">{escape(company_address)}</p>')
-    if company_phone:
-        footer_parts.append(f'<p style="margin:4px 0 0;font-size:12px;color:#9ca3af;">{escape(company_phone)}</p>')
-    footer_html = '\n'.join(footer_parts)
-
-    # Open-tracking pixel (e.g. invoice emails — loading it marks the
-    # invoice viewed). Not escaped: callers pass a URL we built ourselves.
-    pixel_html = ''
-    if tracking_pixel_url:
-        pixel_html = (
-            f'<img src="{tracking_pixel_url}" width="1" height="1" alt="" '
-            f'style="display:block;width:1px;height:1px;border:0;overflow:hidden;">'
-        )
-
-    html = f'''<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-<div style="max-width:600px;margin:0 auto;padding:20px;">
-
-<!-- Header -->
-<div style="background-color:{primary_color};padding:24px;border-radius:12px 12px 0 0;text-align:center;">
-    <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">{escape(company_name)}</h1>
-</div>
-
-<!-- Body -->
-<div style="background-color:#ffffff;padding:32px 40px;border:1px solid #e5e7eb;border-top:none;">
-    <h2 style="font-size:22px;color:#111827;margin:0 0 20px;font-weight:700;">{escape(headline)}</h2>
-    {paragraphs_html}
-    {details_html}
-    {button_html}
-    {secondary_html}
-</div>
-
-<!-- Footer -->
-<div style="padding:16px 24px;text-align:center;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;background-color:#f9fafb;">
-    {footer_html}
-</div>
-
-{pixel_html}
-</div>
-</body>
-</html>'''
-
+    # A platform email is from RS Systems, not "<Shop> via RS Systems" —
+    # the From line has to agree with the header the reader is looking at,
+    # and replies about a subscription must not land in the shop's inbox.
     default_from, reply_to = shop_sender(
-        shop_name=tenant.name if tenant else None,
+        shop_name=None if platform else (tenant.name if tenant else None),
         reply_to_email=reply_to_email,
     )
     email = EmailMultiAlternatives(

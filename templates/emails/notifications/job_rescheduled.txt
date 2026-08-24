@@ -1,31 +1,16 @@
-================================================
-{{ branding.company_name }}
-SCHEDULE CHANGE - {{ day|upper }}
-================================================
+{% load email_ui %}{% autoescape off %}Two of your jobs traded times.
 
-{{ lead|default:"Two of your jobs traded times. Nothing was added or removed." }}
+Nothing was added and nothing was removed from {{ day }}.
 
-================================================
-{% if second_job %}NEW TIMES{% else %}NEW TIME{% endif %}
-================================================
+  {{ first_time|pad_label }}{{ first_job }}
+  {{ second_time|pad_label }}{{ second_job }}
 
-{{ first_time }}   {{ first_job }}
-{% if second_job %}
-{{ second_time }}   {{ second_job }}
-{% endif %}
-================================================
-VIEW YOUR DAY
-================================================
-
+View your day
 {{ base_url }}{{ action_url }}
 
-================================================
-
-{{ branding.footer_text }}
-
-Manage notification preferences:
-{{ base_url }}/tech/notifications/preferences/
-
+--
 {{ branding.company_name }}
-{% if branding.company_address %}{{ branding.company_address }}
-{% endif %}{% if branding.website_url %}{{ branding.website_url }}{% endif %}
+
+Manage notification preferences
+{{ base_url }}/tech/notifications/preferences/
+{% endautoescape %}

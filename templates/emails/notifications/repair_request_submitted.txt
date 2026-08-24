@@ -1,28 +1,20 @@
-NEW REPAIR REQUEST - Unit {{ unit_number }}
+{% load email_ui %}{% autoescape off %}A customer requested a repair.
 
-Hello,
+{{ customer_name }}
 
-{{ customer_name }} has submitted a new windshield repair request that needs to be reviewed and assigned.
+{% if customer_name %}  {{ "Customer"|pad_label }}{{ customer_name }}
+{% endif %}{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% if damage_type %}  {{ "Damage"|pad_label }}{{ damage_type }}
+{% endif %}
+Review and assign
+{{ base_url }}{{ action_url }}
 
-REQUEST DETAILS
-===============
-Request ID: #{{ repair_id }}
-Customer: {{ customer_name }}
-Unit Number: {{ unit_number }}
-Damage Type: {{ damage_type }}
-Status: Awaiting Assignment
+Photos and notes the customer left are on the request page.
 
-ACTION REQUIRED
-===============
-Please review this repair request and assign a technician to handle it. The customer will be notified of any updates.
-
-Review and assign the request here:
-{{ action_url }}
-
-Need more info? Click the link above to view full request details including any photos or notes submitted by the customer.
-
----
+--
 {{ branding.company_name }}
-{{ branding.company_address }}
 
-To manage your notification preferences, visit your account settings.
+Manage notification preferences
+{{ base_url }}/tech/notifications/preferences/
+{% endautoescape %}

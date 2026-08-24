@@ -1,0 +1,27 @@
+{% extends "emails/base.html" %}
+{% comment %}Technician, the customer approved a replacement. Order the glass.{% endcomment %}
+
+{% block email_title %}Replacement approved{% endblock %}
+{% block header_meta %}Replacement #{{ replacement_id }}{% endblock %}
+{% block preheader %}Approved by the customer. The glass can be ordered.{% endblock %}
+{% block unsubscribe_url %}/tech/notifications/preferences/{% endblock %}
+
+{% block content %}
+{% include "emails/components/pill.html" with label="Approved" tone="indigo" %}
+{% include "emails/components/headline.html" with headline="The customer approved this replacement." lede="The glass can be ordered." %}
+
+{% include "emails/components/rows_start.html" %}
+    {% if customer_name %}{% include "emails/components/row.html" with label="Customer" value=customer_name %}{% endif %}
+    {% include "emails/components/vehicle_row.html" %}
+    {% if glass_position %}{% include "emails/components/row.html" with label="Glass" value=glass_position %}{% endif %}
+    {% if glass_type %}{% include "emails/components/row.html" with label="Glass type" value=glass_type %}{% endif %}
+    {% if nags_number %}{% include "emails/components/row.html" with label="NAGS part" value=nags_number %}{% endif %}
+    {% if needs_adas %}{% include "emails/components/row.html" with label="ADAS recalibration" value="Required" %}{% endif %}
+    {% if service_location %}{% include "emails/components/row.html" with label="Where" value=service_location %}{% endif %}
+    {% if job_cost_display %}{% include "emails/components/row.html" with label="Price" value=job_cost_display strong=1 %}{% endif %}
+{% include "emails/components/rows_end.html" %}
+
+{% with url=base_url|add:action_url %}
+{% include "emails/components/button.html" with text="Open job" url=url color=branding.primary_color %}
+{% endwith %}
+{% endblock %}

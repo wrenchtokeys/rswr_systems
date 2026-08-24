@@ -1,0 +1,19 @@
+{% comment %}
+Opens the detail-row block. Pair with rows_end.html, put row.html between:
+
+    {% include "emails/components/rows_start.html" %}
+        {% include "emails/components/row.html" with label="Unit" value=repair.unit_number %}
+        {% include "emails/components/row.html" with label="Total" value=total strong=1 %}
+    {% include "emails/components/rows_end.html" %}
+
+Open/close rather than one include taking a list, because a Django template
+cannot build a list and the rows differ per email. Every row is optional at
+the call site — wrap it in {% if %} and print nothing rather than an empty
+shell or a bare noun with no value after it.
+
+Hairline rules, not a bordered box. A box needs the last row to drop its
+separator, which a template cannot know, and Outlook squares border-radius
+anyway — so the box only ever existed in half the clients. A top rule, a
+rule between each row and a closing rule renders the same everywhere.
+{% endcomment %}
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:26px; border-top:1px solid #e8eaed;">

@@ -28,6 +28,9 @@ _repair_previous_status = {}
 # decision needs the old status too (REQUESTED → APPROVED acceptance).
 _repair_prev_assignment_state = {}
 _replacement_prev_assignment_state = {}
+# Old status for the replacement lifecycle handler. Kept apart from the
+# assignment tuple above because _handle_assignment_change pops that one.
+_replacement_previous_status = {}
 
 
 @receiver(pre_save, sender=Repair)
@@ -63,6 +66,12 @@ def track_replacement_changes(sender, instance, **kwargs):
             _replacement_prev_assignment_state[instance.pk] = (
                 old.queue_status, old.technician
             )
+            # A SEPARATE record of the old status for the lifecycle handler.
+            # It cannot read the tuple above: _handle_assignment_change pops
+            # that entry, and its receiver is registered first, so by the time
+            # the lifecycle handler runs the status is always gone and no
+            # notification would ever fire.
+            _replacement_previous_status[instance.pk] = old.queue_status
         except Replacement.DoesNotExist:
             pass
 
@@ -178,6 +187,170 @@ def handle_replacement_assignment(sender, instance, created, **kwargs):
     """Notify on replacement assignment/reassignment — replacements previously
     had no assignment signals at all."""
     _handle_assignment_change(instance, created, _replacement_prev_assignment_state)
+
+
+@receiver(post_save, sender=Replacement)
+def handle_replacement_status_change(sender, instance, created, **kwargs):
+    """Replacement lifecycle notifications, mirroring the repair ones.
+
+    Replacements had no lifecycle templates at all until now, so a customer
+    booking the shop's most expensive job heard less than one booking a $40
+    chip repair. The transitions match handle_repair_status_change, with one
+    difference that matters: a customer-created replacement enters as
+    REQUESTED with no price on it (the shop sources the glass and quotes it),
+    so the customer gets "we have your request", not "it is booked".
+
+    Status events:
+    - created REQUESTED  -> customer confirmation + shop "needs pricing"
+    - -> PENDING         -> customer approval needed (the shop has priced it)
+    - PENDING -> APPROVED-> technician: order the glass
+    - PENDING -> DENIED  -> technician: do not order
+    - -> IN_PROGRESS     -> customer: work started
+    - -> COMPLETED       -> customer: done
+    """
+    old_status = _replacement_previous_status.pop(instance.pk, None)
+
+    if created:
+        if instance.queue_status == 'REQUESTED':
+            _notify_customer_replacement_received(instance)
+            _notify_shop_replacement_needs_pricing(instance)
+        elif instance.queue_status == 'PENDING':
+            _notify_customer_replacement_approval_needed(instance)
+        return
+
+    if not old_status or old_status == instance.queue_status:
+        return
+
+    logger.info(
+        f"Replacement {instance.pk} status changed: "
+        f"{old_status} → {instance.queue_status}"
+    )
+
+    if instance.queue_status == 'PENDING':
+        _notify_customer_replacement_approval_needed(instance)
+    elif instance.queue_status == 'APPROVED' and old_status == 'PENDING':
+        _notify_technician_replacement_approved(instance)
+    elif instance.queue_status == 'DENIED' and old_status == 'PENDING':
+        _notify_technician_replacement_denied(instance)
+    elif instance.queue_status == 'IN_PROGRESS':
+        _notify_customer_replacement_in_progress(instance)
+    elif instance.queue_status == 'COMPLETED':
+        _notify_customer_replacement_completed(instance)
+
+
+# ---- Replacement notification senders --------------------------------------
+#
+# Notification.repair is a Repair-only FK, so these cannot pass the job as
+# `repair=` the way the repair senders do. They call job_display_context()
+# directly instead — the same helper create_notification uses — so both job
+# types put the same derived values in front of the templates.
+
+def _replacement_context(replacement, action_url, **extra):
+    """Flat, JSON-serializable context for a replacement notification."""
+    from core.services.notification_service import job_display_context
+
+    context = job_display_context(replacement)
+    context.update({
+        'replacement_id': replacement.pk,
+        'unit_number': replacement.unit_number,
+        'customer_name': replacement.customer.name if replacement.customer else '',
+        'action_url': action_url,
+    })
+    technician = getattr(replacement, 'technician', None)
+    if technician and getattr(technician, 'user', None):
+        context['technician_name'] = (
+            technician.user.get_full_name() or technician.user.username
+        )
+    context.update(extra)
+    return context
+
+
+def _notify_customer_replacement(replacement, template_name, action_url, **extra):
+    """Send a replacement notification to the customer. Never raises."""
+    if not replacement.customer:
+        return
+    try:
+        NotificationService.create_notification(
+            recipient=replacement.customer,
+            template_name=template_name,
+            context=_replacement_context(replacement, action_url, **extra),
+            customer=replacement.customer,
+        )
+    except Exception:
+        logger.warning(
+            f"Failed to send {template_name} for replacement {replacement.pk}",
+            exc_info=True,
+        )
+
+
+def _notify_technician_replacement(replacement, template_name, action_url, **extra):
+    """Send a replacement notification to the assigned technician."""
+    technician = getattr(replacement, 'technician', None)
+    if not technician:
+        return
+    try:
+        NotificationService.create_notification(
+            recipient=technician,
+            template_name=template_name,
+            context=_replacement_context(replacement, action_url, **extra),
+            customer=replacement.customer,
+        )
+    except Exception:
+        logger.warning(
+            f"Failed to send {template_name} for replacement {replacement.pk}",
+            exc_info=True,
+        )
+
+
+def _notify_customer_replacement_received(replacement):
+    _notify_customer_replacement(
+        replacement, 'replacement_request_received',
+        f'/app/replacements/{replacement.pk}/',
+        customer_notes=getattr(replacement, 'customer_notes', '') or '',
+    )
+
+
+def _notify_shop_replacement_needs_pricing(replacement):
+    _notify_technician_replacement(
+        replacement, 'replacement_request_submitted',
+        f'/tech/replacements/{replacement.pk}/',
+        customer_notes=getattr(replacement, 'customer_notes', '') or '',
+    )
+
+
+def _notify_customer_replacement_approval_needed(replacement):
+    _notify_customer_replacement(
+        replacement, 'replacement_pending_approval',
+        f'/app/replacements/{replacement.pk}/',
+    )
+
+
+def _notify_technician_replacement_approved(replacement):
+    _notify_technician_replacement(
+        replacement, 'replacement_approved',
+        f'/tech/replacements/{replacement.pk}/',
+    )
+
+
+def _notify_technician_replacement_denied(replacement):
+    _notify_technician_replacement(
+        replacement, 'replacement_denied',
+        f'/tech/replacements/{replacement.pk}/',
+    )
+
+
+def _notify_customer_replacement_in_progress(replacement):
+    _notify_customer_replacement(
+        replacement, 'replacement_in_progress',
+        f'/app/replacements/{replacement.pk}/',
+    )
+
+
+def _notify_customer_replacement_completed(replacement):
+    _notify_customer_replacement(
+        replacement, 'replacement_completed',
+        f'/app/replacements/{replacement.pk}/',
+    )
 
 
 # ============================================================================

@@ -1,0 +1,25 @@
+{% extends "emails/base.html" %}
+{% comment %}
+Customer, their replacement request landed. Unlike a repair request, this
+one is NOT accepted yet — the shop has to source the glass and price it
+first, so the email must not imply the job is booked.
+{% endcomment %}
+
+{% block email_title %}Replacement request received{% endblock %}
+{% block header_meta %}Request #{{ replacement_id }}{% endblock %}
+{% block preheader %}We will price it and come back to you.{% endblock %}
+
+{% block content %}
+{% include "emails/components/pill.html" with label="Submitted" tone="yellow" %}
+{% include "emails/components/headline.html" with headline="We have your replacement request." lede="We will confirm the glass and the price before any work begins. Nothing is charged yet." %}
+
+{% include "emails/components/rows_start.html" %}
+    {% include "emails/components/vehicle_row.html" %}
+    {% if glass_position %}{% include "emails/components/row.html" with label="Glass" value=glass_position %}{% endif %}
+    {% if customer_notes %}{% include "emails/components/row.html" with label="Your notes" value=customer_notes %}{% endif %}
+{% include "emails/components/rows_end.html" %}
+
+{% with url=base_url|add:action_url %}
+{% include "emails/components/button.html" with text="Track your request" url=url color=branding.primary_color %}
+{% endwith %}
+{% endblock %}

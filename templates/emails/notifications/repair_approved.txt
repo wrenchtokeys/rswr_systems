@@ -1,49 +1,20 @@
-================================================
-{{ branding.company_name }}
-REPAIR APPROVED
-================================================
+{% load email_ui %}{% autoescape off %}The customer approved this repair.
 
-Good news! Your windshield repair has been approved and will begin shortly.
+It is ready to work.
 
-================================================
-REPAIR DETAILS
-================================================
-
-Repair ID:          #{{ repair.id }}
-Unit Number:        {{ repair.unit_number }}
-{% if repair.customer %}Company:            {{ repair.customer.company_name }}
-{% endif %}Break Description:  {{ repair.break_description }}
-Cost:               ${{ repair.total_cost }}
-Requested Date:     {{ repair.requested_repair_date|date:"M d, Y" }}
-
-================================================
-WHAT HAPPENS NEXT?
-================================================
-
-1. A technician will be assigned to your repair
-2. You'll receive a notification when work begins
-3. We'll notify you again when the repair is complete
-
-================================================
-VIEW REPAIR DETAILS
-================================================
-
-{{ view_repair_url }}
-
-================================================
-QUESTIONS?
-================================================
-
-{% if branding.support_email %}Email: {{ branding.support_email }}
-{% endif %}{% if branding.support_phone %}Phone: {{ branding.support_phone }}
+{% if customer_name %}  {{ "Customer"|pad_label }}{{ customer_name }}
+{% endif %}{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% if damage_description %}  {{ "Damage"|pad_label }}{{ damage_description }}
+{% endif %}{% if service_location %}  {{ "Where"|pad_label }}{{ service_location }}
+{% endif %}{% if job_cost_display %}  {{ "Price"|pad_label }}{{ job_cost_display }}
 {% endif %}
-================================================
+Open job
+{{ base_url }}{{ action_url }}
 
-{{ branding.footer_text }}
-
-Manage notification preferences:
-{{ unsubscribe_url }}
-
+--
 {{ branding.company_name }}
-{% if branding.company_address %}{{ branding.company_address }}
-{% endif %}{% if branding.website_url %}{{ branding.website_url }}{% endif %}
+
+Manage notification preferences
+{{ base_url }}/tech/notifications/preferences/
+{% endautoescape %}

@@ -1,42 +1,23 @@
-================================================
-{{ branding.company_name }}
-NEW {{ job_type|default:"Repair"|upper }} ASSIGNMENT
-================================================
+{% load email_ui %}{% autoescape off %}You have a new job.
 
-You've been assigned a new job. Please review the details below.
-
-================================================
-{{ job_type|default:"Repair"|upper }} #{% firstof job_id repair_id %}
-Unit {{ unit_number }}
-================================================
-
-CUSTOMER:     {{ customer_name }}
-{% if scheduled_when %}
-SCHEDULED:    {{ scheduled_when }}
+{% if customer_name %}{{ customer_name }}
 {% endif %}
-STATUS:       {{ status }}
-{% if description %}
-DETAILS:      {{ description }}
+{% if customer_name %}  {{ "Customer"|pad_label }}{{ customer_name }}
+{% endif %}{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% if scheduled_when %}  {{ "When"|pad_label }}{{ scheduled_when }}
+{% endif %}{% if description %}  {{ "Damage"|pad_label }}{{ description }}
+{% endif %}{% if service_location %}  {{ "Where"|pad_label }}{{ service_location }}
+{% endif %}{% if status %}  {{ "Status"|pad_label }}{{ status }}
 {% endif %}
-================================================
-VIEW JOB DETAILS
-================================================
-
+Open job
 {{ base_url }}{{ action_url }}
 
-================================================
-ACTION REQUIRED
-================================================
+Mark it in progress when you start — the customer is told automatically.
 
-Please review this assignment and update the status once you begin work.
-
-================================================
-
-{{ branding.footer_text }}
-
-Manage notification preferences:
-{{ base_url }}/tech/notifications/preferences/
-
+--
 {{ branding.company_name }}
-{% if branding.company_address %}{{ branding.company_address }}
-{% endif %}{% if branding.website_url %}{{ branding.website_url }}{% endif %}
+
+Manage notification preferences
+{{ base_url }}/tech/notifications/preferences/
+{% endautoescape %}

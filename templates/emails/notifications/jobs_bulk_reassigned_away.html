@@ -1,45 +1,28 @@
 {% extends "emails/base.html" %}
+{% comment %}Technician, several jobs left their queue. Context: job_count, job_summary, new_technician_name, action_url.{% endcomment %}
 
-{% block email_title %}{{ job_count }} job{{ job_count|pluralize }} reassigned to {{ new_technician_name }}{% endblock %}
-
-{% block preheader %}{{ job_count }} of your job{{ job_count|pluralize }} {{ job_count|pluralize:"was,were" }} reassigned to {{ new_technician_name }}.{% endblock %}
+{% block email_title %}{{ job_count }} job{{ job_count|pluralize }} reassigned{% endblock %}
+{% block header_meta %}{{ job_count }} job{{ job_count|pluralize }}{% endblock %}
+{% block preheader %}Off your list. The rest of your day is unchanged.{% endblock %}
+{% block unsubscribe_url %}/tech/notifications/preferences/{% endblock %}
 
 {% block content %}
-<!-- Info Badge -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-    <tr>
-        <td style="text-align: center; padding-bottom: 20px;">
-            <div style="display: inline-block; background-color: #6c757d; color: white; padding: 10px 20px; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 14px; font-weight: bold; letter-spacing: 0.5px;">
-                REASSIGNED
-            </div>
-        </td>
-    </tr>
-</table>
+{% include "emails/components/pill.html" with label="Reassigned away" tone="gray" %}
+{% if job_count == 1 %}
+    {% include "emails/components/headline.html" with headline="A job moved off your list." lede="You are no longer responsible for it. Nothing else on your schedule changed." %}
+{% else %}
+    {% with h=job_count|stringformat:"s"|add:" jobs moved off your list." %}
+    {% include "emails/components/headline.html" with headline=h lede="You are no longer responsible for them. Nothing else on your schedule changed." %}
+    {% endwith %}
+{% endif %}
 
-<!-- Main Heading -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-    <tr>
-        <td style="padding-bottom: 20px;">
-            <h1 style="margin: 0; color: {{ branding.text_color }}; font-family: {{ branding.heading_font }}; font-size: 24px; font-weight: bold; line-height: 1.3;">
-                {{ job_count }} job{{ job_count|pluralize }} reassigned
-            </h1>
-            <p style="margin: 10px 0 0 0; color: #666666; font-family: {{ branding.body_font }}; font-size: 16px; line-height: 24px;">
-                {{ job_count }} of your job{{ job_count|pluralize }} ({{ job_summary }}) {{ job_count|pluralize:"was,were" }} reassigned to {{ new_technician_name }}. You are no longer responsible for {{ job_count|pluralize:"it,them" }}.
-            </p>
-        </td>
-    </tr>
-</table>
+{% include "emails/components/rows_start.html" %}
+    {% include "emails/components/row.html" with label="Jobs" value=job_summary %}
+    {% if new_technician_name %}{% include "emails/components/row.html" with label="Now assigned to" value=new_technician_name %}{% endif %}
+{% include "emails/components/rows_end.html" %}
 
-<!-- CTA Button -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 30px;">
-    <tr>
-        <td style="text-align: center;">
-            <a href="{{ base_url }}{{ action_url }}" style="display: inline-block; background-color: {{ branding.primary_color }}; color: white; padding: 14px 36px; text-decoration: none; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 16px; font-weight: bold;">
-                View Your Jobs
-            </a>
-        </td>
-    </tr>
-</table>
+{% with url=base_url|add:action_url %}
+{% include "emails/components/button.html" with text="View your day" url=url color=branding.primary_color %}
+{% endwith %}
+{% include "emails/components/note.html" with text="Questions about the change go to your manager." %}
 {% endblock %}
-
-{% block unsubscribe_url %}/tech/notifications/preferences/{% endblock %}

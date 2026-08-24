@@ -1,0 +1,27 @@
+{% load email_ui %}{% autoescape off %}Your glass replacement is done.
+
+The new glass is in and the job is finished.
+
+{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% if glass_position %}  {{ "Glass"|pad_label }}{{ glass_position }}
+{% endif %}{% if glass_type %}  {{ "Glass type"|pad_label }}{{ glass_type }}
+{% endif %}{% if needs_adas %}  {{ "ADAS recal."|pad_label }}Completed
+{% endif %}{% if technician_name %}  {{ "Technician"|pad_label }}{{ technician_name }}
+{% endif %}{% if completed_on %}  {{ "Completed"|pad_label }}{{ completed_on }}
+{% endif %}{% if warranty_display %}  {{ "Warranty"|pad_label }}{{ warranty_display }}
+{% endif %}{% if job_cost_display %}  {{ "Total"|pad_label }}{{ job_cost_display }}
+{% endif %}
+View the details
+{{ base_url }}{{ action_url }}
+
+Your technician will have told you how long to wait before driving.
+
+--
+{{ branding.company_name }}{% if branding.company_address %}
+{{ branding.company_address }}{% endif %}{% if branding.support_phone %}
+{{ branding.support_phone }}{% endif %}
+
+Manage notification preferences
+{{ base_url }}/app/notifications/preferences/
+{% endautoescape %}

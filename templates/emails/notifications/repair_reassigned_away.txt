@@ -1,25 +1,21 @@
-REPAIR REASSIGNED - Unit {{ unit_number }}
+{% load email_ui %}{% autoescape off %}A job moved off your list.
 
-The repair for unit {{ unit_number }} has been reassigned to another technician.
+You are no longer responsible for it. Nothing else on your schedule
+changed.
 
-REPAIR DETAILS
-==============
-Repair ID: #{{ repair_id }}
-Unit Number: {{ unit_number }}
-Customer: {{ customer_name }}
-New Technician: {{ new_technician_name }}
-
-WHAT THIS MEANS
-===============
-This repair has been reassigned to {{ new_technician_name }}. You are no longer responsible for this repair.
-
-If you have any questions about this change, please contact your manager.
-
-View repair details:
+{% if customer_name %}  {{ "Customer"|pad_label }}{{ customer_name }}
+{% endif %}{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% if new_technician_name %}  {{ "Now assigned to"|pad_label }}{{ new_technician_name }}
+{% endif %}
+View your day
 {{ base_url }}{{ action_url }}
 
----
-{{ branding.company_name }}
-{{ branding.company_address }}
+Questions about the change go to your manager.
 
-To manage your notification preferences, visit your account settings.
+--
+{{ branding.company_name }}
+
+Manage notification preferences
+{{ base_url }}/tech/notifications/preferences/
+{% endautoescape %}

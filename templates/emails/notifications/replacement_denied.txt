@@ -1,0 +1,18 @@
+{% load email_ui %}{% autoescape off %}The customer declined this replacement.
+
+{% if denial_reason %}{{ denial_reason }}{% else %}No reason was given. Do not order the glass.{% endif %}
+
+{% if customer_name %}  {{ "Customer"|pad_label }}{{ customer_name }}
+{% endif %}{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% if glass_position %}  {{ "Glass"|pad_label }}{{ glass_position }}
+{% endif %}
+View the job
+{{ base_url }}{{ action_url }}
+
+--
+{{ branding.company_name }}
+
+Manage notification preferences
+{{ base_url }}/tech/notifications/preferences/
+{% endautoescape %}

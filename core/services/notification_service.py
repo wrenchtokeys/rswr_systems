@@ -13,7 +13,81 @@ from datetime import datetime, time
 from typing import Optional, Dict, Any, List
 from django.contrib.contenttypes.models import ContentType
 from django.template import Context, Template
-from django.utils import timezone
+from django.utils import formats, timezone
+
+# Presentation helpers shared with the email templates, so a value formatted
+# into the persisted context matches what a template would have rendered.
+from core.templatetags.email_ui import money, warranty_text
+
+
+def job_display_context(job):
+    """Display values for a Repair or a Replacement, ready for a template.
+
+    These are all PLAIN STRINGS on purpose. A notification's context is
+    persisted as JSON on the Notification and re-rendered by the email retry
+    path, so the job object itself can never go in — which is why templates
+    that reached for {{ repair.something }} rendered nothing at all.
+    Anything a template needs has to arrive as a serializable value.
+
+    Every value is '' when unknown, and templates drop the whole row rather
+    than print a label with nothing after it.
+
+    Repairs reach this through NotificationService.create_notification, which
+    takes the job as its `repair` kwarg. Replacements cannot use that kwarg —
+    Notification.repair is a Repair-only FK — so their senders call this
+    directly and merge the result into the context they build.
+    """
+    try:
+        customer = getattr(job, 'customer', None)
+        context = {
+            # A fleet job is a unit number, an individual's is their vehicle —
+            # the LABEL changes with the customer, not just the value.
+            'vehicle_identifier': job.get_vehicle_identifier(),
+            'vehicle_label': (
+                customer.vehicle_column_label if customer else 'Unit #'
+            ),
+            # Where the tech is going. An assignment email without an address
+            # is one they have to open the app to act on.
+            'service_location': job.get_service_location(),
+            'damage_description': getattr(job, 'break_description', '') or '',
+            'job_cost_display': money(getattr(job, 'cost', None)),
+            'warranty_display': warranty_text(job),
+            'denial_reason': getattr(job, 'denial_reason', '') or '',
+            # Replacement-only. Blank on a repair, so the rows drop.
+            'glass_position': (
+                job.get_glass_position_display()
+                if hasattr(job, 'get_glass_position_display') else ''
+            ),
+            'glass_type': (
+                job.get_glass_type_display()
+                if hasattr(job, 'get_glass_type_display') else ''
+            ),
+            'nags_number': getattr(job, 'nags_number', '') or '',
+            'parts_cost_display': money(getattr(job, 'parts_cost', None)),
+            'labor_cost_display': money(getattr(job, 'labor_cost', None)),
+            'needs_adas': bool(getattr(job, 'requires_adas_calibration', False)),
+        }
+        completed = getattr(job, 'actual_repair_date', None)
+        context['completed_on'] = (
+            formats.date_format(completed, 'F j, Y') if completed else ''
+        )
+        requested = getattr(job, 'requested_repair_date', None)
+        context['requested_on'] = (
+            formats.date_format(requested, 'F j, Y') if requested else ''
+        )
+        # No scheduled-time value here on purpose. assignments._booked_when()
+        # already formats one ('Tue Aug 19, 8:00 AM – 12:00 PM', window
+        # included) and passes it as `scheduled_when`; a second formatter
+        # would be a fourth helper for a job the third already does, and the
+        # two would drift.
+        return context
+    except Exception:
+        logger.warning(
+            "Could not derive job details for notification; templates will "
+            "drop the rows they cannot fill",
+            exc_info=True,
+        )
+        return {}
 from core.models.notification import Notification
 from core.models.notification_template import NotificationTemplate
 from core.models.notification_preferences import (
@@ -99,6 +173,14 @@ class NotificationService:
                     tenant = getattr(recipient, 'tenant', None)
                 from core.models.email_branding import EmailBrandingConfig
                 context['branding'] = EmailBrandingConfig.get_tenant_context(tenant)
+
+            # Job facts the templates need, derived once rather than in
+            # fourteen templates and at every call site. Replacements go
+            # through job_display_context() at their call site instead,
+            # because Notification.repair is a Repair-only FK.
+            if repair is not None:
+                for key, value in job_display_context(repair).items():
+                    context.setdefault(key, value)
 
             # Render template content
             rendered = template.render(context)

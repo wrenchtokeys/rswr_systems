@@ -1,159 +1,24 @@
 {% extends "emails/base.html" %}
+{% comment %}Technician, the customer approved. Flat context — see repair_completed.html.{% endcomment %}
 
-{% block email_title %}Repair Approved - {{ repair.unit_number }}{% endblock %}
-
-{% block preheader %}Your windshield repair for unit {{ repair.unit_number }} has been approved and is ready to begin.{% endblock %}
+{% block email_title %}Repair approved{% endblock %}
+{% block header_meta %}Repair #{{ repair_id }}{% endblock %}
+{% block preheader %}Approved by the customer. Ready to work.{% endblock %}
+{% block unsubscribe_url %}/tech/notifications/preferences/{% endblock %}
 
 {% block content %}
-<!-- Success Badge -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-    <tr>
-        <td style="text-align: center; padding-bottom: 20px;">
-            <div style="display: inline-block; background-color: {{ branding.success_color }}; color: white; padding: 10px 20px; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 14px; font-weight: bold; letter-spacing: 0.5px;">
-                ✓ APPROVED
-            </div>
-        </td>
-    </tr>
-</table>
+{% include "emails/components/pill.html" with label="Approved" tone="indigo" %}
+{% include "emails/components/headline.html" with headline="The customer approved this repair." lede="It is ready to work." %}
 
-<!-- Main Heading -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-    <tr>
-        <td style="padding-bottom: 20px;">
-            <h1 style="margin: 0; color: {{ branding.text_color }}; font-family: {{ branding.heading_font }}; font-size: 24px; font-weight: bold; line-height: 1.3;">
-                Repair Approved
-            </h1>
-            <p style="margin: 10px 0 0 0; color: #666666; font-family: {{ branding.body_font }}; font-size: 16px; line-height: 24px;">
-                Good news! Your windshield repair has been approved and will begin shortly.
-            </p>
-        </td>
-    </tr>
-</table>
+{% include "emails/components/rows_start.html" %}
+    {% if customer_name %}{% include "emails/components/row.html" with label="Customer" value=customer_name %}{% endif %}
+    {% include "emails/components/vehicle_row.html" %}
+    {% if damage_description %}{% include "emails/components/row.html" with label="Damage" value=damage_description %}{% endif %}
+    {% if service_location %}{% include "emails/components/row.html" with label="Where" value=service_location %}{% endif %}
+    {% if job_cost_display %}{% include "emails/components/row.html" with label="Price" value=job_cost_display strong=1 %}{% endif %}
+{% include "emails/components/rows_end.html" %}
 
-<!-- Repair Details Card -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f8f9fa; border-radius: 8px; margin-bottom: 30px;">
-    <tr>
-        <td style="padding: 25px;">
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                <tr>
-                    <td style="padding-bottom: 15px; border-bottom: 2px solid {{ branding.primary_color }};">
-                        <h2 style="margin: 0; color: {{ branding.primary_color }}; font-family: {{ branding.heading_font }}; font-size: 18px; font-weight: bold;">
-                            Repair Details
-                        </h2>
-                    </td>
-                </tr>
-                <tr>
-                    <td style="padding-top: 15px;">
-                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                            <tr>
-                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
-                                    <strong style="color: {{ branding.text_color }};">Repair ID:</strong>
-                                    <span style="color: #666666;">#{{ repair.id }}</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
-                                    <strong style="color: {{ branding.text_color }};">Unit Number:</strong>
-                                    <span style="color: #666666;">{{ repair.unit_number }}</span>
-                                </td>
-                            </tr>
-                            {% if repair.customer %}
-                            <tr>
-                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
-                                    <strong style="color: {{ branding.text_color }};">Company:</strong>
-                                    <span style="color: #666666;">{{ repair.customer.company_name }}</span>
-                                </td>
-                            </tr>
-                            {% endif %}
-                            <tr>
-                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
-                                    <strong style="color: {{ branding.text_color }};">Break Description:</strong>
-                                    <span style="color: #666666;">{{ repair.break_description }}</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
-                                    <strong style="color: {{ branding.text_color }};">Cost:</strong>
-                                    <span style="color: {{ branding.success_color }}; font-weight: bold;">${{ repair.total_cost }}</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
-                                    <strong style="color: {{ branding.text_color }};">Requested Date:</strong>
-                                    <span style="color: #666666;">{{ repair.requested_repair_date|date:"M d, Y" }}</span>
-                                </td>
-                            </tr>
-                        </table>
-                    </td>
-                </tr>
-            </table>
-        </td>
-    </tr>
-</table>
-
-<!-- Next Steps Section -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 30px;">
-    <tr>
-        <td style="padding-bottom: 15px;">
-            <h2 style="margin: 0; color: {{ branding.text_color }}; font-family: {{ branding.heading_font }}; font-size: 18px; font-weight: bold;">
-                What Happens Next?
-            </h2>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                <tr>
-                    <td style="padding: 12px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 22px; color: #666666;">
-                        <span style="display: inline-block; width: 24px; height: 24px; background-color: {{ branding.primary_color }}; color: white; border-radius: 50%; text-align: center; line-height: 24px; font-weight: bold; margin-right: 10px;">1</span>
-                        A technician will be assigned to your repair
-                    </td>
-                </tr>
-                <tr>
-                    <td style="padding: 12px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 22px; color: #666666;">
-                        <span style="display: inline-block; width: 24px; height: 24px; background-color: {{ branding.primary_color }}; color: white; border-radius: 50%; text-align: center; line-height: 24px; font-weight: bold; margin-right: 10px;">2</span>
-                        You'll receive a notification when work begins
-                    </td>
-                </tr>
-                <tr>
-                    <td style="padding: 12px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 22px; color: #666666;">
-                        <span style="display: inline-block; width: 24px; height: 24px; background-color: {{ branding.primary_color }}; color: white; border-radius: 50%; text-align: center; line-height: 24px; font-weight: bold; margin-right: 10px;">3</span>
-                        We'll notify you again when the repair is complete
-                    </td>
-                </tr>
-            </table>
-        </td>
-    </tr>
-</table>
-
-<!-- CTA Button -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 20px;">
-    <tr>
-        <td style="text-align: center; padding: 20px 0;">
-            <a href="{{ view_repair_url }}" style="background-color: {{ branding.primary_color }}; color: white; text-decoration: none; padding: 14px 35px; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 16px; font-weight: bold; display: inline-block;">
-                View Repair Details
-            </a>
-        </td>
-    </tr>
-</table>
-
-<!-- Support Note -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-    <tr>
-        <td style="padding: 20px; background-color: #f0f8ff; border-left: 4px solid {{ branding.secondary_color }}; border-radius: 0 4px 4px 0;">
-            <p style="margin: 0; font-family: {{ branding.body_font }}; font-size: 13px; line-height: 20px; color: #555555;">
-                <strong style="color: {{ branding.text_color }};">Questions?</strong>
-                {% if branding.support_email %}
-                Contact us at <a href="mailto:{{ branding.support_email }}" style="color: {{ branding.primary_color }}; text-decoration: none;">{{ branding.support_email }}</a>
-                {% endif %}
-                {% if branding.support_phone %}
-                {% if branding.support_email %} or call {% else %}Call us at {% endif %}
-                <a href="tel:{{ branding.support_phone }}" style="color: {{ branding.primary_color }}; text-decoration: none;">{{ branding.support_phone }}</a>
-                {% endif %}
-            </p>
-        </td>
-    </tr>
-</table>
+{% with url=base_url|add:action_url %}
+{% include "emails/components/button.html" with text="Open job" url=url color=branding.primary_color %}
+{% endwith %}
 {% endblock %}
-
-{% block unsubscribe_url %}/app/notifications/preferences/{% endblock %}

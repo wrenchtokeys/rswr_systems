@@ -1,0 +1,12 @@
+{% comment %}
+A quiet closing line under the action — the thing worth knowing that is
+not worth a row.
+
+    {% include "emails/components/note.html" with text="Photos are on the repair page." %}
+
+Keep it to one sentence. If it needs two, it belongs in the lede or in a
+row; if it needs a heading, it does not belong in the email.
+{% endcomment %}
+{% if text %}
+<p style="margin:16px 0 0 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:21px; color:#9ca3af;">{{ text }}</p>
+{% endif %}

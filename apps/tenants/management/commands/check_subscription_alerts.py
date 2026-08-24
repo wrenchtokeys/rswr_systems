@@ -103,6 +103,8 @@ def _send_alert(tenant, alert_key, subject, body, dry_run=False,
                 button_text=button_text,
                 button_url=button_url,
                 tenant=tenant,
+                # Billing mail is the platform's voice, never the shop's.
+                platform=True,
             )
         else:
             # Fallback: wrap plain-text body in branded template
@@ -113,6 +115,7 @@ def _send_alert(tenant, alert_key, subject, body, dry_run=False,
                 headline=subject,
                 body_paragraphs=[body] if body else ['A subscription event occurred.'],
                 tenant=tenant,
+                platform=True,
             )
     except Exception as e:
         logger.error(

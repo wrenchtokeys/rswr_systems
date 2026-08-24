@@ -120,9 +120,12 @@ class ReplacementApproveAtomicityTests(TestCase):
         replacement = self._make_replacement('PENDING')
         url = f'/app/replacements/{replacement.id}/approve/'
         self.client.post(url, {'notes': ''})
+        # Wording changed with the email/notification overhaul: the message
+        # leads with the actor and drops the shouted status and the emoji.
+        # What is under test is that exactly one is written, not the phrasing.
         notif = TechnicianNotification.objects.filter(
             technician=self.technician,
-            message__contains=f'Replacement #{replacement.id} APPROVED',
+            message__contains=f'approved replacement #{replacement.id}',
         )
         self.assertEqual(notif.count(), 1)
 
@@ -186,7 +189,7 @@ class ReplacementApproveAtomicityTests(TestCase):
         self.client.post(url, {'reason': 'Too expensive'})
         notif = TechnicianNotification.objects.filter(
             technician=self.technician,
-            message__contains=f'Replacement #{replacement.id} DENIED',
+            message__contains=f'declined replacement #{replacement.id}',
         )
         self.assertEqual(notif.count(), 1)
         self.assertIn('Too expensive', notif.first().message)

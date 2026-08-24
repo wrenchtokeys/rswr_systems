@@ -1,0 +1,26 @@
+{% extends "emails/base.html" %}
+{% comment %}Technician, the customer declined a replacement. Do not order glass.{% endcomment %}
+
+{% block email_title %}Replacement declined{% endblock %}
+{% block header_meta %}Replacement #{{ replacement_id }}{% endblock %}
+{% block preheader %}{% if denial_reason %}{{ denial_reason }}{% else %}The customer declined this replacement.{% endif %}{% endblock %}
+{% block unsubscribe_url %}/tech/notifications/preferences/{% endblock %}
+
+{% block content %}
+{% include "emails/components/pill.html" with label="Declined" tone="red" %}
+{% if denial_reason %}
+{% include "emails/components/headline.html" with headline="The customer declined this replacement." lede=denial_reason %}
+{% else %}
+{% include "emails/components/headline.html" with headline="The customer declined this replacement." lede="No reason was given. Do not order the glass." %}
+{% endif %}
+
+{% include "emails/components/rows_start.html" %}
+    {% if customer_name %}{% include "emails/components/row.html" with label="Customer" value=customer_name %}{% endif %}
+    {% include "emails/components/vehicle_row.html" %}
+    {% if glass_position %}{% include "emails/components/row.html" with label="Glass" value=glass_position %}{% endif %}
+{% include "emails/components/rows_end.html" %}
+
+{% with url=base_url|add:action_url %}
+{% include "emails/components/button.html" with text="View the job" url=url color=branding.primary_color %}
+{% endwith %}
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "emails/base.html" %}
+{% comment %}Customer, replacement work has started. Flat context.{% endcomment %}
+
+{% block email_title %}Replacement in progress{% endblock %}
+{% block header_meta %}Replacement #{{ replacement_id }}{% endblock %}
+{% block preheader %}{% if technician_name %}{{ technician_name }} has started the replacement.{% else %}Work has started.{% endif %}{% endblock %}
+
+{% block content %}
+{% include "emails/components/pill.html" with label="In progress" tone="blue" %}
+{% include "emails/components/headline.html" with headline="Work has started on your glass." lede="A replacement usually takes a couple of hours. We will let you know as soon as it is done." %}
+
+{% include "emails/components/rows_start.html" %}
+    {% include "emails/components/vehicle_row.html" %}
+    {% if glass_position %}{% include "emails/components/row.html" with label="Glass" value=glass_position %}{% endif %}
+    {% if technician_name %}{% include "emails/components/row.html" with label="Technician" value=technician_name %}{% endif %}
+{% include "emails/components/rows_end.html" %}
+
+{% with url=base_url|add:action_url %}
+{% include "emails/components/button.html" with text="Track this job" url=url color=branding.primary_color %}
+{% endwith %}
+{% endblock %}
