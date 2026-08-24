@@ -420,32 +420,51 @@ class FleetGatingTests(TestCase):
 
 
 class BusinessHoursTests(TestCase):
-    """Test _adjust_to_business_hours helper."""
+    """Test _adjust_to_business_hours helper.
+
+    business_hours_start/end are a shop owner's wall-clock hours, so every
+    assertion here is in LOCAL time. These tests used to build UTC hours with
+    `timezone.now().replace(hour=...)` and assert on `result.hour`, which is
+    the UTC hour -- they passed against a helper that compared UTC to a local
+    window, and that is how review requests came to queue for ~4 AM local
+    (FIELD_OPS N3).
+    """
+
+    @staticmethod
+    def _local(hour, minute=0):
+        now = timezone.localtime(timezone.now())
+        return now.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
     def test_during_business_hours_unchanged(self):
-        dt = timezone.now().replace(hour=14, minute=30)
-        result = _adjust_to_business_hours(dt, 9, 19)
-        self.assertEqual(result, dt)
+        dt = self._local(14, 30)
+        self.assertEqual(_adjust_to_business_hours(dt, 9, 19), dt)
 
     def test_after_hours_pushed_to_next_day(self):
-        dt = timezone.now().replace(hour=20, minute=0)
-        result = _adjust_to_business_hours(dt, 9, 19)
+        dt = self._local(20)
+        result = timezone.localtime(_adjust_to_business_hours(dt, 9, 19))
         self.assertEqual(result.hour, 9)
         self.assertEqual(result.minute, 0)
-        self.assertEqual(result.day, dt.day + 1)
+        self.assertEqual(result.date(), dt.date() + timedelta(days=1))
 
     def test_before_hours_pushed_to_start(self):
-        dt = timezone.now().replace(hour=6, minute=0)
-        result = _adjust_to_business_hours(dt, 9, 19)
+        dt = self._local(6)
+        result = timezone.localtime(_adjust_to_business_hours(dt, 9, 19))
         self.assertEqual(result.hour, 9)
         self.assertEqual(result.minute, 0)
-        self.assertEqual(result.day, dt.day)
+        self.assertEqual(result.date(), dt.date())
 
     def test_exactly_at_end_pushed_to_next_day(self):
-        dt = timezone.now().replace(hour=19, minute=0)
-        result = _adjust_to_business_hours(dt, 9, 19)
+        dt = self._local(19)
+        result = timezone.localtime(_adjust_to_business_hours(dt, 9, 19))
         self.assertEqual(result.hour, 9)
-        self.assertEqual(result.day, dt.day + 1)
+        self.assertEqual(result.date(), dt.date() + timedelta(days=1))
+
+    def test_the_result_is_a_local_morning_not_a_utc_one(self):
+        """The regression itself: 09:00 UTC is 04:00 in America/Chicago."""
+        dt = self._local(6)
+        result = _adjust_to_business_hours(dt, 9, 19)
+        self.assertEqual(timezone.localtime(result).hour, 9)
+        self.assertNotEqual(timezone.localtime(result).hour, 4)
 
 
 # =====================================================================

@@ -7,9 +7,9 @@
 {% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
 {% endif %}{% if glass_position %}  {{ "Glass"|pad_label }}{{ glass_position }}
 {% endif %}
-View the job
+{% if action_url %}View the job
 {{ base_url }}{{ action_url }}
-
+{% endif %}
 --
 {{ branding.company_name }}
 

@@ -8,9 +8,9 @@ charged yet.
 {% endif %}{% if glass_position %}  {{ "Glass"|pad_label }}{{ glass_position }}
 {% endif %}{% if customer_notes %}  {{ "Your notes"|pad_label }}{{ customer_notes }}
 {% endif %}
-Track your request
+{% if action_url %}Track your request
 {{ base_url }}{{ action_url }}
-
+{% endif %}
 --
 {{ branding.company_name }}{% if branding.company_address %}
 {{ branding.company_address }}{% endif %}{% if branding.support_phone %}

@@ -7,9 +7,9 @@ Nothing is scheduled and nothing is charged until you approve it.
 {% endif %}{% if technician_name %}  {{ "Submitted by"|pad_label }}{{ technician_name }}
 {% endif %}{% with total=estimated_cost|money %}{% if total %}  {{ "Price"|pad_label }}{{ total }}
 {% endif %}{% endwith %}
-Review and approve
-{{ action_url }}
-
+{% if action_url %}Review and approve
+{{ base_url }}{{ action_url }}
+{% endif %}
 You can decline on the same page, or reply here with a question.
 
 --

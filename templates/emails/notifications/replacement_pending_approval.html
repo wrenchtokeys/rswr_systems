@@ -26,9 +26,9 @@ from notification_service.job_display_context().
     {% if job_cost_display %}{% include "emails/components/row.html" with label="Total" value=job_cost_display strong=1 %}{% endif %}
 {% include "emails/components/rows_end.html" %}
 
-{% with url=base_url|add:action_url %}
+{% if action_url %}{% with url=base_url|add:action_url %}
 {% include "emails/components/button.html" with text="Review and approve" url=url color=branding.primary_color %}
-{% endwith %}
+{% endwith %}{% endif %}
 {% if needs_adas %}
 {% include "emails/components/note.html" with text="Your vehicle has a camera behind the glass, so it has to be recalibrated after the swap. That is included in the total above." %}
 {% else %}

@@ -20,7 +20,7 @@
     {% if glass_position %}{% include "emails/components/row.html" with label="Glass" value=glass_position %}{% endif %}
 {% include "emails/components/rows_end.html" %}
 
-{% with url=base_url|add:action_url %}
+{% if action_url %}{% with url=base_url|add:action_url %}
 {% include "emails/components/button.html" with text="View the job" url=url color=branding.primary_color %}
-{% endwith %}
+{% endwith %}{% endif %}
 {% endblock %}

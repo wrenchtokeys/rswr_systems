@@ -19,7 +19,7 @@ first, so the email must not imply the job is booked.
     {% if customer_notes %}{% include "emails/components/row.html" with label="Your notes" value=customer_notes %}{% endif %}
 {% include "emails/components/rows_end.html" %}
 
-{% with url=base_url|add:action_url %}
+{% if action_url %}{% with url=base_url|add:action_url %}
 {% include "emails/components/button.html" with text="Track your request" url=url color=branding.primary_color %}
-{% endwith %}
+{% endwith %}{% endif %}
 {% endblock %}

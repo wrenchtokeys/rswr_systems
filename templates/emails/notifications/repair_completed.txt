@@ -10,9 +10,9 @@ The repair is finished and the vehicle is ready to go back into service.
 {% endif %}{% if warranty_display %}  {{ "Warranty"|pad_label }}{{ warranty_display }}
 {% endif %}{% if job_cost_display %}  {{ "Total"|pad_label }}{{ job_cost_display }}
 {% endif %}
-View repair details
+{% if action_url %}View repair details
 {{ base_url }}{{ action_url }}
-
+{% endif %}
 Before and after photos are on the repair page.
 
 --

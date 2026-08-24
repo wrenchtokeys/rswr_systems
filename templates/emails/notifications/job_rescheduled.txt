@@ -5,9 +5,9 @@ Nothing was added and nothing was removed from {{ day }}.
   {{ first_time|pad_label }}{{ first_job }}
   {{ second_time|pad_label }}{{ second_job }}
 
-View your day
+{% if action_url %}View your day
 {{ base_url }}{{ action_url }}
-
+{% endif %}
 --
 {{ branding.company_name }}
 

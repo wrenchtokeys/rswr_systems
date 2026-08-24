@@ -8,9 +8,9 @@ changed.
 {% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
 {% endif %}{% if new_technician_name %}  {{ "Now assigned to"|pad_label }}{{ new_technician_name }}
 {% endif %}
-View your day
+{% if action_url %}View your day
 {{ base_url }}{{ action_url }}
-
+{% endif %}
 Questions about the change go to your manager.
 
 --

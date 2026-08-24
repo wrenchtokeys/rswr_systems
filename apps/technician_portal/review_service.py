@@ -318,18 +318,37 @@ def _create_suppressed(repair, config, customer_user, reason):
 
 def _adjust_to_business_hours(dt, start_hour, end_hour):
     """
-    Clamp *dt* into the business-hours window [start_hour, end_hour).
+    Clamp *dt* into the shop's business-hours window [start_hour, end_hour).
 
     If dt falls after end_hour, push to start_hour next day.
     If dt falls before start_hour, push to start_hour same day.
+
+    The comparison happens in LOCAL time. `dt` arrives as an aware UTC value
+    (`timezone.now() + delay`), and this function used to compare `dt.hour`
+    -- the UTC hour -- against a window a shop owner set in their own clock.
+    Under America/Chicago that is a five- or six-hour error in the wrong
+    direction: "not before 9am" clamped to 09:00 UTC, and every review request
+    it touched went out at roughly 4 AM local. Convert in, clamp, convert
+    back, so the stored UTC instant is the local hour the shop asked for
+    (FIELD_OPS N3).
     """
-    if dt.hour >= end_hour:
-        # Push to next day at start_hour
-        dt = dt.replace(hour=start_hour, minute=0, second=0, microsecond=0)
-        dt += timedelta(days=1)
-    elif dt.hour < start_hour:
-        dt = dt.replace(hour=start_hour, minute=0, second=0, microsecond=0)
-    return dt
+    local = timezone.localtime(dt)
+    if local.hour >= end_hour:
+        # Past close -- open of the next day.
+        local = local.replace(hour=start_hour, minute=0, second=0, microsecond=0)
+        local += timedelta(days=1)
+    elif local.hour < start_hour:
+        local = local.replace(hour=start_hour, minute=0, second=0, microsecond=0)
+    else:
+        # Already inside the window; leave the instant exactly as it was
+        # rather than round-tripping it.
+        return dt
+    # Re-derive the offset from the wall-clock date we just built, so a clamp
+    # that steps across a DST boundary still lands on the local hour asked
+    # for rather than an hour either side of it.
+    return timezone.make_aware(
+        timezone.make_naive(local, local.tzinfo), timezone.get_current_timezone()
+    ).astimezone(dt.tzinfo)
 
 
 def _safe_format(template, **kwargs):

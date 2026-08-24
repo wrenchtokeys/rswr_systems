@@ -123,8 +123,14 @@ def handle_repair_status_change(sender, instance, created, **kwargs):
             _notify_customer_approval_needed(instance)
 
         elif instance.queue_status == 'APPROVED' and old_status == 'PENDING':
-            # Approved by customer
-            _notify_technician_approved(instance)
+            # Approved by customer. A multi-break batch approves every break
+            # in one action, and the approving view sends ONE batch_approved
+            # summary afterwards -- without this guard the tech got a separate
+            # "repair approved" email per break while the dashboard showed a
+            # single grouped line (FIELD_OPS N3). Same opt-out shape as
+            # _assignment_notifications_handled above.
+            if not getattr(instance, '_batch_approval_notifications_handled', False):
+                _notify_technician_approved(instance)
 
         elif instance.queue_status == 'DENIED' and old_status == 'PENDING':
             # Denied by customer
@@ -664,6 +670,19 @@ def notify_batch_approved(repairs):
         'batch_id': str(batch_id),
         'unit_number': first_repair.unit_number,
         'repair_count': repair_count,
+        # One row per break, which is the whole point of this email: the
+        # progressive ladder ($50, $40, $35) is the message. The bodies looped
+        # over `repairs` from the start and nobody ever passed it, so the
+        # ladder never appeared. Plain JSON values only -- the context is
+        # persisted on the Notification and re-rendered by the retry path, so
+        # the Repair objects themselves cannot go in.
+        'repairs': [
+            {
+                'break_description': getattr(r, 'description', '') or '',
+                'cost': float(r.cost) if r.cost else 0,
+            }
+            for r in repairs
+        ],
         'total_cost': total_cost,
         'customer_name': first_repair.customer.name if first_repair.customer else 'Unknown',
         'technician_name': technician.user.get_full_name() or technician.user.username,

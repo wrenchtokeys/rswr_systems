@@ -536,15 +536,20 @@ class NotificationPreferenceLinksTests(TestCase):
     def test_customer_facing_templates_use_absolute_app_preferences_url(self):
         """Customer-facing email templates should use absolute URL for preferences."""
         from django.template.loader import render_to_string
+        # Audience is decided by the call site, not by the template's name.
+        # repair_approved / repair_denied / batch_approved used to be listed
+        # here and all three are sent to a TECHNICIAN -- see the tech list
+        # below and the inventory in docs/strategy/FIELD_OPS_SESSIONS.md (N3).
         customer_templates = [
-            'emails/notifications/repair_approved.html',
-            'emails/notifications/repair_denied.html',
             'emails/notifications/repair_completed.html',
             'emails/notifications/repair_pending_approval.html',
             'emails/notifications/repair_in_progress.html',
             'emails/notifications/repair_request_received.html',
-            'emails/notifications/batch_approved.html',
             'emails/notifications/payment_received.html',
+            'emails/notifications/replacement_request_received.html',
+            'emails/notifications/replacement_pending_approval.html',
+            'emails/notifications/replacement_in_progress.html',
+            'emails/notifications/replacement_completed.html',
         ]
         for template_name in customer_templates:
             rendered = render_to_string(template_name, {
@@ -564,6 +569,20 @@ class NotificationPreferenceLinksTests(TestCase):
             'emails/notifications/repair_assigned.html',
             'emails/notifications/repair_request_submitted.html',
             'emails/notifications/repair_reassigned_away.html',
+            # _notify_technician_approved / _notify_technician_denied send
+            # these to repair.technician.
+            'emails/notifications/repair_approved.html',
+            'emails/notifications/repair_denied.html',
+            # notify_batch_approved sends to first_repair.technician; the
+            # body carried no unsubscribe_url block at all, so it inherited
+            # base.html's customer-portal default.
+            'emails/notifications/batch_approved.html',
+            'emails/notifications/job_rescheduled.html',
+            'emails/notifications/jobs_bulk_assigned.html',
+            'emails/notifications/jobs_bulk_reassigned_away.html',
+            'emails/notifications/replacement_approved.html',
+            'emails/notifications/replacement_denied.html',
+            'emails/notifications/replacement_request_submitted.html',
         ]
         for template_name in tech_templates:
             rendered = render_to_string(template_name, {
@@ -579,7 +598,7 @@ class NotificationPreferenceLinksTests(TestCase):
     def test_base_url_fallback_when_not_provided(self):
         """When base_url is not in context, should fall back to https://rssystems.io."""
         from django.template.loader import render_to_string
-        rendered = render_to_string('emails/notifications/repair_approved.html', {
+        rendered = render_to_string('emails/notifications/repair_completed.html', {
             'branding': self.MOCK_BRANDING,
         })
         self.assertIn(

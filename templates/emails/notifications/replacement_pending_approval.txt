@@ -11,9 +11,9 @@ Nothing is ordered and nothing is charged until you approve it.
 {% endif %}{% if labor_cost_display %}  {{ "Labor"|pad_label }}{{ labor_cost_display }}
 {% endif %}{% if job_cost_display %}  {{ "Total"|pad_label }}{{ job_cost_display }}
 {% endif %}
-Review and approve
+{% if action_url %}Review and approve
 {{ base_url }}{{ action_url }}
-
+{% endif %}
 {% if needs_adas %}Your vehicle has a camera behind the glass, so it has to be
 recalibrated after the swap. That is included in the total above.{% else %}You can decline on the same page, or reply here with a question.{% endif %}
 

@@ -10,9 +10,9 @@
 {% endif %}{% if service_location %}  {{ "Where"|pad_label }}{{ service_location }}
 {% endif %}{% if status %}  {{ "Status"|pad_label }}{{ status }}
 {% endif %}
-Open job
+{% if action_url %}Open job
 {{ base_url }}{{ action_url }}
-
+{% endif %}
 Mark it in progress when you start — the customer is told automatically.
 
 --
