@@ -136,6 +136,115 @@ class NotificationTemplateRenderTests(SimpleTestCase):
                 self.assertIn('Manage notification preferences', html)
 
 
+class RealCallerContextTests(SimpleTestCase):
+    """Render with only what the signal actually passes, not a wish list.
+
+    The context reaching a notification template is flat and JSON-safe —
+    NotificationService persists it and the retry path re-renders it, so the
+    job object is never in there. Templates that reached for
+    {{ repair.total_cost }} rendered a bare "$" and {{ repair.id }} rendered
+    nothing, for months, because a generous test context hid it.
+
+    Each context below is the one its sender in
+    apps/technician_portal/signals.py builds, plus the values
+    NotificationService derives.
+    """
+
+    BRANDING = {
+        'company_name': 'Glass Guy Auto Glass', 'primary_color': '#2563eb',
+        'company_address': '4210 S University Ave, Little Rock, AR',
+        'support_phone': '(501) 555-0142', 'support_email': 'x@example.com',
+        'logo_url': '', 'footer_text': '', 'website_url': '',
+    }
+    # What NotificationService.create_notification derives from the job.
+    DERIVED = {
+        'vehicle_identifier': '4471', 'vehicle_label': 'Unit #',
+        'service_location': '1900 Bond St, North Little Rock, AR',
+        'damage_description': 'Bullseye, passenger side',
+        'job_cost_display': '$40.00', 'warranty_display': 'Lifetime',
+        'denial_reason': 'Damage is outside the repairable area.',
+        'completed_on': 'August 19, 2026', 'requested_on': 'August 18, 2026',
+    }
+
+    CASES = {
+        # _notify_customer_completed
+        'repair_completed': ({
+            'repair_id': 1842, 'unit_number': '4471',
+            'technician_name': 'Dale Whitcomb', 'final_cost': 40.0,
+            'customer_name': 'Penske Truck Leasing',
+            'action_url': '/app/repairs/1842/',
+        }, ['1842', 'Dale Whitcomb', '$40.00', '4471', 'Lifetime']),
+        # _notify_technician_approved
+        'repair_approved': ({
+            'repair_id': 1842, 'unit_number': '4471',
+            'customer_name': 'Penske Truck Leasing',
+            'action_url': '/tech/repairs/1842/',
+        }, ['1842', 'Penske Truck Leasing', '$40.00']),
+        # _notify_technician_denied
+        'repair_denied': ({
+            'repair_id': 1842, 'unit_number': '4471',
+            'customer_name': 'Penske Truck Leasing',
+            'action_url': '/tech/repairs/1842/',
+        }, ['1842', 'Damage is outside the repairable area.']),
+        # _notify_customer_in_progress
+        'repair_in_progress': ({
+            'repair_id': 1842, 'unit_number': '4471',
+            'technician_name': 'Dale Whitcomb',
+            'customer_name': 'Penske Truck Leasing',
+            'action_url': '/app/repairs/1842/',
+        }, ['1842', 'Dale Whitcomb', '4471']),
+        # _notify_customer_approval_needed
+        'repair_pending_approval': ({
+            'repair_id': 1842, 'unit_number': '4471',
+            'technician_name': 'Dale Whitcomb', 'estimated_cost': 50.0,
+            'customer_name': 'Penske Truck Leasing',
+            'action_url': '/app/repairs/1842/approve/',
+        }, ['1842', 'Dale Whitcomb', '$50.00']),
+    }
+
+    def _context(self, extra):
+        context = {'branding': self.BRANDING, 'base_url': 'https://rssystems.io'}
+        context.update(self.DERIVED)
+        context.update(extra)
+        return context
+
+    def test_key_facts_actually_render(self):
+        for name, (caller_context, expected) in self.CASES.items():
+            context = self._context(caller_context)
+            for suffix in ('.html', '.txt'):
+                template = f'emails/notifications/{name}{suffix}'
+                out = render_to_string(template, context)
+                for probe in expected:
+                    with self.subTest(template=template, probe=probe):
+                        self.assertIn(probe, out)
+
+    def test_no_row_renders_with_an_empty_value(self):
+        """'Repair ID: #' and a bare '$' are what this catches."""
+        for name, (caller_context, _) in self.CASES.items():
+            context = self._context(caller_context)
+            text = render_to_string(f'emails/notifications/{name}.txt', context)
+            for line in text.splitlines():
+                if not line.startswith('  ') or not line.strip():
+                    continue
+                # A row is "  <padded label><value>"; the value must exist.
+                with self.subTest(template=name, line=line):
+                    self.assertTrue(
+                        line.strip().rstrip('#$').strip() and len(line.split()) > 1,
+                        f'{name}.txt row has a label but no value: {line!r}',
+                    )
+
+    def test_action_button_has_a_url(self):
+        """view_repair_url was never in the context; the button had no href."""
+        for name, (caller_context, _) in self.CASES.items():
+            context = self._context(caller_context)
+            html = render_to_string(f'emails/notifications/{name}.html', context)
+            with self.subTest(template=name):
+                self.assertIn(
+                    f'href="https://rssystems.io{caller_context["action_url"]}"',
+                    html,
+                )
+
+
 class VehicleRowTests(SimpleTestCase):
     """A fleet job names a unit; an individual's names their vehicle."""
 

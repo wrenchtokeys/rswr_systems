@@ -13,7 +13,11 @@ from datetime import datetime, time
 from typing import Optional, Dict, Any, List
 from django.contrib.contenttypes.models import ContentType
 from django.template import Context, Template
-from django.utils import timezone
+from django.utils import formats, timezone
+
+# Presentation helpers shared with the email templates, so a value formatted
+# into the persisted context matches what a template would have rendered.
+from core.templatetags.email_ui import money, warranty_text
 from core.models.notification import Notification
 from core.models.notification_template import NotificationTemplate
 from core.models.notification_preferences import (
@@ -100,32 +104,53 @@ class NotificationService:
                 from core.models.email_branding import EmailBrandingConfig
                 context['branding'] = EmailBrandingConfig.get_tenant_context(tenant)
 
-            # How this job's vehicle should be named, decided once here rather
-            # than in fourteen templates. A fleet job is a unit number, an
-            # individual's is their vehicle, and a job with neither on record
-            # prints nothing at all — templates drop the row when
-            # vehicle_identifier is empty rather than emitting a bare "Unit #".
-            # Persisted with the rest of the context, so the email retry path
-            # re-renders the same words.
-            if repair is not None and 'vehicle_identifier' not in context:
+            # Job facts the templates need, derived once here rather than in
+            # fourteen templates and at every call site.
+            #
+            # These are all PLAIN STRINGS on purpose. `context` is persisted
+            # as JSON on the Notification and re-rendered by the email retry
+            # path, so the job object itself can never go in — which is why
+            # templates that reached for {{ repair.something }} rendered
+            # nothing at all. Anything a template needs has to arrive here as
+            # a serializable value.
+            #
+            # Every one is '' when unknown, and templates drop the whole row
+            # rather than print a label with nothing after it.
+            if repair is not None:
                 try:
-                    context['vehicle_identifier'] = repair.get_vehicle_identifier()
-                    context['vehicle_label'] = (
-                        repair.customer.vehicle_column_label if repair.customer else 'Unit #'
+                    derived = {
+                        # A fleet job is a unit number, an individual's is
+                        # their vehicle — the LABEL changes with the customer,
+                        # not just the value.
+                        'vehicle_identifier': repair.get_vehicle_identifier(),
+                        'vehicle_label': (
+                            repair.customer.vehicle_column_label
+                            if repair.customer else 'Unit #'
+                        ),
+                        # Where the tech is going. An assignment email without
+                        # an address is one they have to open the app to act on.
+                        'service_location': repair.get_service_location(),
+                        'damage_description': (
+                            getattr(repair, 'break_description', '') or ''
+                        ),
+                        'job_cost_display': money(getattr(repair, 'cost', None)),
+                        'warranty_display': warranty_text(repair),
+                        'denial_reason': getattr(repair, 'denial_reason', '') or '',
+                    }
+                    completed = getattr(repair, 'actual_repair_date', None)
+                    derived['completed_on'] = (
+                        formats.date_format(completed, 'F j, Y') if completed else ''
                     )
-                    # Where the tech is going. The job's own service address
-                    # wins, else the customer's — get_service_location()
-                    # already decides that and returns '' when neither knows.
-                    # An assignment email without an address is one the tech
-                    # has to open the app to act on.
-                    context['service_location'] = repair.get_service_location()
-                    context['scheduled_for'] = (
-                        repair.scheduled_for.isoformat() if repair.scheduled_for else ''
+                    requested = getattr(repair, 'requested_repair_date', None)
+                    derived['requested_on'] = (
+                        formats.date_format(requested, 'F j, Y') if requested else ''
                     )
+                    for key, value in derived.items():
+                        context.setdefault(key, value)
                 except Exception:
                     logger.warning(
-                        "Could not resolve vehicle/location for notification; "
-                        "template will fall back to unit_number",
+                        "Could not derive job details for notification; "
+                        "templates will drop the rows they cannot fill",
                         exc_info=True,
                     )
 

@@ -1,21 +1,24 @@
 {% extends "emails/base.html" %}
-{% load email_ui %}
-{% comment %}Customer, repair approved and scheduled to begin. Context: repair, view_repair_url.{% endcomment %}
+{% comment %}Technician, the customer approved. Flat context — see repair_completed.html.{% endcomment %}
 
 {% block email_title %}Repair approved{% endblock %}
-{% block header_meta %}Repair #{{ repair.id }}{% endblock %}
-{% block preheader %}Approved. A technician will be assigned shortly.{% endblock %}
+{% block header_meta %}Repair #{{ repair_id }}{% endblock %}
+{% block preheader %}Approved by the customer. Ready to work.{% endblock %}
+{% block unsubscribe_url %}/tech/notifications/preferences/{% endblock %}
 
 {% block content %}
 {% include "emails/components/pill.html" with label="Approved" tone="indigo" %}
-{% include "emails/components/headline.html" with headline="Your windshield repair is approved." lede="A technician is being assigned. You will hear from us again when the work starts." %}
+{% include "emails/components/headline.html" with headline="The customer approved this repair." lede="It is ready to work." %}
 
 {% include "emails/components/rows_start.html" %}
+    {% if customer_name %}{% include "emails/components/row.html" with label="Customer" value=customer_name %}{% endif %}
     {% include "emails/components/vehicle_row.html" %}
-    {% if repair.break_description %}{% include "emails/components/row.html" with label="Damage" value=repair.break_description %}{% endif %}
-    {% if repair.requested_repair_date %}{% include "emails/components/row.html" with label="Requested for" value=repair.requested_repair_date|date:"F j, Y" %}{% endif %}
-    {% with total=repair.cost|money %}{% if total %}{% include "emails/components/row.html" with label="Price" value=total strong=1 %}{% endif %}{% endwith %}
+    {% if damage_description %}{% include "emails/components/row.html" with label="Damage" value=damage_description %}{% endif %}
+    {% if service_location %}{% include "emails/components/row.html" with label="Where" value=service_location %}{% endif %}
+    {% if job_cost_display %}{% include "emails/components/row.html" with label="Price" value=job_cost_display strong=1 %}{% endif %}
 {% include "emails/components/rows_end.html" %}
 
-{% include "emails/components/button.html" with text="View repair details" url=view_repair_url color=branding.primary_color %}
+{% with url=base_url|add:action_url %}
+{% include "emails/components/button.html" with text="Open job" url=url color=branding.primary_color %}
+{% endwith %}
 {% endblock %}

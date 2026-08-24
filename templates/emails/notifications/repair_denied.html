@@ -1,29 +1,30 @@
 {% extends "emails/base.html" %}
-{% load email_ui %}
 {% comment %}
-Customer, repair not approved. Sent from technician_portal/signals.py on a
-move to DENIED. The reason is the whole point of the email, so it is the
-lede rather than a section three screens down.
+Technician, the customer declined. The reason is the whole point of the
+email, so it is the lede rather than a section three screens down.
+Flat context — see repair_completed.html.
 {% endcomment %}
 
-{% block email_title %}Repair not approved{% endblock %}
-{% block header_meta %}Repair #{{ repair.id }}{% endblock %}
-{% block preheader %}{% if repair.denial_reason %}{{ repair.denial_reason }}{% else %}This repair was not approved.{% endif %}{% endblock %}
+{% block email_title %}Repair declined{% endblock %}
+{% block header_meta %}Repair #{{ repair_id }}{% endblock %}
+{% block preheader %}{% if denial_reason %}{{ denial_reason }}{% else %}The customer declined this repair.{% endif %}{% endblock %}
+{% block unsubscribe_url %}/tech/notifications/preferences/{% endblock %}
 
 {% block content %}
-{% include "emails/components/pill.html" with label="Not approved" tone="red" %}
-{% if repair.denial_reason %}
-{% include "emails/components/headline.html" with headline="This repair was not approved." lede=repair.denial_reason %}
+{% include "emails/components/pill.html" with label="Declined" tone="red" %}
+{% if denial_reason %}
+{% include "emails/components/headline.html" with headline="The customer declined this repair." lede=denial_reason %}
 {% else %}
-{% include "emails/components/headline.html" with headline="This repair was not approved." lede="No work has been done and nothing has been charged." %}
+{% include "emails/components/headline.html" with headline="The customer declined this repair." lede="No reason was given. Nothing has been scheduled." %}
 {% endif %}
 
 {% include "emails/components/rows_start.html" %}
+    {% if customer_name %}{% include "emails/components/row.html" with label="Customer" value=customer_name %}{% endif %}
     {% include "emails/components/vehicle_row.html" %}
-    {% if repair.break_description %}{% include "emails/components/row.html" with label="Damage" value=repair.break_description %}{% endif %}
-    {% if repair.requested_repair_date %}{% include "emails/components/row.html" with label="Requested for" value=repair.requested_repair_date|date:"F j, Y" %}{% endif %}
+    {% if damage_description %}{% include "emails/components/row.html" with label="Damage" value=damage_description %}{% endif %}
 {% include "emails/components/rows_end.html" %}
 
-{% include "emails/components/button.html" with text="View the details" url=view_repair_url color=branding.primary_color %}
-{% include "emails/components/note.html" with text="Reply to this email if you would like us to take another look." %}
+{% with url=base_url|add:action_url %}
+{% include "emails/components/button.html" with text="View the job" url=url color=branding.primary_color %}
+{% endwith %}
 {% endblock %}

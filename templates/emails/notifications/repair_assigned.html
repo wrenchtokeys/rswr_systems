@@ -25,6 +25,8 @@ injected by NotificationService when a repair is passed.
     {% if status %}{% include "emails/components/row.html" with label="Status" value=status %}{% endif %}
 {% include "emails/components/rows_end.html" %}
 
-{% include "emails/components/button.html" with text="Open job" url=action_url color=branding.primary_color %}
+{% with url=base_url|add:action_url %}
+{% include "emails/components/button.html" with text="Open job" url=url color=branding.primary_color %}
+{% endwith %}
 {% include "emails/components/note.html" with text="Mark it in progress when you start — the customer is told automatically." %}
 {% endblock %}

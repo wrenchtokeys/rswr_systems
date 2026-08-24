@@ -3,23 +3,22 @@
 The repair is finished and the vehicle is ready to go back into service.
 
 {% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
-{% elif repair.unit_number %}  {{ "Unit #"|pad_label }}{{ repair.unit_number }}
-{% endif %}{% if repair.break_description %}  {{ "Damage"|pad_label }}{{ repair.break_description }}
-{% endif %}{% if repair.assigned_technician %}  {{ "Technician"|pad_label }}{{ repair.assigned_technician.get_full_name }}
-{% endif %}{% if repair.actual_repair_date %}  {{ "Completed"|pad_label }}{{ repair.actual_repair_date|date:"F j, Y" }}
-{% endif %}{% with warranty=repair|warranty_text %}{% if warranty %}  {{ "Warranty"|pad_label }}{{ warranty }}
-{% endif %}{% endwith %}{% with total=repair.cost|money %}{% if total %}  {{ "Total"|pad_label }}{{ total }}
-{% endif %}{% endwith %}
+{% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% if damage_description %}  {{ "Damage"|pad_label }}{{ damage_description }}
+{% endif %}{% if technician_name %}  {{ "Technician"|pad_label }}{{ technician_name }}
+{% endif %}{% if completed_on %}  {{ "Completed"|pad_label }}{{ completed_on }}
+{% endif %}{% if warranty_display %}  {{ "Warranty"|pad_label }}{{ warranty_display }}
+{% endif %}{% if job_cost_display %}  {{ "Total"|pad_label }}{{ job_cost_display }}
+{% endif %}
 View repair details
-{{ view_repair_url }}
+{{ base_url }}{{ action_url }}
 
 Before and after photos are on the repair page.
 
 --
 {{ branding.company_name }}{% if branding.company_address %}
 {{ branding.company_address }}{% endif %}{% if branding.support_phone %}
-{{ branding.support_phone }}{% endif %}{% if branding.support_email %}
-{{ branding.support_email }}{% endif %}
+{{ branding.support_phone }}{% endif %}
 
 Manage notification preferences
 {{ base_url }}/app/notifications/preferences/

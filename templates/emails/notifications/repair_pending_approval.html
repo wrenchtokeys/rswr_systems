@@ -21,6 +21,8 @@ both one tap, nothing else competing.
     {% with total=estimated_cost|money %}{% if total %}{% include "emails/components/row.html" with label="Price" value=total strong=1 %}{% endif %}{% endwith %}
 {% include "emails/components/rows_end.html" %}
 
-{% include "emails/components/button.html" with text="Review and approve" url=action_url color=branding.primary_color %}
+{% with url=base_url|add:action_url %}
+{% include "emails/components/button.html" with text="Review and approve" url=url color=branding.primary_color %}
+{% endwith %}
 {% include "emails/components/note.html" with text="You can decline on the same page, or reply here with a question." %}
 {% endblock %}

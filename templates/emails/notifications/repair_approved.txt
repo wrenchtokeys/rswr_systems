@@ -1,22 +1,20 @@
-{% load email_ui %}{% autoescape off %}Your windshield repair is approved.
+{% load email_ui %}{% autoescape off %}The customer approved this repair.
 
-A technician is being assigned. You will hear from us again when the work
-starts.
+It is ready to work.
 
-{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
-{% elif repair.unit_number %}  {{ "Unit #"|pad_label }}{{ repair.unit_number }}
-{% endif %}{% if repair.break_description %}  {{ "Damage"|pad_label }}{{ repair.break_description }}
-{% endif %}{% if repair.requested_repair_date %}  {{ "Requested for"|pad_label }}{{ repair.requested_repair_date|date:"F j, Y" }}
-{% endif %}{% with total=repair.cost|money %}{% if total %}  {{ "Price"|pad_label }}{{ total }}
-{% endif %}{% endwith %}
-View repair details
-{{ view_repair_url }}
+{% if customer_name %}  {{ "Customer"|pad_label }}{{ customer_name }}
+{% endif %}{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% if damage_description %}  {{ "Damage"|pad_label }}{{ damage_description }}
+{% endif %}{% if service_location %}  {{ "Where"|pad_label }}{{ service_location }}
+{% endif %}{% if job_cost_display %}  {{ "Price"|pad_label }}{{ job_cost_display }}
+{% endif %}
+Open job
+{{ base_url }}{{ action_url }}
 
 --
-{{ branding.company_name }}{% if branding.company_address %}
-{{ branding.company_address }}{% endif %}{% if branding.support_phone %}
-{{ branding.support_phone }}{% endif %}
+{{ branding.company_name }}
 
 Manage notification preferences
-{{ base_url }}/app/notifications/preferences/
+{{ base_url }}/tech/notifications/preferences/
 {% endautoescape %}
