@@ -7,9 +7,9 @@
 {% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
 {% endif %}{% if damage_type %}  {{ "Damage"|pad_label }}{{ damage_type }}
 {% endif %}
-Review and assign
+{% if action_url %}Review and assign
 {{ base_url }}{{ action_url }}
-
+{% endif %}
 Photos and notes the customer left are on the request page.
 
 --

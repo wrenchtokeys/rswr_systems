@@ -1,8 +1,13 @@
 {% extends "emails/base.html" %}
 {% load email_ui %}
 {% comment %}
-Customer, a multi-break batch approved. Context: repairs_count, unit_number,
-total_cost, repairs (list), pricing_note, view_repairs_url.
+TECHNICIAN, a multi-break batch approved -- notify_batch_approved() sends
+this to first_repair.technician, never to the customer. The comment used to
+say "Customer", which is how the footer came to link a tech at the customer
+portal (FIELD_OPS N3).
+
+Context: repair_count, unit_number, total_cost, repairs (list of
+{break_description, cost}), action_url, and optionally pricing_note.
 
 Progressive pricing is what a fleet manager actually cares about, so each
 break is one row showing what it cost — the ladder ($50, $40, $35) is the
@@ -10,13 +15,14 @@ message. The old template buried it under repeated "--- BREAK #N ---"
 blocks and a PRICING NOTE section below the fold.
 {% endcomment %}
 
-{% block email_title %}{{ repairs_count }} repair{{ repairs_count|pluralize }} approved{% endblock %}
-{% block header_meta %}Batch of {{ repairs_count }}{% endblock %}
+{% block email_title %}{{ repair_count }} repair{{ repair_count|pluralize }} approved{% endblock %}
+{% block header_meta %}Batch of {{ repair_count }}{% endblock %}
 {% block preheader %}All of them get done in the same visit.{% endblock %}
+{% block unsubscribe_url %}/tech/notifications/preferences/{% endblock %}
 
 {% block content %}
 {% include "emails/components/pill.html" with label="Approved" tone="indigo" %}
-{% with h=repairs_count|stringformat:"s"|add:" breaks approved." %}
+{% with h=repair_count|stringformat:"s"|add:" breaks approved." %}
 {% include "emails/components/headline.html" with headline=h lede="All of them get repaired in the same visit." %}
 {% endwith %}
 
@@ -30,6 +36,8 @@ blocks and a PRICING NOTE section below the fold.
     {% with total=total_cost|money %}{% if total %}{% include "emails/components/row.html" with label="Total" value=total strong=1 %}{% endif %}{% endwith %}
 {% include "emails/components/rows_end.html" %}
 
-{% include "emails/components/button.html" with text="View all repairs" url=view_repairs_url color=branding.primary_color %}
-{% include "emails/components/note.html" with text=pricing_note %}
+{% if action_url %}{% with url=base_url|add:action_url %}
+{% include "emails/components/button.html" with text="View all repairs" url=url color=branding.primary_color %}
+{% endwith %}{% endif %}
+{% if pricing_note %}{% include "emails/components/note.html" with text=pricing_note %}{% endif %}
 {% endblock %}

@@ -2,9 +2,9 @@
 
   {{ "Jobs"|pad_label }}{{ job_summary }}
 
-View your day
+{% if action_url %}View your day
 {{ base_url }}{{ action_url }}
-
+{% endif %}
 --
 {{ branding.company_name }}
 

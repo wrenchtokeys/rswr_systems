@@ -1,4 +1,4 @@
-{% load email_ui %}{% autoescape off %}{{ repairs_count }} breaks approved.
+{% load email_ui %}{% autoescape off %}{{ repair_count }} breaks approved.
 
 All of them get repaired in the same visit.
 
@@ -7,9 +7,9 @@ All of them get repaired in the same visit.
 {% endif %}{% for repair in repairs %}{% if repair.break_description %}  {{ repair.break_description|pad_label:30 }}{{ repair.cost|money }}
 {% endif %}{% endfor %}{% with total=total_cost|money %}{% if total %}  {{ "Total"|pad_label:30 }}{{ total }}
 {% endif %}{% endwith %}
-View all repairs
-{{ view_repairs_url }}
-{% if pricing_note %}
+{% if action_url %}View all repairs
+{{ base_url }}{{ action_url }}
+{% endif %}{% if pricing_note %}
 {{ pricing_note }}
 {% endif %}
 --
@@ -18,5 +18,5 @@ View all repairs
 {{ branding.support_phone }}{% endif %}
 
 Manage notification preferences
-{{ base_url }}/app/notifications/preferences/
+{{ base_url }}/tech/notifications/preferences/
 {% endautoescape %}

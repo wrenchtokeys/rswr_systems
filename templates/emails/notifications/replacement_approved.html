@@ -21,7 +21,7 @@
     {% if job_cost_display %}{% include "emails/components/row.html" with label="Price" value=job_cost_display strong=1 %}{% endif %}
 {% include "emails/components/rows_end.html" %}
 
-{% with url=base_url|add:action_url %}
+{% if action_url %}{% with url=base_url|add:action_url %}
 {% include "emails/components/button.html" with text="Open job" url=url color=branding.primary_color %}
-{% endwith %}
+{% endwith %}{% endif %}
 {% endblock %}

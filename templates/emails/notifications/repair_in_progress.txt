@@ -7,9 +7,9 @@ done.
 {% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
 {% endif %}{% if technician_name %}  {{ "Technician"|pad_label }}{{ technician_name }}
 {% endif %}
-Track this repair
-{{ action_url }}
-
+{% if action_url %}Track this repair
+{{ base_url }}{{ action_url }}
+{% endif %}
 --
 {{ branding.company_name }}{% if branding.company_address %}
 {{ branding.company_address }}{% endif %}{% if branding.support_phone %}

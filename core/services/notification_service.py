@@ -49,7 +49,11 @@ def job_display_context(job):
             # Where the tech is going. An assignment email without an address
             # is one they have to open the app to act on.
             'service_location': job.get_service_location(),
-            'damage_description': getattr(job, 'break_description', '') or '',
+            # `description` is the field on GlassService. This read
+            # `break_description`, which no model defines, so the
+            # "Damage" row silently dropped out of every body that
+            # renders it (FIELD_OPS N3).
+            'damage_description': getattr(job, 'description', '') or '',
             'job_cost_display': money(getattr(job, 'cost', None)),
             'warranty_display': warranty_text(job),
             'denial_reason': getattr(job, 'denial_reason', '') or '',

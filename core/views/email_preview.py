@@ -80,7 +80,7 @@ def create_sample_repair():
         def __init__(self):
             self.id = 12345
             self.unit_number = 'TRK-789'
-            self.break_description = 'Bullseye break, approximately 1 inch diameter, driver side lower corner'
+            self.description = 'Bullseye break, approximately 1 inch diameter, driver side lower corner'
             self.requested_repair_date = datetime.now().date()
             self.actual_repair_date = datetime.now().date()
             self.total_cost = Decimal('75.00')
@@ -206,7 +206,7 @@ def create_batch_approved_context(branding_context):
         repair.break_number = i + 1
         repair.total_breaks_in_batch = 3
         repair.repair_batch_id = batch_id
-        repair.break_description = [
+        repair.description = [
             'Bullseye break, driver side lower corner, approximately 1 inch',
             'Star break, passenger side upper corner, approximately 1.5 inches',
             'Combination break, center windshield, approximately 2 inches'
@@ -216,13 +216,21 @@ def create_batch_approved_context(branding_context):
 
     total_cost = sum(r.total_cost for r in repairs)
 
+    # Mirrors notify_batch_approved()'s context exactly. It used to invent its
+    # own key names (`repairs_count`, `view_repairs_url`), which is part of how
+    # the real email's drift went unnoticed -- the preview looked right because
+    # the preview fed the template keys no sender ever passed (FIELD_OPS N3).
     return {
         'branding': type('obj', (object,), branding_context),
-        'repairs': repairs,
-        'repairs_count': len(repairs),
+        'repairs': [
+            {'break_description': r.description, 'cost': float(r.total_cost)}
+            for r in repairs
+        ],
+        'repair_count': len(repairs),
         'unit_number': 'TRK-789',
-        'total_cost': total_cost,
+        'total_cost': float(total_cost),
+        'customer_name': 'Penske Truck Leasing',
         'pricing_note': 'Progressive pricing applied: Break #1 priced as 4th repair ($75), Break #2 as 5th repair ($150), Break #3 as 6th repair ($225). Volume discount saves you $50 compared to individual repairs.',
-        'view_repairs_url': 'https://example.com/app/repairs/?unit=TRK-789',
-        'unsubscribe_url': 'https://example.com/app/notifications/preferences/',
+        'action_url': f'/tech/repairs/?batch={batch_id}',
+        'base_url': 'https://example.com',
     }

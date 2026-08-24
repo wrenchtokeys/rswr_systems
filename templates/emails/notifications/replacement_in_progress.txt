@@ -8,9 +8,9 @@ soon as it is done.
 {% endif %}{% if glass_position %}  {{ "Glass"|pad_label }}{{ glass_position }}
 {% endif %}{% if technician_name %}  {{ "Technician"|pad_label }}{{ technician_name }}
 {% endif %}
-Track this job
+{% if action_url %}Track this job
 {{ base_url }}{{ action_url }}
-
+{% endif %}
 --
 {{ branding.company_name }}{% if branding.company_address %}
 {{ branding.company_address }}{% endif %}{% if branding.support_phone %}

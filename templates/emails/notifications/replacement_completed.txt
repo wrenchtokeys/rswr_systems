@@ -12,9 +12,9 @@ The new glass is in and the job is finished.
 {% endif %}{% if warranty_display %}  {{ "Warranty"|pad_label }}{{ warranty_display }}
 {% endif %}{% if job_cost_display %}  {{ "Total"|pad_label }}{{ job_cost_display }}
 {% endif %}
-View the details
+{% if action_url %}View the details
 {{ base_url }}{{ action_url }}
-
+{% endif %}
 Your technician will have told you how long to wait before driving.
 
 --

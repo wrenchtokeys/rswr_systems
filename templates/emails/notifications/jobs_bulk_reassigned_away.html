@@ -21,8 +21,8 @@
     {% if new_technician_name %}{% include "emails/components/row.html" with label="Now assigned to" value=new_technician_name %}{% endif %}
 {% include "emails/components/rows_end.html" %}
 
-{% with url=base_url|add:action_url %}
+{% if action_url %}{% with url=base_url|add:action_url %}
 {% include "emails/components/button.html" with text="View your day" url=url color=branding.primary_color %}
-{% endwith %}
+{% endwith %}{% endif %}
 {% include "emails/components/note.html" with text="Questions about the change go to your manager." %}
 {% endblock %}

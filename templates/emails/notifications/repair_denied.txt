@@ -7,9 +7,9 @@
 {% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
 {% endif %}{% if damage_description %}  {{ "Damage"|pad_label }}{{ damage_description }}
 {% endif %}
-View the job
+{% if action_url %}View the job
 {{ base_url }}{{ action_url }}
-
+{% endif %}
 --
 {{ branding.company_name }}
 

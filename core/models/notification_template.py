@@ -147,6 +147,19 @@ class NotificationTemplate(AutoUpdateTimestampMixin, models.Model):
                 settings, 'SITE_URL', 'https://rssystems.io'
             ).rstrip('/')
 
+        # Resolve the action URL BEFORE the email bodies render.
+        # Every seeded template carries an `action_url_template`, and the email
+        # bodies build their CTA from `action_url`. Computing it after the
+        # bodies (as this method used to) meant the seeded value could never
+        # reach them, and left the key missing from the context entirely --
+        # which a strict `{% with %}` turns from a missing button into a dead
+        # email. Resolving it here makes the seeded value the default AND
+        # guarantees the key always exists (FIELD_OPS N3).
+        context_dict['action_url'] = context_dict.get('action_url') or (
+            Template(self.action_url_template).render(Context(context_dict))
+            if self.action_url_template else ''
+        )
+
         context = Context(context_dict)
 
         def render_template_field(content):
@@ -176,7 +189,7 @@ class NotificationTemplate(AutoUpdateTimestampMixin, models.Model):
             'email_html': render_template_field(self.email_html_template),
             'email_text': render_template_field(self.email_text_template),
             'sms': Template(self.sms_template).render(context) if self.sms_template else '',
-            'action_url': Template(self.action_url_template).render(context) if self.action_url_template else '',
+            'action_url': context_dict['action_url'],
         }
 
     def preview(self, sample_context):

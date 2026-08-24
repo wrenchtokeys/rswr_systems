@@ -9,9 +9,9 @@
 {% endif %}{% if service_location %}  {{ "Where"|pad_label }}{{ service_location }}
 {% endif %}{% if customer_notes %}  {{ "Notes"|pad_label }}{{ customer_notes }}
 {% endif %}
-Price this job
+{% if action_url %}Price this job
 {{ base_url }}{{ action_url }}
-
+{% endif %}
 The customer approves the price before any glass is ordered.
 
 --

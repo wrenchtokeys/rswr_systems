@@ -22,7 +22,7 @@ that will never come.
     {% if preferred_time %}{% include "emails/components/row.html" with label="You asked for" value=preferred_time %}{% endif %}
 {% include "emails/components/rows_end.html" %}
 
-{% with url=base_url|add:action_url %}
+{% if action_url %}{% with url=base_url|add:action_url %}
 {% include "emails/components/button.html" with text="Track your request" url=url color=branding.primary_color %}
-{% endwith %}
+{% endwith %}{% endif %}
 {% endblock %}

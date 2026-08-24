@@ -12,9 +12,9 @@ The glass can be ordered.
 {% endif %}{% if service_location %}  {{ "Where"|pad_label }}{{ service_location }}
 {% endif %}{% if job_cost_display %}  {{ "Price"|pad_label }}{{ job_cost_display }}
 {% endif %}
-Open job
+{% if action_url %}Open job
 {{ base_url }}{{ action_url }}
-
+{% endif %}
 --
 {{ branding.company_name }}
 

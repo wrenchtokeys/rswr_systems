@@ -13,7 +13,7 @@ This file is the **work queue** for making field operations real: a technician f
 |-------|---------|------|--------|
 | N — The tech finds out | N1 · Assignment notifications that deliver | M | DONE (2026-08-12, PR #179) |
 | N — The tech finds out | N2 · Fix dead verification SMS + tech texts | S | TODO (prod effect blocked on N4 — Appendix A) |
-| N — The tech finds out | N3 · Notification coverage audit | S | TODO |
+| N — The tech finds out | N3 · Notification coverage audit | S | DONE (2026-08-24, **PR #202**) — grew well past S; see Notes |
 | N — The tech finds out | N4 · SMS opt-in compliance + registration v2 | S | CODE DONE + DEPLOYED (**PR #180**, merged 2026-08-13) — the deploy half is finished; v2 submission now waits on Drake alone (see Notes) |
 | S — Where and when | S1 · A real "booked time" | M | DONE (2026-08-15, **PR #188**) |
 | S — Where and when | S2 · Field dispatch (executes B1) | M | DONE (2026-08-15, PR #189) |
@@ -29,43 +29,38 @@ This file is the **work queue** for making field operations real: a technician f
 **Suggested sequence:** N1 → N4 (start the review clock early — it's days-to-weeks of waiting either way) → S1 → S2 → S3 → N2 (whenever the TFN approves) → S4 → N3 → S5 → (S6 stays backlog until S3/S5 prove demand). **S7 slots in any time after S3** — it needs neither S4 nor S5, and S5 inherits its endpoint. P1 is independent of both arcs and can slot anywhere once Mygrant API onboarding is done (like N4, start that clock early — it's a phone call to the rep).
 Rationale: N1 is the reported bug and pays off alone. S1 is the schema foundation every S-session builds on. S2 is IMPROVEMENT_SESSIONS' "biggest daily-felt gain per hour spent." S4 before S5 because the board is only as good as the data flowing into it.
 
-**Where we are (2026-08-24, after S8 — the arc is complete):** every session
-in this doc is now built or deliberately parked. N1, N4, S1, S2, S3, S4, S5,
-S7 and S8 are done; S6 and P2 are backlog by decision; N2 waits on a
-regulator, N3 is the one unblocked session left, and P1 waits on a vendor.
-A manager runs the morning from one screen: the rail shows what the customer
-asked for, one click names a tech and a time, the tech is notified once, the
-board knows who is actually working, and every disagreement between those
-facts is visible without blocking anybody.
+**Where we are (2026-08-24, after N3 — the arc is complete and clear):** every
+session in this doc is now built or deliberately parked. N1, N3, N4, S1, S2,
+S3, S4, S5, S7 and S8 are done; S6 and P2 are backlog by decision; N2 waits on
+a regulator and P1 on a vendor. **There is no unblocked session left in this
+document.** A manager runs the morning from one screen: the rail shows what the
+customer asked for, one click names a tech and a time, the tech is notified
+once, the board knows who is actually working, and — as of N3 — the
+notification actually leaves the building.
 
-**Deploy state.** Everything through S4 is live: #190/#191/#192/#193 went out at
-10:20 CDT (version `app-ab584-…`, commit `ab5849e2`) and S4/#195 at 10:32 CDT
-(`app-c407-…`, commit `c40701c9`), carrying four migrations —
-`technician_portal/0055` + `0056` (preferred date/window, exact times) and
-`core/0030` + `0031` (`job_rescheduled` generalized, request-template
-priorities uppercased). **Note what that last one switched on:** the customer
-"request received" email had never sent on any migration-seeded database,
-production included — as of that deploy it does, so the first shop-visible
-effect of S4 is customers getting an email that was silently discarded before.
+**Deploy state: the backlog is cleared.** Production runs `d45a6384`
+(`app-d45a-260824_113708700489`, deployed 2026-08-24 11:37 CDT, health green),
+which carries everything through S8: #197 (S5 dispatch board), #198 (S8 spec),
+#199, #200 (the email/notification chassis) and #201 (S8 working hours). The
+four-PR backlog described here earlier went out in that single deploy.
 
-**There is a deploy backlog again, and it is bigger than one session.**
-Production runs `f435d46e` (`app-f435d-260824_104114923555`, deployed
-2026-08-24 10:41 CDT) — everything through S4, plus #199. Three PRs sit merged
-and undeployed behind it, and S8 makes a fourth. The three landed on `main` on
-2026-08-24 between 10:33 and 10:41 CDT; the deploy went out at 10:41 from a
-checkout of the tip as it stood at 08:57, so it carries none of them:
+**N3 (PR #202) is the one thing built and not yet deployed.** It carries
+`core/0033`, a data migration, and it is the only change in this arc with a
+**shop-visible first effect**: two customer emails that have never sent on
+production start sending. Read N3's Notes before deploying it.
 
-| PR | What it is | Migrations |
-|---|---|---|
-| **#197** merged | S5 dispatch board | none |
-| **#198** merged | S8 spec (doc only) | none |
-| **#200** merged | Email / notification chassis + replacement lifecycle | check before deploying |
-| **#201** open | S8 technician working hours + this wrap-up | **none** — the column has existed since `0007` |
+What's left in the queue:
 
-Three of the four are code-only from this arc's point of view. **#200 is not
-this doc's work and is the one to look at first** — it is a rewrite of every
-notification email, it is the largest undeployed change, and it has already
-moved copy that S4's tests asserted on (see S8's Notes).
+- **N2** is parked until the toll-free number clears review (Appendix A).
+- **P1** waits on Mygrant (steps 1–2), **P2** on a NAGS licensing decision,
+  **S6** on demand that S3/S5/S8 have to prove first.
+- **S6 item 4 (technician availability) is done** — it graduated into S8 and
+  shipped on 2026-08-24. What stays in S6 is the part S8 explicitly refused:
+  date-ranged time off, coverage rules and customer-facing slot picking.
+- **Two decisions N3 surfaced and deliberately left to Drake:** splitting
+  `repair_completed` into a customer body and an internal one, and whether the
+  DB-held email subjects should stop saying "- Unit {{ unit_number }}". Both
+  are in N3's "Deliberately not done".
 
 *A caution worth keeping:* a `gh pr list` "updated" column is not a merge
 date. Reading it as one is how S5 came to be dated 2026-08-18 throughout this
@@ -73,20 +68,10 @@ document — that is the day its branch was finished, not the day it reached
 `main`, which was 08-24. Check `git log --first-parent` for the real order and
 the EB version label for what is actually running.
 
-What's left in the queue:
-
-- **N2** is parked until the toll-free number clears review (Appendix A).
-- **N3 is the only unblocked session left in this document.** Three separate
-  sessions have now fed it: S4 found the lowercase-priority bug that killed
-  the customer's "request received" email, S5 left `repair_request_submitted`
-  on `['in_app','sms']`, and S8 found that #200's chassis makes a missing
-  `action_url` fatal to a whole email rather than to one button. Its
-  "Verified current state" was refreshed against post-#200 code on 2026-08-24.
-- **P1** waits on Mygrant (steps 1–2), **P2** on a NAGS licensing decision,
-  **S6** on demand that S3/S5/S8 have to prove first.
-- **S6 item 4 (technician availability) is done** — it graduated into S8 and
-  shipped on 2026-08-24. What stays in S6 is the part S8 explicitly refused:
-  date-ranged time off, coverage rules and customer-facing slot picking.
+*A second one, from N3:* a template file existing, being beautiful, and being
+referenced by name in a management command does **not** mean anything sends it.
+Six lifecycle emails had rendered as bare text since migration 0018 while three
+separate sessions rewrote their HTML. Check the seeded row, not the file.
 
 Sizes: **S** ≈ half a day · **M** ≈ 1–2 days · **L** ≈ 3–5 days.
 
@@ -270,7 +255,7 @@ on top of it, and a fresh session should start from these rather than re-derive:
 
 **Notes**
 
-## N3 · Notification coverage audit — TODO (**the only unblocked session left**)
+## N3 · Notification coverage audit — DONE (2026-08-24, PR #202)
 
 | Field | Value |
 |---|---|
@@ -290,7 +275,150 @@ on top of it, and a fresh session should start from these rather than re-derive:
 2. **`ReviewConfig` business hours are compared in UTC.** *(found by S8)* `_adjust_to_business_hours` (`apps/technician_portal/review_service.py:319-332`) clamps an aware UTC datetime by `.hour` against `business_hours_start/end` (defaults 9/19), so in production review-request emails queue for roughly **4 AM local**. Live today, shipping since the review system launched. One-line fix (`timezone.localtime()` before comparing, convert back), but it needs a test that would have caught it, which is why it belongs in an audit rather than in a drive-by.
 3. **`repair_request_submitted` still maps to `['in_app','sms']`.** *(found by S5)* Visible rather than hidden now, but nothing texts anybody until N2, so that event effectively has no channel.
 
-**Notes**
+**Notes** *(session run 2026-08-24, branch `feat/fieldops-n3-notification-coverage`, PR #202)*
+
+**All three starting defects were real, and the audit found five more.** The
+three inherited ones were the cheap part; what the inventory turned up is that
+the notification system has been quietly *half-wired since migration 0018*, and
+every session since has been decorating templates that could not be delivered.
+
+**The headline: six lifecycle emails have never sent their HTML on a deployed
+database.** Migration 0018 seeded the eight repair templates with in-app and
+action fields only — it sets no `email_html_template` at all. Migration 0027
+noticed and backfilled exactly the two rows N1 needed, leaving the rest.
+`EmailService` guards `attach_alternative` on a truthy body, so those six went
+out as bare unbranded plain text with the in-app `message_template` as the
+body. **None of #200's rewritten HTML has ever reached a recipient on those
+events.** `core/0033` backfills the wiring, copying the values verbatim from
+`setup_notification_templates` (the documented full source of truth) and only
+where the column is blank, so a DB set up through that command is untouched.
+
+**And three of them had no email channel to send on even once wired.** HIGH
+maps to `['in_app','sms']`, and SMS stays dark until N2 — the same structural
+trap §0 blocker 3 describes, which N1 fixed for `repair_assigned` alone.
+`repair_request_submitted` (the shop's "a customer just asked for work"),
+`repair_pending_approval` and `repair_completed` all had a body no channel
+could deliver. All three now carry `channels_override`.
+
+> **Shop-visible on deploy.** `repair_pending_approval` and `repair_completed`
+> are customer-facing and have never emailed anyone on production. Turning
+> them on means customers start receiving "please approve this repair" and
+> "your repair is done" mail they have not had before — Drake's explicit call,
+> 2026-08-24, same class of change as S4's "request received" email. The
+> owner's and managers' copies of `repair_completed` start arriving too.
+
+### The inventory (every notification event → recipient → channel)
+
+Generated from a migrated database after `core/0033`. `sms` is inert
+everywhere until N2 lights the toll-free number up.
+
+| Event | Recipient | Channels | Email body |
+|---|---|---|---|
+| `batch_approved` | technician | in_app + email + sms | yes |
+| `job_rescheduled` | technician | in_app + email | yes |
+| `jobs_bulk_assigned` | technician | in_app + email + sms | yes |
+| `jobs_bulk_reassigned_away` | technician | in_app + email | yes |
+| `repair_approved` | technician | in_app + email + sms | yes |
+| `repair_assigned` | technician | in_app + email + sms | yes |
+| `repair_completed` | customer + owner + managers | in_app + email + sms | yes |
+| `repair_denied` | technician | in_app + email + sms | yes |
+| `repair_in_progress` | customer | in_app + email | yes |
+| `repair_pending_approval` | customer | in_app + email + sms | yes |
+| `repair_reassigned_away` | technician | in_app + email | yes |
+| `repair_request_received` | customer | in_app + email | yes |
+| `repair_request_submitted` | shop technician | in_app + email + sms | yes |
+| `replacement_approved` | technician | in_app + email | yes |
+| `replacement_completed` | customer | in_app + email | yes |
+| `replacement_denied` | technician | in_app + email | yes |
+| `replacement_in_progress` | customer | in_app + email | yes |
+| `replacement_pending_approval` | customer | in_app + email | yes |
+| `replacement_request_received` | customer | in_app + email | yes |
+| `replacement_request_submitted` | shop technician | in_app + email | yes |
+
+No event a technician must act on now lands only in the dashboard list, and no
+template has an email body that no channel delivers — both asserted by
+`DeliverableChannelTests`, so the next seeding migration cannot reopen it.
+
+### The other findings
+
+- **`notify_batch_approved` had no callers whatsoever.** The batch email was
+  unreachable code. Worse, the two customer-portal batch-approval paths save
+  each break in a loop, so a 3-break approval sent the tech **three**
+  `repair_approved` emails while the dashboard showed one grouped line — the
+  exact two-systems drift this session exists to close. Both paths now set
+  `_batch_approval_notifications_handled` before save (same opt-out shape as
+  the existing `_assignment_notifications_handled`) and call
+  `notify_batch_approved` once afterwards.
+- **`batch_approved` rendered as rubble even before that.** It read
+  `repairs_count`, `repairs` and `view_repairs_url`; the sender passes
+  `repair_count`, no break list, and `action_url`. Subject rendered as
+  " repair approved", headline as " breaks approved.", and the button had an
+  **empty href**. It also carried no `unsubscribe_url` block, so a technician
+  got `base.html`'s customer-portal default — its header comment said
+  "Customer" while its only sender passes `first_repair.technician`.
+- **`job_display_context` read a field that does not exist.**
+  `damage_description` came from `getattr(job, 'break_description', '')`;
+  `GlassService` defines `description`. The "Damage" row has therefore never
+  rendered on `repair_approved`, `repair_denied` or `repair_completed`.
+  `core/views/email_preview.py` invented the same non-field, which is part of
+  why nobody noticed — **the preview fed templates keys no sender passes**, so
+  it looked right while the real email was empty. The preview now mirrors
+  `notify_batch_approved`'s context exactly.
+- **The audience test was wrong, not the templates.** `tests/test_primary_contact.py`
+  listed `repair_approved`, `repair_denied` and `batch_approved` as
+  customer-facing; all three are sent to a technician. Those three assertions
+  had been masked by the `action_url` error — fixing defect 1 revealed them.
+  Both lists are now complete, and `test_every_notification_body_is_classified`
+  fails if a new body is added to neither.
+- **A grouped notification hard-coded "Unit #".** The whole-batch approval
+  message printed `Unit #{unit_number}` for individuals too. Switched to
+  `on_vehicle()`, which was already imported two lines away.
+
+### On the three inherited defects
+
+1. **`action_url`.** Convention chosen: **resolve it in `render()` before the
+   bodies, and guard the CTA in every body.** `NotificationTemplate.render()`
+   computed `action_url` *after* `email_html`, so the seeded
+   `action_url_template` — which every single template has — could never reach
+   the button it exists to fill. It now resolves first (an explicit
+   caller-supplied value still wins) and is always present in the context, so
+   no body can raise on it. All 19 HTML bodies wrap the CTA in
+   `{% if action_url %}`, and all 19 text bodies match. Two text bodies
+   (`repair_in_progress`, `repair_pending_approval`) were also printing a
+   **relative** URL, unclickable in a mail client.
+2. **Review-request business hours.** Fixed and tested. `_adjust_to_business_hours`
+   now converts to local, clamps, and converts back. The old tests
+   (`tests/test_reviews.py::BusinessHoursTests`) *encoded the bug* — they built
+   UTC hours and asserted on `result.hour`, so they passed against a helper
+   comparing UTC to a local window. Rewritten in local terms.
+3. **`repair_request_submitted`'s channel map.** Fixed by `core/0033` above.
+
+### Deliberately not done
+
+- **`repair_completed` still serves three audiences from one template**
+  (customer, owner, every manager) with customer copy and the customer
+  preferences link. Splitting it into a customer body and an internal one is
+  the right fix and is a copy decision, not a plumbing one — it needs Drake.
+- **DB-held subjects still say `- Unit {{ unit_number }}`**, which renders as a
+  trailing bare "Unit" for an individual and disagrees with the newer
+  `replacement_*` house style ("Your glass replacement is done"). `core/0033`
+  installs the existing strings verbatim rather than changing copy in a
+  delivery fix — see `docs/operations/SES_OPERATIONS.md` before touching it.
+- **The remaining ~20 `TechnicianNotification.objects.create` sites** (billing,
+  subscriptions, rewards, saas) are dashboard-only by design and involve no
+  event a tech must act on in the field. The repair/replacement ones all pair
+  with a `NotificationService` call and are projections, not a second source of
+  truth. Folding the model into a projection of `core.Notification` remains
+  worth doing but is its own session.
+
+**Tests:** `tests/test_fieldops_n3.py` (25) — the action_url convention across
+every body, `render()`'s resolution order, `batch_approved` rendered with its
+real sender context, local-time business hours, the channel/body inventory, and
+audience classification. Plus 4 rewritten in `tests/test_reviews.py`. The three
+smoke-set errors this document told every session to run are gone:
+`tests.test_primary_contact` is **33/33 green**. 246 fieldops tests, 167
+notification/review tests and 89 approval tests pass; the only failures in the
+sweep (`test_code234` ×2, `test_code132`) are identical on `main`.
 
 ## N4 · SMS opt-in compliance + registration v2 — CODE DONE (2026-08-12)
 

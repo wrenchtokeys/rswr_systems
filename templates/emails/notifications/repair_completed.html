@@ -30,8 +30,8 @@ in the plain-text half and expire. They live on the repair page.
     {% if job_cost_display %}{% include "emails/components/row.html" with label="Total" value=job_cost_display strong=1 %}{% endif %}
 {% include "emails/components/rows_end.html" %}
 
-{% with url=base_url|add:action_url %}
+{% if action_url %}{% with url=base_url|add:action_url %}
 {% include "emails/components/button.html" with text="View repair details" url=url color=branding.primary_color %}
-{% endwith %}
+{% endwith %}{% endif %}
 {% include "emails/components/note.html" with text="Before and after photos are on the repair page." %}
 {% endblock %}

@@ -7,9 +7,9 @@ Nothing further is needed from you. We will confirm the time shortly.
 {% endif %}{% if damage_type %}  {{ "Damage"|pad_label }}{{ damage_type }}
 {% endif %}{% if preferred_time %}  {{ "You asked for"|pad_label }}{{ preferred_time }}
 {% endif %}
-Track your request
+{% if action_url %}Track your request
 {{ base_url }}{{ action_url }}
-
+{% endif %}
 --
 {{ branding.company_name }}{% if branding.company_address %}
 {{ branding.company_address }}{% endif %}{% if branding.support_phone %}

@@ -41,6 +41,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
 from core.services.sms_service import SMSService
 from core.notification_text import on_vehicle
+from apps.technician_portal.signals import notify_batch_approved
 
 logger = logging.getLogger(__name__)
 
@@ -913,6 +914,7 @@ def customer_repair_approve(request, repair_id):
                     messages.warning(request, "This repair has already been processed.")
                     return redirect('customer_repair_detail', repair_id=repair.id)
 
+                batch_approval = is_batch and len(repairs_to_approve) > 1
                 for r in repairs_to_approve:
                     RepairApproval.objects.update_or_create(
                         repair=r,
@@ -926,12 +928,15 @@ def customer_repair_approve(request, repair_id):
                     r.queue_status = 'APPROVED'
                     if not r.technician:
                         logger.warning(f"Repair #{r.id} approved but has no technician assigned")
+                    # One summary email for the batch, not one per break --
+                    # notify_batch_approved() below is the single send.
+                    r._batch_approval_notifications_handled = batch_approval
                     r.save()
 
             # Create notification for technician (outside transaction — best effort)
             technician = repairs_to_approve[0].technician if repairs_to_approve else None
             if technician:
-                if is_batch and len(repairs_to_approve) > 1:
+                if batch_approval:
                     TechnicianNotification.objects.create(
                         technician=technician,
                         message=f"{customer.name} approved all {len(repairs_to_approve)} breaks"
@@ -940,6 +945,9 @@ def customer_repair_approve(request, repair_id):
                         repair=repairs_to_approve[0],
                         repair_batch_id=batch_id,
                     )
+                    # The dashboard row is a projection, not the notification.
+                    # This is the one that emails the tech.
+                    notify_batch_approved(repairs_to_approve)
                 else:
                     TechnicianNotification.objects.create(
                         technician=technician,
@@ -1178,6 +1186,9 @@ def customer_batch_approve(request, batch_id):
                         approval.save()
 
                     repair.queue_status = 'APPROVED'
+                    repair._batch_approval_notifications_handled = (
+                        len(locked_repairs) > 1
+                    )
                     repair.save()
 
                     if repair.technician:
@@ -1189,12 +1200,18 @@ def customer_batch_approve(request, batch_id):
             if technician:
                 TechnicianNotification.objects.create(
                     technician=technician,
-                    message=f"{customer.name} approved all {break_count} breaks on Unit #{unit_number} "
+                    # on_vehicle() names a fleet unit as "Unit #4471" and an
+                    # individual's car as the car -- this line hard-coded
+                    # "Unit #" for both.
+                    message=f"{customer.name} approved all {break_count} breaks"
+                            f"{on_vehicle(locked_repairs[0])} "
                             f"(${total_cost:.2f} total).",
                     read=False,
                     repair=locked_repairs[0],
                     repair_batch_id=batch_id
                 )
+                if len(locked_repairs) > 1:
+                    notify_batch_approved(locked_repairs)
 
             messages.success(
                 request,
