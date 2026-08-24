@@ -37,6 +37,7 @@ from apps.technician_portal.services.dispatch import (
 from apps.technician_portal.services.schedule_conflicts import (
     annotate_conflicts, technician_load,
 )
+from apps.technician_portal.services import working_hours
 
 # What belongs on a day sheet: work that is a go, plus what already got done
 # that day (a schedule with its finished jobs missing looks un-run, not run).
@@ -158,6 +159,15 @@ def day_schedule(request):
         for job_list in by_tech.values():
             tech = job_list[0].technician
             group_techs.setdefault(tech.pk, tech)
+        # S8: resolve the day's declared hours once per technician. Both the
+        # group header and the dispatch picker read these off the instance —
+        # the roster holds the same objects, so it is annotated by this loop
+        # too. Anyone with nothing on file gets '' and False, which is what
+        # keeps the board silent for a shop that never filled the form in.
+        for tech in group_techs.values():
+            tech.hours_today = working_hours.describe_day(
+                tech.working_hours, day)
+            tech.off_today = working_hours.is_off_on(tech.working_hours, day)
         groups = [
             {'technician': tech, 'jobs': by_tech.get(pk, []),
              # S5: conflicts are per-technician-day, so they are computed
@@ -172,7 +182,9 @@ def day_schedule(request):
         ))
     else:
         # A tech's own day gets the same flags — being double-booked is
-        # something the person driving to both should see first.
+        # something the person driving to both should see first, and a job
+        # sitting outside their own hours is something to query now rather
+        # than at 6 AM.
         annotate_conflicts(jobs)
 
     # Unscheduled work: the honest empty state for techs ("nothing scheduled

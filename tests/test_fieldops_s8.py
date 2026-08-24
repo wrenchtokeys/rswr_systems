@@ -6,7 +6,7 @@ The rule under test everywhere below: an empty ``working_hours`` means
 shop the day this deploys.
 """
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 from django.test import TestCase
 from django.utils import timezone
@@ -379,3 +379,266 @@ class TeamSettingsPageTests(TestCase):
         body = self.client.get('/owner/settings/?tab=team').content.decode()
         self.assertIn('Mon–Fri 8:00 AM – 5:00 PM', body)
         self.assertIn('Edit hours', body)
+
+
+# =============================================================================
+# The board half — what the dispatch screen does with the hours (S8)
+#
+# The foundation above stores and reads hours; these are the four consumers
+# S8 exists for. Every one of them has to stay silent for an undeclared
+# technician, so each has a paired "and nothing happens when {}" assertion
+# rather than one blanket test.
+# =============================================================================
+
+from django.urls import reverse  # noqa: E402  (board half, added after S5)
+
+from apps.technician_portal.services.schedule_conflicts import (  # noqa: E402
+    annotate_conflicts, describe_outside_hours, technician_load,
+)
+from tests.test_fieldops_s5 import S5Base  # noqa: E402
+
+
+class BoardHoursBase(S5Base):
+    """S5's shop, plus a way to say when Marcus works.
+
+    Reuses S5Base on purpose: the board is S5's screen, and a divergent
+    fixture here would test a shop that doesn't exist.
+    """
+
+    suffix = '_s8board'
+
+    def declare(self, tech=None, hours=None):
+        tech = tech or self.tech
+        tech.working_hours = MON_FRI if hours is None else hours
+        tech.save(update_fields=['working_hours'])
+        tech.refresh_from_db()
+        return tech
+
+    def booked(self, day, start, end, *, technician=None):
+        return self.make_repair(
+            unit='UNIT-H', technician=technician or self.tech,
+            scheduled_for=_aware(day, start), window_end=_aware(day, end))
+
+
+class OutsideHoursChipTests(BoardHoursBase):
+    """Signal 4: one short chip, and only when the shop has an opinion."""
+
+    def test_undeclared_technician_is_never_flagged(self):
+        # The case that is every row in production. 4:30 AM on a Saturday is
+        # as far outside a normal week as a booking gets, and the board must
+        # still say nothing about a person nobody described.
+        job = self.booked(SATURDAY, time(4, 30), time(5, 45))
+        annotate_conflicts([job])
+        self.assertEqual(job.conflicts, [])
+        self.assertEqual(describe_outside_hours(job), '')
+
+    def test_booking_before_the_shift_is_flagged_with_the_hours(self):
+        self.declare()
+        job = self.booked(MONDAY, time(4, 30), time(5, 45))
+        annotate_conflicts([job])
+        self.assertEqual(len(job.conflicts), 1)
+        self.assertIn("Outside Marcus's hours", job.conflicts[0])
+        self.assertIn('8:00 AM', job.conflicts[0])
+
+    def test_booking_that_runs_past_the_shift_is_flagged(self):
+        self.declare()
+        job = self.booked(MONDAY, time(16, 30), time(18, 0))
+        annotate_conflicts([job])
+        self.assertEqual(len(job.conflicts), 1)
+        self.assertIn("Outside Marcus's hours", job.conflicts[0])
+
+    def test_a_day_off_names_the_weekday_not_the_date(self):
+        # "off Saturdays" is the standing fact and reads the same next week;
+        # the date is already on the screen.
+        self.declare()
+        job = self.booked(SATURDAY, time(9, 0), time(10, 0))
+        annotate_conflicts([job])
+        self.assertEqual(job.conflicts, ['Marcus is off Saturdays'])
+
+    def test_inside_declared_hours_says_nothing(self):
+        self.declare()
+        job = self.booked(MONDAY, time(9, 0), time(10, 0))
+        annotate_conflicts([job])
+        self.assertEqual(job.conflicts, [])
+
+    def test_the_shift_edges_are_inclusive(self):
+        self.declare()
+        job = self.booked(MONDAY, time(8, 0), time(17, 0))
+        annotate_conflicts([job])
+        self.assertEqual(job.conflicts, [])
+
+    def test_hours_are_wall_clock_not_utc(self):
+        # The bug this session refused to inherit: ReviewConfig compares the
+        # UTC hour of an aware datetime and sends review emails at 4 AM local.
+        # 8:30 AM Central is 13:30 UTC — a UTC comparison would flag it.
+        self.declare()
+        job = self.booked(MONDAY, time(8, 30), time(9, 30))
+        self.assertEqual(timezone.localtime(job.scheduled_for).hour, 8)
+        annotate_conflicts([job])
+        self.assertEqual(job.conflicts, [])
+
+    def test_garbage_in_the_admin_box_degrades_to_undeclared(self):
+        # working_hours is a raw JSON textarea in Django admin, reachable in
+        # production. Nonsense must read as "no hours", never as an exception
+        # on a screen a shop runs its morning from.
+        for junk in ('nine to five', ['monday'], {'monday': 'all day'},
+                     {'funday': ['08:00', '17:00']}, {'monday': ['17:00', '08:00']}):
+            with self.subTest(junk=junk):
+                self.tech.working_hours = junk
+                self.tech.save(update_fields=['working_hours'])
+                job = self.booked(SATURDAY, time(4, 30), time(5, 45))
+                annotate_conflicts([job])
+                self.assertEqual(job.conflicts, [])
+
+    def test_the_hours_chip_sits_beside_the_other_signals(self):
+        # One row, two true facts: booked outside the shift AND off what the
+        # customer asked for. Both print — S5's discipline is one chip per
+        # *signal*, not one per row.
+        self.declare()
+        job = self.booked(MONDAY, time(4, 30), time(5, 45))
+        job.preferred_date = MONDAY
+        job.preferred_window = 'AFTERNOON'
+        job.save(update_fields=['preferred_date', 'preferred_window'])
+        annotate_conflicts([job])
+        self.assertEqual(len(job.conflicts), 2)
+        self.assertTrue(any('Asked for' in c for c in job.conflicts))
+        self.assertTrue(any("Marcus's hours" in c for c in job.conflicts))
+
+
+class LoadAgainstHoursTests(BoardHoursBase):
+    """Capacity measured against the clock the shop declared."""
+
+    def test_span_stays_the_denominator_when_nothing_is_declared(self):
+        rows = [self.booked(MONDAY, time(8, 0), time(8, 30)),
+                self.booked(MONDAY, time(8, 30), time(9, 0))]
+        load = technician_load(rows)
+        self.assertEqual(load['basis'], 'span')
+        self.assertIsNone(load['available_hours'])
+        # Two nominal hours of work inside a one-hour span. The span is a weak
+        # denominator and this is exactly its false positive — kept, because
+        # for an undeclared tech it is the only honest number available.
+        self.assertTrue(load['over_committed'])
+
+    def test_declared_hours_clear_the_span_false_positive(self):
+        self.declare()
+        rows = [self.booked(MONDAY, time(8, 0), time(8, 30)),
+                self.booked(MONDAY, time(8, 30), time(9, 0))]
+        load = technician_load(rows)
+        self.assertEqual(load['basis'], 'hours')
+        self.assertEqual(load['available_hours'], 9)
+        self.assertFalse(load['over_committed'])
+        self.assertIn('on the clock', load['summary'])
+
+    def test_declared_hours_catch_what_the_span_misses(self):
+        # Three jobs stretched across a short shift: the span says 4h into 4h
+        # and shrugs; the declared 08:00-11:00 shift says three hours of work
+        # do not fit in three hours once they are spread over four.
+        self.declare(hours=dict(MON_FRI, monday=['08:00', '10:00']))
+        rows = [self.booked(MONDAY, time(8, 0), time(9, 0)),
+                self.booked(MONDAY, time(9, 0), time(10, 0)),
+                self.booked(MONDAY, time(10, 30), time(11, 30))]
+        load = technician_load(rows)
+        self.assertEqual(load['basis'], 'hours')
+        self.assertEqual(load['available_hours'], 2)
+        self.assertTrue(load['over_committed'])
+        self.assertIn('3h of work', load['summary'])
+        self.assertIn('2h on the clock', load['summary'])
+
+    def test_work_on_a_day_off_reads_as_a_day_off(self):
+        self.declare()
+        rows = [self.booked(SATURDAY, time(9, 0), time(10, 0))]
+        load = technician_load(rows)
+        self.assertEqual(load['basis'], 'day_off')
+        self.assertTrue(load['over_committed'])
+        self.assertEqual(load['summary'], '1h of work on a day off')
+
+    def test_an_empty_day_is_still_none(self):
+        self.declare()
+        self.assertIsNone(technician_load([]))
+
+
+class BoardRenderTests(BoardHoursBase):
+    """What the manager actually sees at /tech/schedule/."""
+
+    def _board(self, day):
+        self.login_shop(self.owner)
+        return self.client.get(
+            reverse('day_schedule'), {'date': day.isoformat()})
+
+    def _populate(self, day):
+        """Give the day one job belonging to somebody else.
+
+        The board renders per-technician groups only once the day has work in
+        it — an empty day gets S3's single "Nothing scheduled today" panel
+        instead. "Off today" is a *group* line, so it needs a day that exists.
+        """
+        return self.booked(day, time(9, 0), time(10, 0),
+                           technician=self.other_tech)
+
+    def test_off_today_replaces_nothing_scheduled(self):
+        # The highest-value line in the session: a gap to fill and a person
+        # who isn't working look identical without hours, and lead to
+        # opposite decisions.
+        self.declare()
+        self._populate(SATURDAY)
+        response = self._board(SATURDAY)
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn('Off Sat Aug 22', body)
+
+    def test_undeclared_technician_still_reads_nothing_scheduled(self):
+        self._populate(SATURDAY)
+        response = self._board(SATURDAY)
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn('Nothing scheduled', body)
+        self.assertNotIn('Off Sat Aug 22', body)
+
+    def test_the_header_prints_the_declared_shift(self):
+        self.declare()
+        self._populate(MONDAY)
+        response = self._board(MONDAY)
+        self.assertIn('8:00 AM – 5:00 PM', response.content.decode())
+
+    def test_an_off_duty_tech_is_marked_in_the_picker_not_removed(self):
+        # A shop with one truck down calls somebody in on their day off. The
+        # picker that hides them reads as broken.
+        self.declare()
+        self.make_repair(unit='UNIT-RAIL', status='REQUESTED')
+        response = self._board(SATURDAY)
+        body = response.content.decode()
+        self.assertIn('— off Sat', body)
+        self.assertIn(f'value="{self.tech.pk}"', body)
+
+    def test_the_picker_is_unmarked_when_nobody_declared_hours(self):
+        self.make_repair(unit='UNIT-RAIL', status='REQUESTED')
+        response = self._board(SATURDAY)
+        body = response.content.decode()
+        self.assertNotIn('— off', body)
+        self.assertIn(f'value="{self.tech.pk}"', body)
+
+    def test_the_board_survives_nonsense_hours(self):
+        self.tech.working_hours = 'whenever he feels like it'
+        self.tech.save(update_fields=['working_hours'])
+        self.booked(SATURDAY, time(4, 30), time(5, 45))
+        response = self._board(SATURDAY)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('Outside', response.content.decode())
+
+    def test_booking_outside_hours_still_succeeds(self):
+        # Informational, exactly like S5's other three signals: a shop that
+        # calls somebody in on their day off is allowed to.
+        self.declare()
+        job = self.make_repair(unit='UNIT-BOOK', status='REQUESTED')
+        self.login_shop(self.owner)
+        # A real future Saturday: the booking endpoint is a write path, and
+        # this test is about the hours signal not blocking it, not about
+        # whatever it thinks of dates in the past.
+        today = timezone.localtime(timezone.now()).date()
+        saturday = today + timedelta(days=((5 - today.weekday()) % 7) or 7)
+        response = self.post_dispatch(
+            job, date=saturday.isoformat(), window='EXACT',
+            start_time='04:30', end_time='05:45', technician_id=self.tech.pk)
+        self.assertEqual(response.status_code, 200)
+        job.refresh_from_db()
+        self.assertIsNotNone(job.scheduled_for)

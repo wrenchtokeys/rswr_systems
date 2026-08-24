@@ -355,7 +355,12 @@ class OverPromiseTests(S4Base):
         customer_mail = ' '.join(bodies)
         self.assertNotIn('added to the schedule', customer_mail)
         self.assertNotIn('Status: Scheduled', customer_mail)
-        self.assertIn('confirm your time', customer_mail)
+        # The guard is the promise, not the phrasing. PR #200's email chassis
+        # rewrote this copy from "confirm your time" to "we will confirm the
+        # time shortly" — same commitment, and the assertion should survive
+        # the next rewrite too. What must never appear is a time the customer
+        # was never given, which is what the two lines above check.
+        self.assertRegex(customer_mail, r'confirm (?:your|the) time')
 
 
 # =============================================================================
