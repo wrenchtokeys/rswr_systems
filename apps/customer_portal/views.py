@@ -267,7 +267,7 @@ def customer_dashboard(request):
         individual_repairs = []  # List of non-batched repairs
 
         for repair in _awaiting_list:
-            if repair.is_part_of_batch:
+            if repair.is_part_of_batch and repair.repair_batch_id:
                 # Only add batch summary once (for the first repair in batch we encounter)
                 if repair.repair_batch_id not in batch_repairs:
                     _siblings = _prefetched_pending_batches.get(repair.repair_batch_id)
@@ -602,7 +602,9 @@ def customer_services(request):
             # Group multi-break batches: one row per batch, like the old list.
             batch_groups = {}
             for repair in repairs:
-                if repair.is_part_of_batch:
+                # A null batch id is never groupable — it would reverse
+                # `/app/batch/None/`. Anything without one is its own row.
+                if repair.is_part_of_batch and repair.repair_batch_id:
                     batch_groups.setdefault(str(repair.repair_batch_id), []).append(repair)
                 else:
                     items.append({
