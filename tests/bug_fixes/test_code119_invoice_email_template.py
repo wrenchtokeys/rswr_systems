@@ -199,8 +199,8 @@ class BatchInvoiceEmailTemplateTests(TestCase):
         config.invoice_email_template = template
         return config
 
-    @patch('apps.billing.tasks.send_mail', return_value=1)
-    def test_batch_uses_template_when_configured(self, mock_send_mail):
+    @patch('core.email_utils.send_branded_email', return_value=1)
+    def test_batch_uses_template_when_configured(self, mock_send):
         from apps.billing.tasks import _send_batch_invoice_email
         invoice = self._make_invoice()
         config = self._make_config(
@@ -210,15 +210,35 @@ class BatchInvoiceEmailTemplateTests(TestCase):
         result = _send_batch_invoice_email(invoice, config)
 
         self.assertTrue(result)
-        body = mock_send_mail.call_args[1]['message']
+        body = mock_send.call_args[1]['plain_text']
         self.assertIn('Big Fleet Co', body)
         self.assertIn('BATCH-007', body)
         self.assertIn('$320.00', body)
         # Rendered template — default preamble should NOT appear
         self.assertNotIn('Please find attached', body)
 
-    @patch('apps.billing.tasks.send_mail', return_value=1)
-    def test_batch_falls_back_when_template_blank(self, mock_send_mail):
+    @patch('core.email_utils.send_branded_email', return_value=1)
+    def test_batch_template_also_reaches_the_html_half(self, mock_send):
+        """The shop's copy has to land where the customer actually reads it.
+
+        `plain_text` is the alternative almost nobody sees. The template
+        used to stop there while the HTML kept saying "Please find your
+        invoice for recent services below."
+        """
+        from apps.billing.tasks import _send_batch_invoice_email
+        invoice = self._make_invoice()
+        config = self._make_config(
+            template='Hi {customer_name}, batch invoice {invoice_number} total {total}.'
+        )
+
+        _send_batch_invoice_email(invoice, config)
+
+        paragraphs = mock_send.call_args[1]['body_paragraphs']
+        self.assertIn('Big Fleet Co', ' '.join(paragraphs))
+        self.assertNotIn('Please find your invoice', ' '.join(paragraphs))
+
+    @patch('core.email_utils.send_branded_email', return_value=1)
+    def test_batch_falls_back_when_template_blank(self, mock_send):
         from apps.billing.tasks import _send_batch_invoice_email
         invoice = self._make_invoice()
         config = self._make_config(template='')
@@ -226,12 +246,17 @@ class BatchInvoiceEmailTemplateTests(TestCase):
         result = _send_batch_invoice_email(invoice, config)
 
         self.assertTrue(result)
-        body = mock_send_mail.call_args[1]['message']
+        body = mock_send.call_args[1]['plain_text']
         # Default body has "Please find attached"
         self.assertIn('Please find attached', body)
+        # ...and the HTML half keeps its own default preamble.
+        self.assertIn(
+            'Please find your invoice',
+            ' '.join(mock_send.call_args[1]['body_paragraphs']),
+        )
 
-    @patch('apps.billing.tasks.send_mail', return_value=1)
-    def test_batch_falls_back_on_unknown_placeholder(self, mock_send_mail):
+    @patch('core.email_utils.send_branded_email', return_value=1)
+    def test_batch_falls_back_on_unknown_placeholder(self, mock_send):
         from apps.billing.tasks import _send_batch_invoice_email
         invoice = self._make_invoice()
         config = self._make_config(
@@ -242,5 +267,5 @@ class BatchInvoiceEmailTemplateTests(TestCase):
 
         self.assertTrue(result)
         # Should fall back to default body — doesn't crash
-        body = mock_send_mail.call_args[1]['message']
+        body = mock_send.call_args[1]['plain_text']
         self.assertIn('Please find attached', body)

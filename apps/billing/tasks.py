@@ -658,23 +658,33 @@ Thank you for your business!
     from apps.billing.pay_links import public_pay_url
     pay_url = public_pay_url(invoice)
 
+    # A shop's own copy (CODE-119) used to reach `plain_text` and stop there,
+    # so the HTML half — the one the customer actually looks at — still read
+    # the generic "Please find your invoice" while the shop's message went
+    # only to the text alternative. Same defect as the one-off invoice path;
+    # see InvoiceEmailService._html_body_paragraphs.
+    if config.invoice_email_template and body:
+        body_paragraphs = [p.strip() for p in body.split('\n\n') if p.strip()]
+    else:
+        body_paragraphs = [
+            f"Dear {customer.name},",
+            "Please find your invoice for recent services below.",
+        ]
+
     try:
         from core.email_utils import send_branded_email
         sent_count = send_branded_email(
             subject=subject,
             recipient_list=[recipient_email],
             headline=f'Invoice {invoice.invoice_number}',
-            body_paragraphs=[
-                f"Dear {customer.name},",
-                "Please find your invoice for recent services below.",
-            ],
+            body_paragraphs=body_paragraphs,
             detail_rows=[
                 ('Invoice #', invoice.invoice_number),
                 ('Date', invoice.invoice_date.strftime('%B %d, %Y')),
-                ('Due Date', invoice.due_date.strftime('%B %d, %Y')),
-                ('Total', f'${invoice.total:,.2f}'),
+                ('Due date', invoice.due_date.strftime('%B %d, %Y')),
+                ('Total', f'${invoice.total:,.2f}', 'strong'),
             ],
-            button_text='Pay Invoice' if pay_url else None,
+            button_text='Pay invoice' if pay_url else None,
             button_url=pay_url,
             tenant=invoice.tenant,
             plain_text=body,
