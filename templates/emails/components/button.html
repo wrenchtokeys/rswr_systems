@@ -1,0 +1,30 @@
+{% comment %}
+The primary action. One per email, once.
+
+    {% include "emails/components/button.html" with text="View repair details" url=view_url color=branding.primary_color %}
+    {% include "emails/components/button.html" with text="Approve" url=a secondary_text="Decline" secondary_url=d color=branding.primary_color %}
+
+`secondary_text`/`secondary_url` render a real outlined button beside the
+primary — use it only when the decision is genuinely binary (approve or
+decline). For "and also…" use link.html instead, so the primary action
+keeps its weight.
+
+Table-based with bgcolor so Outlook fills it; padding on the cell rather
+than the anchor so the whole button is the hit area. 14px of vertical
+padding on 15px text clears 44px.
+{% endcomment %}
+{% if text and url %}
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-top:26px;">
+    <tr>
+        <td bgcolor="{{ color|default:'#2563eb' }}" style="background-color:{{ color|default:'#2563eb' }}; border-radius:8px;">
+            <a class="btn-a" href="{{ url }}" style="display:inline-block; padding:14px 24px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; line-height:20px; letter-spacing:-0.2px; color:#ffffff; text-decoration:none;">{{ text }}</a>
+        </td>
+        {% if secondary_text and secondary_url %}
+        <td width="12" style="width:12px;">&nbsp;</td>
+        <td bgcolor="#ffffff" style="background-color:#ffffff; border:1px solid #d1d5db; border-radius:8px;">
+            <a class="btn-a" href="{{ secondary_url }}" style="display:inline-block; padding:13px 23px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:500; line-height:20px; color:#374151; text-decoration:none;">{{ secondary_text }}</a>
+        </td>
+        {% endif %}
+    </tr>
+</table>
+{% endif %}

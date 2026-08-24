@@ -40,6 +40,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
 from core.services.sms_service import SMSService
+from core.notification_text import on_vehicle
 
 logger = logging.getLogger(__name__)
 
@@ -931,7 +932,8 @@ def customer_repair_approve(request, repair_id):
                 if is_batch and len(repairs_to_approve) > 1:
                     TechnicianNotification.objects.create(
                         technician=technician,
-                        message=f"✅ Batch of {len(repairs_to_approve)} breaks APPROVED by {customer.name} - Unit {repair.unit_number}.",
+                        message=f"{customer.name} approved all {len(repairs_to_approve)} breaks"
+                                f"{on_vehicle(repair)}.",
                         read=False,
                         repair=repairs_to_approve[0],
                         repair_batch_id=batch_id,
@@ -939,7 +941,8 @@ def customer_repair_approve(request, repair_id):
                 else:
                     TechnicianNotification.objects.create(
                         technician=technician,
-                        message=f"✅ Repair #{repair.id} APPROVED by {customer.name} - Unit {repair.unit_number}. You can now complete the work.",
+                        message=f"{customer.name} approved repair #{repair.id}"
+                                f"{on_vehicle(repair)}. Ready to work.",
                         read=False,
                         repair=repairs_to_approve[0],
                     )
@@ -1032,11 +1035,13 @@ def customer_repair_deny(request, repair_id):
             denied_count = len(repairs_to_deny)
             if technician:
                 if is_batch and denied_count > 1:
-                    denial_message = f"❌ Batch of {denied_count} breaks DENIED by {customer.name} - Unit {repair.unit_number}."
+                    denial_message = (f"{customer.name} declined all {denied_count} breaks"
+                                      f"{on_vehicle(repair)}.")
                     if reason:
                         denial_message += f" Reason: {reason}"
                 else:
-                    denial_message = f"❌ Repair #{repair.id} DENIED by {customer.name} - Unit {repair.unit_number}."
+                    denial_message = (f"{customer.name} declined repair #{repair.id}"
+                                      f"{on_vehicle(repair)}.")
                     if reason:
                         denial_message += f" Reason: {reason}"
                 # CODE-263: Use `technician` (extracted from repairs_to_deny[0]
@@ -1182,7 +1187,8 @@ def customer_batch_approve(request, batch_id):
             if technician:
                 TechnicianNotification.objects.create(
                     technician=technician,
-                    message=f"✅ Batch of {break_count} breaks APPROVED by {customer.name} - Unit {unit_number} (${total_cost:.2f} total)",
+                    message=f"{customer.name} approved all {break_count} breaks on Unit #{unit_number} "
+                            f"(${total_cost:.2f} total).",
                     read=False,
                     repair=locked_repairs[0],
                     repair_batch_id=batch_id
@@ -1300,7 +1306,8 @@ def customer_batch_deny(request, batch_id):
 
             # Create single grouped notification outside the transaction (best effort)
             if technician:
-                denial_message = f"❌ Batch of {break_count} breaks DENIED by {customer.name} - Unit {unit_number}"
+                denial_message = (f"{customer.name} declined all {break_count} breaks "
+                                  f"on Unit #{unit_number}.")
                 if reason:
                     denial_message += f" - Reason: {reason}"
                 TechnicianNotification.objects.create(
@@ -1417,7 +1424,9 @@ def customer_replacement_approve(request, replacement_id):
             if locked_replacement.technician:
                 TechnicianNotification.objects.create(
                     technician=locked_replacement.technician,
-                    message=f"✅ Replacement #{locked_replacement.id} APPROVED by {customer.name} - {locked_replacement.get_glass_position_display()} on Unit {locked_replacement.unit_number}",
+                    message=f"{customer.name} approved replacement #{locked_replacement.id} — "
+                            f"{locked_replacement.get_glass_position_display().lower()}"
+                            f"{on_vehicle(locked_replacement)}.",
                     read=False,
                 )
 
@@ -1471,7 +1480,9 @@ def customer_replacement_deny(request, replacement_id):
 
             # Create notification for technician (outside transaction — best effort)
             if locked_replacement.technician:
-                denial_message = f"❌ Replacement #{locked_replacement.id} DENIED by {customer.name} - {locked_replacement.get_glass_position_display()} on Unit {locked_replacement.unit_number}"
+                denial_message = (f"{customer.name} declined replacement #{locked_replacement.id} — "
+                              f"{locked_replacement.get_glass_position_display().lower()}"
+                              f"{on_vehicle(locked_replacement)}.")
                 if reason:
                     denial_message += f". Reason: {reason}"
                 TechnicianNotification.objects.create(
@@ -1841,7 +1852,9 @@ def _notify_shop_replacement_requested(request, replacement):
         if replacement.technician:
             TechnicianNotification.objects.create(
                 technician=replacement.technician,
-                message=f"🔔 New replacement request from {customer.name} - {replacement.get_glass_position_display()} on Unit {replacement.unit_number}",
+                message=f"{customer.name} requested a "
+                        f"{replacement.get_glass_position_display().lower()} replacement"
+                        f"{on_vehicle(replacement)}.",
                 read=False,
             )
     except Exception:
@@ -3151,7 +3164,8 @@ def customer_bulk_action(request):
                         notifications_to_create.append(
                             TechnicianNotification(
                                 technician=repair.technician,
-                                message=f"✅ Repair #{repair.id} APPROVED by {customer.name} - Unit {repair.unit_number}. You can now complete the work.",
+                                message=f"{customer.name} approved repair #{repair.id}"
+                                f"{on_vehicle(repair)}. Ready to work.",
                                 read=False,
                                 repair=repair,
                             )
@@ -3185,7 +3199,8 @@ def customer_bulk_action(request):
                         notifications_to_create.append(
                             TechnicianNotification(
                                 technician=repair.technician,
-                                message=f"❌ Repair #{repair.id} DENIED by {customer.name} - Unit {repair.unit_number}.",
+                                message=f"{customer.name} declined repair #{repair.id}"
+                                                f"{on_vehicle(repair)}.",
                                 read=False,
                                 repair=repair,
                             )
@@ -4400,7 +4415,8 @@ def quick_approve_repair(request, token):
                 if locked_repair.technician:
                     TechnicianNotification.objects.create(
                         technician=locked_repair.technician,
-                        message=f"✅ Repair #{locked_repair.id} APPROVED by {locked_repair.customer.name} - Unit {locked_repair.unit_number}. You can now complete the work.",
+                        message=f"{locked_repair.customer.name} approved repair #{locked_repair.id}"
+                                f"{on_vehicle(locked_repair)}. Ready to work.",
                         read=False,
                         repair=locked_repair,
                     )
@@ -4490,7 +4506,8 @@ def quick_deny_repair(request, token):
 
                 # Notify technician
                 if locked_repair.technician:
-                    denial_message = f"❌ Repair #{locked_repair.id} DENIED by {locked_repair.customer.name} - Unit {locked_repair.unit_number}."
+                    denial_message = (f"{locked_repair.customer.name} declined repair "
+                                      f"#{locked_repair.id}{on_vehicle(locked_repair)}.")
                     if reason:
                         denial_message += f" Reason: {reason}"
                     TechnicianNotification.objects.create(

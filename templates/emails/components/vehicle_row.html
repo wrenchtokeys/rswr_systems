@@ -1,0 +1,20 @@
+{% comment %}
+The vehicle row, labelled correctly for who the customer is.
+
+    {% include "emails/components/vehicle_row.html" %}
+
+A fleet account is identified by its unit number and an individual by their
+vehicle, so the LABEL changes with the customer, not just the value. This is
+the rule in CLAUDE.md that produced "Unit #Silver Camry" on invoices when it
+was ignored; the same bug in email prints "Unit Number:" with nothing after
+it for every retail customer.
+
+`vehicle_label` / `vehicle_identifier` are injected by
+NotificationService.create_notification from the repair. `unit_number` is
+the fallback for templates whose caller passes a flat context and no repair
+object. When there is nothing on record, nothing renders — a bare noun with
+no value is worse than an absent row.
+{% endcomment %}
+{% if vehicle_identifier %}{% include "emails/components/row.html" with label=vehicle_label|default:"Unit #" value=vehicle_identifier %}
+{% elif unit_number %}{% include "emails/components/row.html" with label="Unit #" value=unit_number %}
+{% endif %}

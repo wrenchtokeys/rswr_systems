@@ -1,52 +1,26 @@
-================================================
-{{ branding.company_name }}
-✓ REPAIR COMPLETED
-================================================
+{% load email_ui %}{% autoescape off %}Your windshield repair is done.
 
-Great news! Your windshield has been repaired and is ready to return to service.
+The repair is finished and the vehicle is ready to go back into service.
 
-================================================
-REPAIR SUMMARY
-================================================
-
-Repair ID:          #{{ repair.id }}
-Unit Number:        {{ repair.unit_number }}
-{% if repair.customer %}Company:            {{ repair.customer.company_name }}
-{% endif %}{% if repair.assigned_technician %}Technician:         {{ repair.assigned_technician.get_full_name }}
-{% endif %}Completed On:       {{ repair.actual_repair_date|date:"M d, Y" }}
-Total Cost:         ${{ repair.total_cost }}
-
-{% if repair.damage_photo_before or repair.damage_photo_after %}================================================
-REPAIR DOCUMENTATION
-================================================
-
-{% if repair.damage_photo_before %}Before Photo: {{ repair.damage_photo_before.url }}
-{% endif %}{% if repair.damage_photo_after %}After Photo:  {{ repair.damage_photo_after.url }}
-{% endif %}
-{% endif %}================================================
-VIEW COMPLETE DETAILS
-================================================
-
+{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif repair.unit_number %}  {{ "Unit #"|pad_label }}{{ repair.unit_number }}
+{% endif %}{% if repair.break_description %}  {{ "Damage"|pad_label }}{{ repair.break_description }}
+{% endif %}{% if repair.assigned_technician %}  {{ "Technician"|pad_label }}{{ repair.assigned_technician.get_full_name }}
+{% endif %}{% if repair.actual_repair_date %}  {{ "Completed"|pad_label }}{{ repair.actual_repair_date|date:"F j, Y" }}
+{% endif %}{% with warranty=repair|warranty_text %}{% if warranty %}  {{ "Warranty"|pad_label }}{{ warranty }}
+{% endif %}{% endwith %}{% with total=repair.cost|money %}{% if total %}  {{ "Total"|pad_label }}{{ total }}
+{% endif %}{% endwith %}
+View repair details
 {{ view_repair_url }}
 
-================================================
-THANK YOU
-================================================
+Before and after photos are on the repair page.
 
-Thank you for choosing {{ branding.company_name }}!
+--
+{{ branding.company_name }}{% if branding.company_address %}
+{{ branding.company_address }}{% endif %}{% if branding.support_phone %}
+{{ branding.support_phone }}{% endif %}{% if branding.support_email %}
+{{ branding.support_email }}{% endif %}
 
-If you have any questions about this repair or need additional service, please don't hesitate to reach out.
-
-{% if branding.support_email %}Email: {{ branding.support_email }}
-{% endif %}{% if branding.support_phone %}Phone: {{ branding.support_phone }}
-{% endif %}
-================================================
-
-{{ branding.footer_text }}
-
-Manage notification preferences:
-{{ unsubscribe_url }}
-
-{{ branding.company_name }}
-{% if branding.company_address %}{{ branding.company_address }}
-{% endif %}{% if branding.website_url %}{{ branding.website_url }}{% endif %}
+Manage notification preferences
+{{ base_url }}/app/notifications/preferences/
+{% endautoescape %}

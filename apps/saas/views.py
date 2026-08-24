@@ -1832,8 +1832,8 @@ def connect_return(request):
         if status.get('charges_enabled'):
             messages.success(
                 request,
-                '✅ Payment processing is set up! Your customers can now pay invoices '
-                'online and funds will go directly to your bank account.'
+                'Payment processing is set up. Your customers can now pay invoices '
+                'online and funds go directly to your bank account.'
             )
         elif status.get('details_submitted'):
             messages.info(
@@ -5003,7 +5003,7 @@ def owner_confirm_email(request, uidb64, token):
             except Exception as e:
                 logger.warning(f"Welcome email failed for {user.email}: {e}")
 
-        messages.success(request, "🎉 You're in! Your free trial has started — let's set up your shop.")
+        messages.success(request, "Your free trial has started. Let's set up your shop.")
         return redirect('onboarding')
 
     # Token invalid. If the account is already active, the most common cause

@@ -1,29 +1,26 @@
-PAYMENT RECEIVED
+{% load email_ui %}{% autoescape off %}Payment received — thank you.
 
-Thank you for your payment{% if invoice.customer %}, {{ invoice.customer.name }}{% endif %}.
+{% if invoice.amount_due > 0 %}Part of this invoice is still outstanding.{% else %}This invoice is paid in full. Nothing else is owed.{% endif %}
 
-PAYMENT DETAILS
------------------------------------------
-Amount Paid:    ${{ payment.amount }}
-Payment Method: {{ payment.get_payment_method_display }}
-Payment Date:   {{ payment.payment_date|date:"M d, Y" }}{% if payment.reference_number %}
-Reference:      {{ payment.reference_number }}{% endif %}
-
-INVOICE SUMMARY
------------------------------------------
-Invoice #:         {{ invoice.invoice_number }}{% if invoice.tax_amount > 0 %}
-Tax ({{ invoice.tax_rate }}%):  ${{ invoice.tax_amount }}{% endif %}
-Invoice Total:     ${{ invoice.total }}
-Total Paid:        ${{ invoice.amount_paid }}
-Remaining Balance: {% if invoice.amount_due > 0 %}${{ invoice.amount_due }}{% else %}$0.00 - PAID IN FULL{% endif %}
-Status:            {{ invoice.get_status_display }}
-
-{% if invoice.amount_due > 0 and pay_url %}Pay remaining balance online: {{ pay_url }}
-{% endif %}{% if receipt_pdf_url %}Download your {% if invoice.status == 'PAID' %}receipt{% else %}invoice{% endif %} (PDF): {{ receipt_pdf_url }}
+  {{ "Amount paid"|pad_label }}{{ payment.amount|money }}
+{% if payment.get_payment_method_display %}  {{ "Method"|pad_label }}{{ payment.get_payment_method_display }}
+{% endif %}{% if payment.payment_date %}  {{ "Paid on"|pad_label }}{{ payment.payment_date|date:"F j, Y" }}
+{% endif %}{% if payment.reference_number %}  {{ "Reference"|pad_label }}{{ payment.reference_number }}
+{% endif %}  {{ "Invoice"|pad_label }}{{ invoice.invoice_number }}
+  {{ "Invoice total"|pad_label }}{{ invoice.total|money }}
+  {{ "Balance"|pad_label }}{% if invoice.amount_due > 0 %}{{ invoice.amount_due|money }}{% else %}$0.00{% endif %}
+{% if invoice.amount_due > 0 and pay_url %}
+Pay the balance
+{{ pay_url }}
+{% endif %}{% if receipt_pdf_url %}
+Download {% if invoice.amount_due > 0 %}invoice{% else %}receipt{% endif %} (PDF)
+{{ receipt_pdf_url }}
 {% endif %}
-Thank you for your prompt payment!
-
 --
-{{ branding.company_name }}{% if branding.support_email %}
-{{ branding.support_email }}{% endif %}{% if branding.support_phone %}
+{{ branding.company_name }}{% if branding.company_address %}
+{{ branding.company_address }}{% endif %}{% if branding.support_phone %}
 {{ branding.support_phone }}{% endif %}
+
+Manage notification preferences
+{{ base_url }}/app/notifications/preferences/
+{% endautoescape %}

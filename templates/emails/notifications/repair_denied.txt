@@ -1,57 +1,22 @@
-================================================
-{{ branding.company_name }}
-REPAIR REQUIRES ATTENTION
-================================================
+{% load email_ui %}{% autoescape off %}This repair was not approved.
 
-Your windshield repair request needs additional information or review before we can proceed.
+{% if repair.denial_reason %}{{ repair.denial_reason }}{% else %}No work has been done and nothing has been charged.{% endif %}
 
-{% if repair.denial_reason %}================================================
-REASON FOR REVIEW
-================================================
-
-{{ repair.denial_reason }}
+{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif repair.unit_number %}  {{ "Unit #"|pad_label }}{{ repair.unit_number }}
+{% endif %}{% if repair.break_description %}  {{ "Damage"|pad_label }}{{ repair.break_description }}
+{% endif %}{% if repair.requested_repair_date %}  {{ "Requested for"|pad_label }}{{ repair.requested_repair_date|date:"F j, Y" }}
 {% endif %}
-
-================================================
-REPAIR DETAILS
-================================================
-
-Repair ID:          #{{ repair.id }}
-Unit Number:        {{ repair.unit_number }}
-{% if repair.customer %}Company:            {{ repair.customer.company_name }}
-{% endif %}Break Description:  {{ repair.break_description }}
-Requested Date:     {{ repair.requested_repair_date|date:"M d, Y" }}
-
-================================================
-WHAT SHOULD YOU DO?
-================================================
-
-1. Review the reason for review listed above
-2. Contact us with any questions or additional information
-3. We'll update you once the issue is resolved
-
-================================================
-VIEW FULL DETAILS
-================================================
-
+View the details
 {{ view_repair_url }}
 
-================================================
-NEED HELP?
-================================================
+Reply to this email if you would like us to take another look.
 
-{% if branding.support_email %}Email: {{ branding.support_email }}
-{% endif %}{% if branding.support_phone %}Phone: {{ branding.support_phone }}
-{% endif %}
-Please reference repair #{{ repair.id }}
+--
+{{ branding.company_name }}{% if branding.company_address %}
+{{ branding.company_address }}{% endif %}{% if branding.support_phone %}
+{{ branding.support_phone }}{% endif %}
 
-================================================
-
-{{ branding.footer_text }}
-
-Manage notification preferences:
-{{ unsubscribe_url }}
-
-{{ branding.company_name }}
-{% if branding.company_address %}{{ branding.company_address }}
-{% endif %}{% if branding.website_url %}{{ branding.website_url }}{% endif %}
+Manage notification preferences
+{{ base_url }}/app/notifications/preferences/
+{% endautoescape %}

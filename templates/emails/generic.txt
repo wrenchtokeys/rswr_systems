@@ -1,0 +1,25 @@
+{% load email_ui %}{% autoescape off %}{{ headline }}
+{% if lede %}
+{{ lede }}
+{% endif %}{% for paragraph in body_paragraphs %}
+{{ paragraph }}
+{% endfor %}{% if detail_rows %}
+{% for row in detail_rows %}  {{ row.label|pad_label }}{{ row.value }}
+{% endfor %}{% endif %}{% if button_text and button_url %}
+{{ button_text }}
+{{ button_url }}
+{% endif %}{% if secondary_button_text and secondary_button_url %}
+{{ secondary_button_text }}
+{{ secondary_button_url }}
+{% endif %}{% if note %}
+{{ note }}
+{% endif %}
+--
+{{ branding.company_name }}{% if branding.company_address %}
+{{ branding.company_address }}{% endif %}{% if branding.support_phone %}
+{{ branding.support_phone }}{% endif %}{% if branding.support_email %}
+{{ branding.support_email }}{% endif %}
+
+Manage notification preferences
+{{ base_url|default:'https://rssystems.io' }}{{ unsubscribe_path|default:'/app/notifications/preferences/' }}
+{% endautoescape %}

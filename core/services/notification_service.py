@@ -100,6 +100,35 @@ class NotificationService:
                 from core.models.email_branding import EmailBrandingConfig
                 context['branding'] = EmailBrandingConfig.get_tenant_context(tenant)
 
+            # How this job's vehicle should be named, decided once here rather
+            # than in fourteen templates. A fleet job is a unit number, an
+            # individual's is their vehicle, and a job with neither on record
+            # prints nothing at all — templates drop the row when
+            # vehicle_identifier is empty rather than emitting a bare "Unit #".
+            # Persisted with the rest of the context, so the email retry path
+            # re-renders the same words.
+            if repair is not None and 'vehicle_identifier' not in context:
+                try:
+                    context['vehicle_identifier'] = repair.get_vehicle_identifier()
+                    context['vehicle_label'] = (
+                        repair.customer.vehicle_column_label if repair.customer else 'Unit #'
+                    )
+                    # Where the tech is going. The job's own service address
+                    # wins, else the customer's — get_service_location()
+                    # already decides that and returns '' when neither knows.
+                    # An assignment email without an address is one the tech
+                    # has to open the app to act on.
+                    context['service_location'] = repair.get_service_location()
+                    context['scheduled_for'] = (
+                        repair.scheduled_for.isoformat() if repair.scheduled_for else ''
+                    )
+                except Exception:
+                    logger.warning(
+                        "Could not resolve vehicle/location for notification; "
+                        "template will fall back to unit_number",
+                        exc_info=True,
+                    )
+
             # Render template content
             rendered = template.render(context)
 

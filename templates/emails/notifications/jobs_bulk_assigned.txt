@@ -1,22 +1,13 @@
-================================================
-{{ branding.company_name }}
-NEW ASSIGNMENTS
-================================================
+{% load email_ui %}{% autoescape off %}{% if job_count == 1 %}You have a new job.{% else %}{{ job_count }} new jobs on your list.{% endif %}
 
-You have been assigned {{ job_count }} job{{ job_count|pluralize }}:
+  {{ "Jobs"|pad_label }}{{ job_summary }}
 
-{{ job_summary }}
-
-View your jobs:
+View your day
 {{ base_url }}{{ action_url }}
 
-================================================
-
-{{ branding.footer_text }}
-
-Manage notification preferences:
-{{ base_url }}/tech/notifications/preferences/
-
+--
 {{ branding.company_name }}
-{% if branding.company_address %}{{ branding.company_address }}
-{% endif %}{% if branding.website_url %}{{ branding.website_url }}{% endif %}
+
+Manage notification preferences
+{{ base_url }}/tech/notifications/preferences/
+{% endautoescape %}

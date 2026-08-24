@@ -1,27 +1,20 @@
-REPAIR IN PROGRESS - Unit {{ unit_number }}
+{% load email_ui %}{% autoescape off %}Work has started on your windshield.
 
-Dear {{ customer_name }},
+Most repairs take 30 to 45 minutes. We will let you know as soon as it is
+done.
 
-{{ technician_name }} has started working on the windshield repair for unit {{ unit_number }}.
-
-REPAIR DETAILS
-==============
-Repair ID: #{{ repair_id }}
-Unit Number: {{ unit_number }}
-Technician: {{ technician_name }}
-Status: In Progress
-
-WHAT TO EXPECT
-==============
-Our technician is currently performing the windshield repair. You'll receive another notification when the work is completed.
-
-Most repairs are completed within 30-45 minutes, depending on the type and severity of the damage.
-
-View real-time status updates and photos in your customer dashboard:
+{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% if technician_name %}  {{ "Technician"|pad_label }}{{ technician_name }}
+{% endif %}
+Track this repair
 {{ action_url }}
 
----
-{{ branding.company_name }}
-{{ branding.company_address }}
+--
+{{ branding.company_name }}{% if branding.company_address %}
+{{ branding.company_address }}{% endif %}{% if branding.support_phone %}
+{{ branding.support_phone }}{% endif %}
 
-To manage your notification preferences, visit your account settings.
+Manage notification preferences
+{{ base_url }}/app/notifications/preferences/
+{% endautoescape %}

@@ -1,22 +1,22 @@
-================================================
-{{ branding.company_name }}
-JOBS REASSIGNED
-================================================
+{% load email_ui %}{% autoescape off %}{% if job_count == 1 %}A job moved off your list.
 
-{{ job_count }} of your job{{ job_count|pluralize }} ({{ job_summary }}) {{ job_count|pluralize:"was,were" }} reassigned to {{ new_technician_name }}.
+You are no longer responsible for it. Nothing else on your schedule
+changed.{% else %}{{ job_count }} jobs moved off your list.
 
-You are no longer responsible for {{ job_count|pluralize:"it,them" }}. If you have any questions about this change, please contact your manager.
+You are no longer responsible for them. Nothing else on your schedule
+changed.{% endif %}
 
-View your jobs:
+  {{ "Jobs"|pad_label }}{{ job_summary }}
+{% if new_technician_name %}  {{ "Now assigned to"|pad_label }}{{ new_technician_name }}
+{% endif %}
+View your day
 {{ base_url }}{{ action_url }}
 
-================================================
+Questions about the change go to your manager.
 
-{{ branding.footer_text }}
-
-Manage notification preferences:
-{{ base_url }}/tech/notifications/preferences/
-
+--
 {{ branding.company_name }}
-{% if branding.company_address %}{{ branding.company_address }}
-{% endif %}{% if branding.website_url %}{{ branding.website_url }}{% endif %}
+
+Manage notification preferences
+{{ base_url }}/tech/notifications/preferences/
+{% endautoescape %}

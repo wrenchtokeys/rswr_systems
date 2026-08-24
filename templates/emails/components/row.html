@@ -1,0 +1,18 @@
+{% comment %}
+One label/value row.
+
+    {% include "emails/components/row.html" with label="Technician" value=name %}
+    {% include "emails/components/row.html" with label="Total" value=total strong=1 %}
+    {% include "emails/components/row.html" with label="Balance" value="$0.00" money=1 %}
+
+strong  the label goes dark too — for the one summary row (Total, Balance)
+money   the value goes green, for an amount collected or a zero balance.
+        Green means money in this product; it is not a highlight colour.
+
+Values are tabular-figure aligned so a column of amounts lines up. On a
+phone the value drops under its label (.row-l/.row-v in base.html).
+{% endcomment %}
+<tr>
+    <td class="row-l" style="padding:12px 0; border-bottom:1px solid #e8eaed; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:19px; color:{% if strong %}#111827{% else %}#6b7280{% endif %}; {% if strong %}font-weight:600;{% endif %} vertical-align:top;">{{ label }}</td>
+    <td class="row-v" align="right" style="padding:12px 0 12px 16px; border-bottom:1px solid #e8eaed; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; line-height:19px; font-weight:600; color:{% if money %}#166534{% else %}#111827{% endif %}; text-align:right; vertical-align:top; mso-number-format:'\@';">{{ value }}</td>
+</tr>

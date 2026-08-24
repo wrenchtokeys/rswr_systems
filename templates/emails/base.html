@@ -1,5 +1,37 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+{% comment %}
+The one chassis every RS Systems email renders through — the Django
+notification templates by extending it, and send_branded_email() by
+rendering emails/generic.html, which extends it too. There is no second
+shell; before this there were two, and they shared no header, button,
+type scale or colour.
+
+DESIGN TOKENS ARE HARDCODED HERE ON PURPOSE, with one exception.
+`branding` carries the shop's identity (name, address, contact, logo) and
+`branding.primary_color`, which is the shop's Tenant.brand_color when it
+has set one. Everything else in the palette — the ground, the ink ramp,
+the hairline, the radii, the type scale — is fixed, because the
+EmailBrandingConfig singleton's colour and font fields are platform-wide
+and letting them through is how the platform owner's look leaked onto
+other shops' mail. Do not reintroduce branding.background_color,
+branding.body_font or branding.button_border_radius here.
+
+PLATFORM vs SHOP. Nothing in this file special-cases it. An email from
+RS Systems itself (subscription, billing, account) goes out through
+send_branded_email(platform=True), which builds `branding` with no tenant
+— so company_name is "RS Systems", primary_color is platform blue, and
+`header_meta` carries the shop's name on the right instead. A shop's
+brand colour must never appear on a platform email.
+
+Context contract:
+  branding      required dict — EmailBrandingConfig.get_tenant_context()
+  header_meta   optional str — right side of the header (job ref, shop name)
+  base_url      absolute site root, injected by NotificationTemplate.render
+Blocks: email_title, preheader, content, unsubscribe_url
+
+See docs/operations/SES_OPERATIONS.md before changing email content.
+{% endcomment %}
 <head>
     <!--[if gte mso 9]>
     <xml>
@@ -18,179 +50,106 @@
     <title>{% block email_title %}{{ branding.company_name }}{% endblock %}</title>
 
     <style type="text/css">
-        /* CLIENT-SPECIFIC STYLES */
         body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
         table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
-        img { -ms-interpolation-mode: bicubic; }
-
-        /* RESET STYLES */
-        img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+        img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
         table { border-collapse: collapse !important; }
         body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
 
-        /* iOS BLUE LINKS */
+        /* iOS turns addresses and phone numbers into its own blue links. */
         a[x-apple-data-detectors] {
-            color: inherit !important;
-            text-decoration: none !important;
-            font-size: inherit !important;
-            font-family: inherit !important;
-            font-weight: inherit !important;
-            line-height: inherit !important;
+            color: inherit !important; text-decoration: none !important;
+            font-size: inherit !important; font-family: inherit !important;
+            font-weight: inherit !important; line-height: inherit !important;
         }
 
-        /* MOBILE STYLES */
-        @media screen and (max-width: 600px) {
-            .email-container {
-                width: 100% !important;
-                margin: auto !important;
-            }
-            .fluid {
-                max-width: 100% !important;
-                height: auto !important;
-                margin-left: auto !important;
-                margin-right: auto !important;
-            }
-            .stack-column,
-            .stack-column-center {
-                display: block !important;
-                width: 100% !important;
-                max-width: 100% !important;
-                direction: ltr !important;
-            }
-            .stack-column-center {
-                text-align: center !important;
-            }
-            .center-on-narrow {
-                text-align: center !important;
-                display: block !important;
-                margin-left: auto !important;
-                margin-right: auto !important;
-                float: none !important;
-            }
-            table.center-on-narrow {
-                display: inline-block !important;
-            }
+        @media screen and (max-width: 620px) {
+            .email-container { width: 100% !important; }
+            /* 24px of side padding on a phone rather than 32 — the card is
+               already edge-to-edge there and 32 spends a tenth of the line. */
+            .pad { padding-left: 24px !important; padding-right: 24px !important; }
+            /* A row's value drops under its label instead of being squeezed
+               into a narrow column and wrapping mid-word. */
+            .row-l, .row-v { display: block !important; width: 100% !important; text-align: left !important; }
+            .row-v { padding-top: 2px !important; }
+            .btn-a { display: block !important; text-align: center !important; }
         }
     </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: {{ branding.background_color }}; font-family: {{ branding.body_font }};">
-    <!-- Preheader (hidden text for inbox preview) -->
-    <div style="display: none; max-height: 0px; overflow: hidden; font-size: 1px; line-height: 1px; color: {{ branding.background_color }}; mso-hide: all;">
+<body style="margin:0; padding:0; background-color:#f7f8fa; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+    {% comment %}
+    Inbox preview line. Without one, clients scrape the top of the body and
+    show the shop name a second time next to the subject. The zero-width
+    padding after it stops Gmail pulling the first line of the headline in.
+    {% endcomment %}
+    <div style="display:none; max-height:0; overflow:hidden; font-size:1px; line-height:1px; color:#f7f8fa; mso-hide:all;">
         {% block preheader %}{% endblock %}
+        &#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;
     </div>
 
-    <!-- Email Container -->
-    <center style="width: 100%; background-color: {{ branding.background_color }};">
-        <!--[if mso | IE]>
-        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: {{ branding.background_color }};">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color:#f7f8fa;">
         <tr>
-        <td>
-        <![endif]-->
+            <td align="center" style="padding:32px 10px 40px 10px;">
 
-        <!-- HEADER -->
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: auto; background-color: white;">
-            <tr>
-                <td style="padding: 30px 0; text-align: center; background-color: white;">
-                    {% if branding.logo_url %}
-                    <img src="{{ branding.logo_url }}" width="{{ branding.logo_width }}" alt="{{ branding.company_name }}" border="0" style="width: 100%; max-width: {{ branding.logo_width }}px; height: auto; display: block; margin: 0 auto;">
-                    {% else %}
-                    <h1 style="margin: 0; color: {{ branding.primary_color }}; font-family: {{ branding.heading_font }}; font-size: 28px; font-weight: bold;">{{ branding.company_name }}</h1>
-                    {% endif %}
-                </td>
-            </tr>
-        </table>
+                <!-- CARD -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" class="email-container" style="width:600px; max-width:600px; background-color:#ffffff; border:1px solid #e8eaed; border-radius:16px;">
 
-        <!-- MAIN CONTENT -->
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" class="email-container" style="margin: auto; background-color: white;">
-            <tr>
-                <td style="padding: 40px 40px 20px 40px;">
-                    {% block content %}
-                    <!-- Child templates provide the main content here -->
-                    {% endblock %}
-                </td>
-            </tr>
-        </table>
+                    <!-- Header -->
+                    <tr>
+                        <td class="pad" style="padding:20px 32px; border-bottom:1px solid #e8eaed;">
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                <tr>
+                                    <td align="left" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+                                        {% if branding.logo_url %}
+                                        <img src="{{ branding.logo_url }}" alt="{{ branding.company_name }}" width="{{ branding.logo_width|default:200 }}" style="display:block; max-width:180px; height:auto;">
+                                        {% else %}
+                                        <span style="font-size:15px; font-weight:600; color:{{ branding.primary_color|default:'#2563eb' }}; letter-spacing:-0.2px;">{{ branding.company_name }}</span>
+                                        {% endif %}
+                                    </td>
+                                    {% comment %}
+                                    The job or invoice this email is about, so a
+                                    reader with three of them open can tell which
+                                    is which. A block as well as a variable:
+                                    send_branded_email passes `header_meta`, while
+                                    a notification template overrides the block
+                                    (its context is fixed by the caller).
+                                    {% endcomment %}
+                                    <td align="right" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; color:#9ca3af; white-space:nowrap; padding-left:12px;">{% block header_meta %}{{ header_meta|default:'' }}{% endblock %}</td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
 
-        <!-- FOOTER -->
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" class="email-container" style="margin: auto; background-color: {{ branding.background_color }};">
-            <tr>
-                <td style="padding: 30px 40px; text-align: center; font-family: {{ branding.body_font }}; font-size: 12px; line-height: 18px; color: #666666;">
+                    <!-- Body -->
+                    <tr>
+                        <td class="pad" style="padding:32px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+                            {% block content %}{% endblock %}
+                        </td>
+                    </tr>
+                </table>
 
-                    <!-- Social Media Links (if provided) -->
-                    {% if branding.facebook_url or branding.twitter_url or branding.linkedin_url %}
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin: 0 auto 20px auto;">
-                        <tr>
-                            {% if branding.facebook_url %}
-                            <td style="padding: 0 10px;">
-                                <a href="{{ branding.facebook_url }}" style="color: {{ branding.primary_color }}; text-decoration: none; font-size: 12px;">
-                                    Facebook
-                                </a>
-                            </td>
+                <!-- FOOTER -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" class="email-container" style="width:600px; max-width:600px;">
+                    <tr>
+                        <td class="pad" align="center" style="padding:20px 32px 0 32px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:21px; color:#9ca3af;">
+                            <span style="color:#6b7280; font-weight:600;">{{ branding.company_name }}</span>
+                            {% if branding.company_address %}<br>{{ branding.company_address|linebreaksbr }}{% endif %}
+                            {% if branding.support_email or branding.support_phone %}<br>
+                                {% if branding.support_phone %}<a href="tel:{{ branding.support_phone }}" style="color:#9ca3af; text-decoration:none;">{{ branding.support_phone }}</a>{% endif %}
+                                {% if branding.support_email and branding.support_phone %} &nbsp;&middot;&nbsp; {% endif %}
+                                {% if branding.support_email %}<a href="mailto:{{ branding.support_email }}" style="color:#9ca3af; text-decoration:none;">{{ branding.support_email }}</a>{% endif %}
                             {% endif %}
-                            {% if branding.twitter_url %}
-                            <td style="padding: 0 10px;">
-                                <a href="{{ branding.twitter_url }}" style="color: {{ branding.primary_color }}; text-decoration: none; font-size: 12px;">
-                                    Twitter
-                                </a>
-                            </td>
-                            {% endif %}
-                            {% if branding.linkedin_url %}
-                            <td style="padding: 0 10px;">
-                                <a href="{{ branding.linkedin_url }}" style="color: {{ branding.primary_color }}; text-decoration: none; font-size: 12px;">
-                                    LinkedIn
-                                </a>
-                            </td>
-                            {% endif %}
-                        </tr>
-                    </table>
-                    {% endif %}
+                            {% if branding.website_url %}<br><a href="{{ branding.website_url }}" style="color:#9ca3af; text-decoration:none;">{{ branding.website_url }}</a>{% endif %}
+                            {% if branding.footer_text %}<br><span style="color:#b6bcc6;">{{ branding.footer_text }}</span>{% endif %}
+                            <br>
+                            <a href="{{ base_url|default:'https://rssystems.io' }}{% block unsubscribe_url %}/app/notifications/preferences/{% endblock %}" style="color:#9ca3af; text-decoration:underline;">Manage notification preferences</a>
+                        </td>
+                    </tr>
+                </table>
 
-                    <!-- Company Information -->
-                    <strong style="color: {{ branding.text_color }};">{{ branding.company_name }}</strong><br>
-
-                    {% if branding.company_address %}
-                    {{ branding.company_address|linebreaksbr }}<br>
-                    {% endif %}
-
-                    {% if branding.support_email or branding.support_phone %}
-                    <br>
-                    {% if branding.support_email %}
-                    <a href="mailto:{{ branding.support_email }}" style="color: {{ branding.primary_color }}; text-decoration: none;">{{ branding.support_email }}</a>
-                    {% endif %}
-                    {% if branding.support_phone %}
-                    {% if branding.support_email %} | {% endif %}
-                    <a href="tel:{{ branding.support_phone }}" style="color: {{ branding.primary_color }}; text-decoration: none;">{{ branding.support_phone }}</a>
-                    {% endif %}
-                    <br>
-                    {% endif %}
-
-                    {% if branding.website_url %}
-                    <br>
-                    <a href="{{ branding.website_url }}" style="color: {{ branding.primary_color }}; text-decoration: none;">{{ branding.website_url }}</a>
-                    <br>
-                    {% endif %}
-
-                    <!-- Footer Text -->
-                    {% if branding.footer_text %}
-                    <br>
-                    <p style="margin: 15px 0; color: #999999; font-size: 11px; line-height: 16px;">
-                        {{ branding.footer_text }}
-                    </p>
-                    {% endif %}
-
-                    <!-- Unsubscribe Link -->
-                    <p style="margin: 15px 0; color: #999999; font-size: 11px;">
-                        <a href="{{ base_url|default:"https://rssystems.io" }}{% block unsubscribe_url %}#{% endblock %}" style="color: #999999; text-decoration: underline;">Manage notification preferences</a>
-                    </p>
-                </td>
-            </tr>
-        </table>
-
-        <!--[if mso | IE]>
-        </td>
+            </td>
         </tr>
-        </table>
-        <![endif]-->
-    </center>
+    </table>
 </body>
 </html>

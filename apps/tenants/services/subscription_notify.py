@@ -305,6 +305,9 @@ def notify_owners_and_managers(tenant, event_type, context=None):
             button_text=msg.get('button_text'),
             button_url=msg.get('button_url'),
             tenant=tenant,
+            # Subscription mail is from RS Systems, not the shop — the shop's
+            # name goes on the right of the header, its brand colour nowhere.
+            platform=True,
             fail_silently=True,
         )
         logger.info(

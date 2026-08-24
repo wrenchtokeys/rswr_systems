@@ -1,160 +1,26 @@
 {% extends "emails/base.html" %}
+{% load email_ui %}
+{% comment %}
+Customer, a repair is waiting on their decision. Flat context from the
+caller: repair_id, unit_number, customer_name, technician_name,
+estimated_cost, action_url. The action IS the email — approve or decline,
+both one tap, nothing else competing.
+{% endcomment %}
 
-{% block email_title %}Repair Approval Needed - {{ unit_number }}{% endblock %}
-
-{% block preheader %}A windshield repair request for unit {{ unit_number}} requires your approval. Estimated cost: ${{ estimated_cost }}.{% endblock %}
+{% block email_title %}Repair needs your approval{% endblock %}
+{% block header_meta %}Repair #{{ repair_id }}{% endblock %}
+{% block preheader %}Nothing starts until you approve it.{% endblock %}
 
 {% block content %}
-<!-- Attention Badge -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-    <tr>
-        <td style="text-align: center; padding-bottom: 20px;">
-            <div style="display: inline-block; background-color: {{ branding.warning_color }}; color: white; padding: 10px 20px; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 14px; font-weight: bold; letter-spacing: 0.5px;">
-                APPROVAL NEEDED
-            </div>
-        </td>
-    </tr>
-</table>
+{% include "emails/components/pill.html" with label="Needs your approval" tone="amber" %}
+{% include "emails/components/headline.html" with headline="A windshield repair needs your approval." lede="Nothing is scheduled and nothing is charged until you approve it." %}
 
-<!-- Main Heading -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-    <tr>
-        <td style="padding-bottom: 20px;">
-            <h1 style="margin: 0; color: {{ branding.text_color }}; font-family: {{ branding.heading_font }}; font-size: 24px; font-weight: bold; line-height: 1.3;">
-                Repair Approval Required
-            </h1>
-            <p style="margin: 10px 0 0 0; color: #666666; font-family: {{ branding.body_font }}; font-size: 16px; line-height: 24px;">
-                A windshield repair request has been submitted by {{ technician_name }} and needs your approval to proceed.
-            </p>
-        </td>
-    </tr>
-</table>
+{% include "emails/components/rows_start.html" %}
+    {% include "emails/components/vehicle_row.html" %}
+    {% if technician_name %}{% include "emails/components/row.html" with label="Submitted by" value=technician_name %}{% endif %}
+    {% with total=estimated_cost|money %}{% if total %}{% include "emails/components/row.html" with label="Price" value=total strong=1 %}{% endif %}{% endwith %}
+{% include "emails/components/rows_end.html" %}
 
-<!-- Repair Details Card -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f8f9fa; border-radius: 8px; margin-bottom: 30px;">
-    <tr>
-        <td style="padding: 25px;">
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                <tr>
-                    <td style="padding-bottom: 15px; border-bottom: 2px solid {{ branding.primary_color }};">
-                        <h2 style="margin: 0; color: {{ branding.primary_color }}; font-family: {{ branding.heading_font }}; font-size: 18px; font-weight: bold;">
-                            Repair Request Details
-                        </h2>
-                    </td>
-                </tr>
-                <tr>
-                    <td style="padding-top: 15px;">
-                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                            <tr>
-                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
-                                    <strong style="color: {{ branding.text_color }};">Repair ID:</strong>
-                                    <span style="color: #666666;">#{{ repair_id }}</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
-                                    <strong style="color: {{ branding.text_color }};">Unit Number:</strong>
-                                    <span style="color: #666666;">{{ unit_number }}</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
-                                    <strong style="color: {{ branding.text_color }};">Technician:</strong>
-                                    <span style="color: #666666;">{{ technician_name }}</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
-                                    <strong style="color: {{ branding.text_color }};">Estimated Cost:</strong>
-                                    <span style="color: {{ branding.warning_color }}; font-weight: bold; font-size: 18px;">${{ estimated_cost }}</span>
-                                </td>
-                            </tr>
-                        </table>
-                    </td>
-                </tr>
-            </table>
-        </td>
-    </tr>
-</table>
-
-<!-- Action Required Section -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 30px;">
-    <tr>
-        <td style="padding-bottom: 15px;">
-            <h2 style="margin: 0; color: {{ branding.text_color }}; font-family: {{ branding.heading_font }}; font-size: 18px; font-weight: bold;">
-                Action Required
-            </h2>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            <p style="margin: 0 0 20px 0; color: #666666; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 22px;">
-                Please review this repair request and approve or deny it at your earliest convenience. The technician will be notified of your decision.
-            </p>
-        </td>
-    </tr>
-</table>
-
-<!-- Quick Action Buttons (One-Click) -->
-{% if quick_approve_token %}
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 15px;">
-    <tr>
-        <td style="text-align: center; padding-bottom: 10px;">
-            <a href="{{ base_url }}/app/quick-approve/{{ quick_approve_token }}/" style="display: inline-block; background-color: #16a34a; color: white; padding: 16px 48px; text-decoration: none; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 18px; font-weight: bold;">
-                Approve Repair
-            </a>
-        </td>
-    </tr>
-    <tr>
-        <td style="text-align: center; padding-bottom: 10px;">
-            <a href="{{ base_url }}/app/quick-deny/{{ quick_deny_token }}/" style="display: inline-block; background-color: #dc2626; color: white; padding: 14px 48px; text-decoration: none; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 16px; font-weight: bold;">
-                Deny Repair
-            </a>
-        </td>
-    </tr>
-    <tr>
-        <td style="text-align: center; padding-top: 5px;">
-            <p style="margin: 0; color: #999999; font-family: {{ branding.body_font }}; font-size: 12px;">
-                These links expire in 72 hours and can only be used once.
-            </p>
-        </td>
-    </tr>
-</table>
-
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 30px;">
-    <tr>
-        <td style="text-align: center; padding: 10px 0; border-top: 1px solid #e5e7eb;">
-            <p style="margin: 0 0 8px 0; color: #999999; font-family: {{ branding.body_font }}; font-size: 12px;">Or review with full details in the portal:</p>
-            <a href="{{ base_url }}{{ action_url }}" style="display: inline-block; background-color: {{ branding.primary_color }}; color: white; padding: 10px 24px; text-decoration: none; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 14px; font-weight: bold;">
-                Review in Portal
-            </a>
-        </td>
-    </tr>
-</table>
-{% else %}
-<!-- Fallback: Standard CTA when tokens aren't available -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 30px;">
-    <tr>
-        <td style="text-align: center;">
-            <a href="{{ action_url }}" style="display: inline-block; background-color: {{ branding.primary_color }}; color: white; padding: 14px 36px; text-decoration: none; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 16px; font-weight: bold;">
-                Review Repair Request
-            </a>
-        </td>
-    </tr>
-</table>
-{% endif %}
-
-<!-- Help Text -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-    <tr>
-        <td style="padding: 20px; background-color: #f0f4f8; border-radius: 8px; border-left: 4px solid {{ branding.primary_color }};">
-            <p style="margin: 0; color: #666666; font-family: {{ branding.body_font }}; font-size: 13px; line-height: 20px;">
-                <strong style="color: {{ branding.text_color }};">Need help?</strong><br>
-                If you have questions about this repair request, please contact {{ technician_name }} or your account manager.
-            </p>
-        </td>
-    </tr>
-</table>
+{% include "emails/components/button.html" with text="Review and approve" url=action_url color=branding.primary_color %}
+{% include "emails/components/note.html" with text="You can decline on the same page, or reply here with a question." %}
 {% endblock %}
-
-{% block unsubscribe_url %}/app/notifications/preferences/{% endblock %}

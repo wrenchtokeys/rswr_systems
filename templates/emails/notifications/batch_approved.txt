@@ -1,61 +1,22 @@
-================================================
-{{ branding.company_name }}
-✓ BATCH REPAIRS APPROVED
-================================================
+{% load email_ui %}{% autoescape off %}{{ repairs_count }} breaks approved.
 
-Good news! We've approved {{ repairs_count }} windshield repair{% if repairs_count > 1 %}s{% endif %} for unit {{ unit_number }}.
+All of them get repaired in the same visit.
 
-================================================
-BATCH SUMMARY
-================================================
-
-Unit Number:        {{ unit_number }}
-Total Breaks:       {{ repairs_count }}
-Total Cost:         ${{ total_cost }}
-
-================================================
-APPROVED REPAIRS
-================================================
-{% for repair in repairs %}
---- BREAK #{{ forloop.counter }} ---
-Repair ID:          #{{ repair.id }}
-Description:        {{ repair.break_description }}
-Cost:               ${{ repair.total_cost }}
-
-{% endfor %}{% if pricing_note %}================================================
-PRICING NOTE
-================================================
-
-{{ pricing_note }}
-
-{% endif %}================================================
-WHAT HAPPENS NEXT?
-================================================
-
-1. A technician will be assigned to your repairs
-2. All breaks will be repaired during the same visit
-3. You'll receive updates as work progresses
-
-================================================
-VIEW ALL REPAIR DETAILS
-================================================
-
+{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% for repair in repairs %}{% if repair.break_description %}  {{ repair.break_description|pad_label:30 }}{{ repair.cost|money }}
+{% endif %}{% endfor %}{% with total=total_cost|money %}{% if total %}  {{ "Total"|pad_label:30 }}{{ total }}
+{% endif %}{% endwith %}
+View all repairs
 {{ view_repairs_url }}
-
-================================================
-QUESTIONS?
-================================================
-
-{% if branding.support_email %}Email: {{ branding.support_email }}
-{% endif %}{% if branding.support_phone %}Phone: {{ branding.support_phone }}
+{% if pricing_note %}
+{{ pricing_note }}
 {% endif %}
-================================================
+--
+{{ branding.company_name }}{% if branding.company_address %}
+{{ branding.company_address }}{% endif %}{% if branding.support_phone %}
+{{ branding.support_phone }}{% endif %}
 
-{{ branding.footer_text }}
-
-Manage notification preferences:
-{{ unsubscribe_url }}
-
-{{ branding.company_name }}
-{% if branding.company_address %}{{ branding.company_address }}
-{% endif %}{% if branding.website_url %}{{ branding.website_url }}{% endif %}
+Manage notification preferences
+{{ base_url }}/app/notifications/preferences/
+{% endautoescape %}

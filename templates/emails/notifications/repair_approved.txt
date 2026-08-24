@@ -1,49 +1,22 @@
-================================================
-{{ branding.company_name }}
-REPAIR APPROVED
-================================================
+{% load email_ui %}{% autoescape off %}Your windshield repair is approved.
 
-Good news! Your windshield repair has been approved and will begin shortly.
+A technician is being assigned. You will hear from us again when the work
+starts.
 
-================================================
-REPAIR DETAILS
-================================================
-
-Repair ID:          #{{ repair.id }}
-Unit Number:        {{ repair.unit_number }}
-{% if repair.customer %}Company:            {{ repair.customer.company_name }}
-{% endif %}Break Description:  {{ repair.break_description }}
-Cost:               ${{ repair.total_cost }}
-Requested Date:     {{ repair.requested_repair_date|date:"M d, Y" }}
-
-================================================
-WHAT HAPPENS NEXT?
-================================================
-
-1. A technician will be assigned to your repair
-2. You'll receive a notification when work begins
-3. We'll notify you again when the repair is complete
-
-================================================
-VIEW REPAIR DETAILS
-================================================
-
+{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif repair.unit_number %}  {{ "Unit #"|pad_label }}{{ repair.unit_number }}
+{% endif %}{% if repair.break_description %}  {{ "Damage"|pad_label }}{{ repair.break_description }}
+{% endif %}{% if repair.requested_repair_date %}  {{ "Requested for"|pad_label }}{{ repair.requested_repair_date|date:"F j, Y" }}
+{% endif %}{% with total=repair.cost|money %}{% if total %}  {{ "Price"|pad_label }}{{ total }}
+{% endif %}{% endwith %}
+View repair details
 {{ view_repair_url }}
 
-================================================
-QUESTIONS?
-================================================
+--
+{{ branding.company_name }}{% if branding.company_address %}
+{{ branding.company_address }}{% endif %}{% if branding.support_phone %}
+{{ branding.support_phone }}{% endif %}
 
-{% if branding.support_email %}Email: {{ branding.support_email }}
-{% endif %}{% if branding.support_phone %}Phone: {{ branding.support_phone }}
-{% endif %}
-================================================
-
-{{ branding.footer_text }}
-
-Manage notification preferences:
-{{ unsubscribe_url }}
-
-{{ branding.company_name }}
-{% if branding.company_address %}{{ branding.company_address }}
-{% endif %}{% if branding.website_url %}{{ branding.website_url }}{% endif %}
+Manage notification preferences
+{{ base_url }}/app/notifications/preferences/
+{% endautoescape %}

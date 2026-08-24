@@ -1,27 +1,22 @@
-REPAIR APPROVAL NEEDED - Unit {{ unit_number }}
+{% load email_ui %}{% autoescape off %}A windshield repair needs your approval.
 
-Dear {{ customer_name }},
+Nothing is scheduled and nothing is charged until you approve it.
 
-A windshield repair request has been submitted by {{ technician_name }} and requires your approval.
-
-REPAIR REQUEST DETAILS
-======================
-Repair ID: #{{ repair_id }}
-Unit Number: {{ unit_number }}
-Technician: {{ technician_name }}
-Estimated Cost: ${{ estimated_cost }}
-
-ACTION REQUIRED
-===============
-Please review this repair request and approve or deny it at your earliest convenience. The technician will be notified of your decision.
-
-Review the repair request here:
+{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% if technician_name %}  {{ "Submitted by"|pad_label }}{{ technician_name }}
+{% endif %}{% with total=estimated_cost|money %}{% if total %}  {{ "Price"|pad_label }}{{ total }}
+{% endif %}{% endwith %}
+Review and approve
 {{ action_url }}
 
-Need help? If you have questions about this repair request, please contact {{ technician_name }} or your account manager.
+You can decline on the same page, or reply here with a question.
 
----
-{{ branding.company_name }}
-{{ branding.company_address }}
+--
+{{ branding.company_name }}{% if branding.company_address %}
+{{ branding.company_address }}{% endif %}{% if branding.support_phone %}
+{{ branding.support_phone }}{% endif %}
 
-To manage your notification preferences, visit your account settings.
+Manage notification preferences
+{{ base_url }}/app/notifications/preferences/
+{% endautoescape %}

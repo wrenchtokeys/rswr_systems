@@ -1,0 +1,14 @@
+{% comment %}
+Headline and its one-sentence lede.
+
+    {% include "emails/components/headline.html" with headline="Your windshield repair is done." lede="Unit 4471 is back in service." %}
+
+The headline is a sentence, not a label — it says the same thing the
+subject line says, so the first read confirms rather than repeats. `lede`
+is optional; when there is nothing to add, leave it off rather than
+padding it out.
+{% endcomment %}
+<h1 style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:25px; font-weight:600; line-height:31px; letter-spacing:-0.5px; color:#111827;">{{ headline }}</h1>
+{% if lede %}
+<p style="margin:10px 0 0 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:25px; color:#6b7280;">{{ lede }}</p>
+{% endif %}

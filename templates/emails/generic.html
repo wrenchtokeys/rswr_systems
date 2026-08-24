@@ -1,0 +1,44 @@
+{% extends "emails/base.html" %}
+{% comment %}
+What send_branded_email() renders. Every caller that is not a
+NotificationTemplate — invoices, receipts, subscription alerts, team
+invites, support replies, review requests — arrives here, so this template
+and the notification templates share one chassis by construction rather
+than by anyone remembering to keep them in step.
+
+Context is built by core.email_utils.send_branded_email; see its docstring
+for the contract. Nothing here is caller-controlled markup: paragraphs and
+row values are escaped by Django on the way in.
+{% endcomment %}
+
+{% block email_title %}{{ subject|default:headline }}{% endblock %}
+{% block preheader %}{{ preheader|default:'' }}{% endblock %}
+{% block unsubscribe_url %}{{ unsubscribe_path|default:'/app/notifications/preferences/' }}{% endblock %}
+
+{% block content %}
+{% if pill_label %}{% include "emails/components/pill.html" with label=pill_label tone=pill_tone %}{% endif %}
+
+{% include "emails/components/headline.html" with headline=headline lede=lede %}
+
+{% for paragraph in body_paragraphs %}
+<p style="margin:16px 0 0 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:25px; color:#374151;">{{ paragraph }}</p>
+{% endfor %}
+
+{% if detail_rows %}
+{% include "emails/components/rows_start.html" %}
+    {% for row in detail_rows %}
+    {% include "emails/components/row.html" with label=row.label value=row.value strong=row.strong money=row.money %}
+    {% endfor %}
+{% include "emails/components/rows_end.html" %}
+{% endif %}
+
+{% include "emails/components/button.html" with text=button_text url=button_url color=branding.primary_color %}
+
+{% if secondary_button_text and secondary_button_url %}
+{% include "emails/components/link.html" with text=secondary_button_text url=secondary_button_url color=branding.primary_color %}
+{% endif %}
+
+{% include "emails/components/note.html" with text=note %}
+
+{% if tracking_pixel_url %}<img src="{{ tracking_pixel_url }}" width="1" height="1" alt="" style="display:block; width:1px; height:1px; border:0; overflow:hidden;">{% endif %}
+{% endblock %}

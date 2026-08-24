@@ -23,6 +23,7 @@ from apps.technician_portal.services.assignments import (
 )
 from common.auth import get_user_role
 from common.utils import convert_heic_to_jpeg
+from core.notification_text import on_vehicle
 
 logger = logging.getLogger(__name__)
 
@@ -1234,7 +1235,8 @@ def bulk_repair_action(request):
                 if repair.technician and repair.technician != technician:
                     TechnicianNotification.objects.create(
                         technician=repair.technician,
-                        message=f"✅ Repair #{repair.id} for {repair.customer.name} - Unit {repair.unit_number} has been approved.",
+                        message=f"Repair #{repair.id} approved — {repair.customer.name}"
+                        f"{on_vehicle(repair)}.",
                         read=False,
                         repair=repair
                     )
@@ -1270,7 +1272,8 @@ def bulk_repair_action(request):
                 if repair.technician and repair.technician != technician:
                     TechnicianNotification.objects.create(
                         technician=repair.technician,
-                        message=f"❌ Repair #{repair.id} for {repair.customer.name} - Unit {repair.unit_number} has been denied.",
+                        message=f"Repair #{repair.id} declined — {repair.customer.name}"
+                        f"{on_vehicle(repair)}.",
                         read=False,
                         repair=repair
                     )
