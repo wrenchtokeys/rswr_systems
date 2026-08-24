@@ -193,7 +193,10 @@ class InvoiceEmailXssTest(TestCase):
         self.assertIn('Net 45', result)
 
     def test_html_contains_view_invoice_button(self):
+        # Sentence case since the invoice email moved onto the shared
+        # chassis, which writes its actions the way the rest of the product
+        # does ("View repair details", "Download receipt").
         service = self._make_service()
         data = _FakeInvoiceData(customer_name='Fleet Co')
         result = self._get_html(service, data)
-        self.assertIn('View Invoice Online', result)
+        self.assertIn('View invoice online', result)

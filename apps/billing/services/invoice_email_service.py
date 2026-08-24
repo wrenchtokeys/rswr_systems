@@ -11,7 +11,6 @@ Created: 2026-01-27
 """
 from __future__ import annotations
 
-import html
 import io
 import logging
 import os
@@ -590,10 +589,23 @@ class InvoiceEmailService:
     
     def _build_html_email(self, invoice_data, payment_link=None, include_photos=False,
                           view_link=None, points_line=None) -> str:
-        """Build an HTML email with clickable buttons.
+        """Render the invoice email through the shared chassis.
+
+        This used to build its own HTML document in an f-string — a third
+        email shell alongside `send_branded_email()` and the notification
+        templates, with a hardcoded blue header and buttons. A shop that set
+        its brand colour saw it on every email except the one asking for
+        money. It now renders `emails/invoice.html`, which extends
+        `emails/base.html` like everything else, so `branding.primary_color`
+        (the shop's Tenant.brand_color) drives the button and the wordmark.
+
+        Nothing here escapes anything: values go into the context raw and
+        Django escapes them on render. Escaping first would print
+        `&amp;lt;script&amp;gt;` — the CODE-232 regression tests still pass
+        because auto-escaping does the same job at the same boundary.
 
         "View Invoice Online" goes to the public invoice VIEW page; only the
-        "Pay Invoice" button goes to the payment URL (the two used to share
+        "Pay invoice" button goes to the payment URL (the two used to share
         the /pay/ URL, so both buttons dumped the customer into Stripe).
 
         No open-tracking pixel: security gateways (Microsoft Defender etc.)
@@ -601,6 +613,10 @@ class InvoiceEmailService:
         events, and a remote 1x1 image is itself a spam-filter signal.
         Delivery is tracked via SES events; views via the invoice page.
         """
+        from django.template.loader import render_to_string
+
+        from core.models.email_branding import EmailBrandingConfig
+
         invoice_id = getattr(invoice_data, 'id', None) or getattr(invoice_data, 'pk', None)
         if view_link:
             portal_url = view_link
@@ -614,143 +630,105 @@ class InvoiceEmailService:
             _fb_base = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
             portal_url = f"{_fb_base}/app/invoices/"
 
-        # Company info — escape all user-controlled strings before embedding in HTML
-        # (CODE-232: XSS in invoice email HTML body)
-        company_name = html.escape('RS Systems')
-        company_address = ''
-        company_phone = ''
-        if self.tenant:
-            company_name = html.escape(self.tenant.name or 'RS Systems')
-            company_address = html.escape(self.tenant.business_address or '')
-            company_phone = html.escape(self.tenant.business_phone or '')
-
-        # Line items HTML. The column header carries the noun ("Unit #" for a
-        # fleet, "Vehicle" for an individual), so cells hold the bare
-        # identifier — and an em dash when the job names no vehicle.
-        unit_column_label = html.escape(_unit_column_label(invoice_data))
-        items_html = ''
+        # Line items as label/value rows. The vehicle rides in the label the
+        # way it does in the plain-text half — the old three-column table
+        # needed a column header to say what the first column meant, and
+        # squeezed three columns into a phone screen to do it.
+        unit_noun = 'Unit ' if _unit_column_label(invoice_data) == 'Unit #' else ''
+        line_items = []
         for item in invoice_data.line_items:
-            unit_esc = (
-                html.escape(str(item.unit_number)) if item.unit_number else '&mdash;'
-            )
-            damage_esc = html.escape(str(item.damage_type))
-            items_html += f'''
-            <tr>
-                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;">{unit_esc}</td>
-                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;">{damage_esc}</td>
-                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;text-align:right;">${item.final_cost:.2f}</td>
-            </tr>'''
+            damage_type = str(item.damage_type)
+            if item.unit_number:
+                label = f"{unit_noun}{item.unit_number} · {damage_type}"
+            else:
+                label = damage_type
+            line_items.append({
+                'label': label,
+                'value': f"${item.final_cost:.2f}",
+            })
 
-        # Tax info
-        tax_html = ''
+        discount_display = ''
+        if invoice_data.total_discount > 0:
+            discount_display = f"-${invoice_data.total_discount:.2f}"
+
+        tax_label = 'Tax'
+        tax_display = ''
         if hasattr(invoice_data, 'tax_amount') and invoice_data.tax_amount > 0:
             rate_display = f"{invoice_data.tax_rate:.3f}".rstrip('0').rstrip('.')
-            tax_html = f'''
-            <tr>
-                <td colspan="2" style="padding:6px 12px;font-size:14px;color:#6b7280;text-align:right;">Tax ({rate_display}%)</td>
-                <td style="padding:6px 12px;font-size:14px;color:#374151;text-align:right;">${invoice_data.tax_amount:.2f}</td>
-            </tr>'''
+            tax_label = f"Tax ({rate_display}%)"
+            tax_display = f"${invoice_data.tax_amount:.2f}"
 
-        # Discount info
-        discount_html = ''
-        if invoice_data.total_discount > 0:
-            discount_html = f'''
-            <tr>
-                <td colspan="2" style="padding:6px 12px;font-size:14px;color:#059669;text-align:right;">Discount</td>
-                <td style="padding:6px 12px;font-size:14px;color:#059669;text-align:right;">-${invoice_data.total_discount:.2f}</td>
-            </tr>'''
+        total_display = f"${invoice_data.total:.2f}"
+        payment_terms_display = str(invoice_data.payment_terms_display or '')
 
-        # Loyalty balance — one quiet factual line under the totals.
-        points_html = ''
-        if points_line:
-            points_html = f'''
-    <p style="font-size:13px;color:#6b7280;text-align:right;margin:0 0 16px;">{html.escape(points_line)}</p>'''
+        # `strftime` on a missing date is how the old builder would have
+        # raised; the shop-template path already guarded this with 'N/A'.
+        invoice_date_display = ''
+        if getattr(invoice_data, 'invoice_date', None):
+            invoice_date_display = invoice_data.invoice_date.strftime('%B %d, %Y')
 
-        # Payment button
-        pay_button_html = ''
-        if payment_link:
-            pay_button_html = f'''
-            <div style="text-align:center;margin:24px 0;">
-                <a href="{payment_link}" style="display:inline-block;padding:14px 32px;background-color:#2563eb;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;border-radius:8px;">
-                    Pay Invoice — ${invoice_data.total:.2f}
-                </a>
-            </div>'''
+        if include_photos:
+            note = 'A PDF copy of this invoice and the repair photos are attached to this email.'
+        else:
+            note = 'A PDF copy of this invoice is attached to this email.'
 
-        # Escape remaining user-controlled values used in the HTML template
-        cust_name_esc = html.escape(str(invoice_data.customer_name))
-        inv_number_esc = html.escape(str(invoice_data.invoice_number))
-        pay_terms_esc = html.escape(str(invoice_data.payment_terms_display))
+        preheader = f"{total_display} due"
+        if payment_terms_display:
+            preheader = f"{preheader} · {payment_terms_display}"
 
-        html_doc = f'''<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-<div style="max-width:600px;margin:0 auto;padding:20px;">
+        context = {
+            'branding': EmailBrandingConfig.get_tenant_context(self.tenant),
+            'base_url': getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/'),
+            'headline': "Here's your invoice.",
+            'lede': f"It covers your {self._service_phrase(invoice_data)}.",
+            'preheader': preheader,
+            'body_paragraphs': self._html_body_paragraphs(invoice_data, points_line),
+            'customer_name': str(invoice_data.customer_name or ''),
+            'invoice_number': str(invoice_data.invoice_number or ''),
+            'invoice_date_display': invoice_date_display,
+            'payment_terms_display': payment_terms_display,
+            'line_items': line_items,
+            'discount_display': discount_display,
+            'tax_label': tax_label,
+            'tax_display': tax_display,
+            'total_display': total_display,
+            'points_line': points_line or '',
+            'payment_link': payment_link or '',
+            'pay_button_text': f"Pay invoice — {total_display}",
+            'portal_url': portal_url,
+            'note': note,
+        }
+        return render_to_string('emails/invoice.html', context)
 
-<!-- Header -->
-<div style="background-color:#1e40af;padding:24px;border-radius:12px 12px 0 0;text-align:center;">
-    <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">{company_name}</h1>
-    <p style="margin:4px 0 0;color:#93c5fd;font-size:14px;">Invoice #{inv_number_esc}</p>
-</div>
+    def _html_body_paragraphs(self, invoice_data, points_line=None) -> List[str]:
+        """The shop's own copy, for the half of the email people actually read.
 
-<!-- Body -->
-<div style="background-color:#ffffff;padding:24px;border:1px solid #e5e7eb;border-top:none;">
+        `BillingConfig.invoice_email_template` (CODE-119) reached the
+        plain-text alternative only, so a shop that wrote "we're closed the
+        week of the 4th, call Dana" onto its invoices was writing it to the
+        part almost nobody sees. The same rendered text now becomes the
+        HTML's body paragraphs, split on blank lines.
 
-    <p style="font-size:15px;color:#374151;margin:0 0 16px;">
-        Hi {cust_name_esc},<br><br>
-        Here's your invoice for {html.escape(self._service_phrase(invoice_data))}.
-    </p>
-
-    <!-- Invoice Details -->
-    <div style="background-color:#f9fafb;border-radius:8px;padding:16px;margin-bottom:20px;">
-        <table style="width:100%;font-size:14px;color:#6b7280;">
-            <tr><td style="padding:4px 0;">Invoice #</td><td style="text-align:right;font-weight:600;color:#111827;">{inv_number_esc}</td></tr>
-            <tr><td style="padding:4px 0;">Date</td><td style="text-align:right;">{invoice_data.invoice_date.strftime('%B %d, %Y')}</td></tr>
-            <tr><td style="padding:4px 0;">Payment Terms</td><td style="text-align:right;">{pay_terms_esc}</td></tr>
-        </table>
-    </div>
-
-    <!-- Line Items -->
-    <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-        <tr style="background-color:#f3f4f6;">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;font-weight:600;">{unit_column_label}</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;font-weight:600;">Service</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;text-transform:uppercase;font-weight:600;">Amount</th>
-        </tr>
-        {items_html}
-        {discount_html}
-        {tax_html}
-        <tr style="background-color:#eff6ff;">
-            <td colspan="2" style="padding:12px;font-size:16px;font-weight:700;color:#1e40af;text-align:right;">Total Due</td>
-            <td style="padding:12px;font-size:16px;font-weight:700;color:#1e40af;text-align:right;">${invoice_data.total:.2f}</td>
-        </tr>
-    </table>
-    {points_html}
-    {pay_button_html}
-
-    <!-- View Online Link -->
-    <div style="text-align:center;margin:16px 0;">
-        <a href="{portal_url}" style="display:inline-block;padding:10px 24px;background-color:#ffffff;color:#2563eb;text-decoration:none;font-size:14px;font-weight:500;border:2px solid #2563eb;border-radius:8px;">
-            View Invoice Online
-        </a>
-    </div>
-
-    <p style="font-size:13px;color:#9ca3af;text-align:center;margin:20px 0 0;">
-        A PDF copy of this invoice is attached to this email.
-    </p>
-</div>
-
-<!-- Footer -->
-<div style="padding:16px 24px;text-align:center;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;background-color:#f9fafb;">
-    <p style="margin:0;font-size:13px;color:#6b7280;font-weight:600;">{company_name}</p>
-    {"<p style='margin:4px 0 0;font-size:12px;color:#9ca3af;'>" + company_address + "</p>" if company_address else ""}
-    {"<p style='margin:4px 0 0;font-size:12px;color:#9ca3af;'>" + company_phone + "</p>" if company_phone else ""}
-</div>
-
-</div>
-</body>
-</html>'''
-        return html_doc
+        Returns [] when no template is configured, when it fails to render,
+        or when it renders to nothing — the chassis's headline and rows
+        already say everything the default body said, so there is nothing
+        to fall back to.
+        """
+        if not self.tenant:
+            return []
+        try:
+            from apps.billing.models import BillingConfig
+            cfg = BillingConfig.get_for_tenant(self.tenant)
+        except Exception:
+            return []
+        if not cfg.invoice_email_template:
+            return []
+        rendered = self._render_invoice_template(
+            cfg.invoice_email_template, invoice_data, points_line=points_line,
+        )
+        if not rendered:
+            return []
+        return [p.strip() for p in rendered.split('\n\n') if p.strip()]
 
     def preview_invoice_email(
         self,

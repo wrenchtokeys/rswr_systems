@@ -1,0 +1,83 @@
+{% extends "emails/base.html" %}
+{% comment %}
+The invoice email — the shop's most expensive customer-facing email, and
+the last one still building its own HTML.
+
+PR #200 unified `send_branded_email()` and the notification templates and
+said base.html was "the only email shell". It was not: this email had a
+third one — a hand-built f-string in
+`InvoiceEmailService._build_html_email` with a hardcoded `#1e40af` header,
+`#2563eb` buttons and a `#f3f4f6` ground, so a shop that set its brand
+colour saw it everywhere except on the email that asks for money.
+
+Everything here is a flat, pre-formatted context value built by
+`_build_html_email` — amounts arrive as display strings ("$75.00"), not
+Decimals, because the same numbers are formatted once and used by both
+halves of the mail. Strings arrive RAW: Django escapes them on render, so
+nothing in this path calls html.escape() any more (doing so would print
+`&amp;lt;`).
+
+`line_items` carries the vehicle in its label the way the plain-text half
+does ("Unit 4521 · Windshield Repair"), rather than the old three-column
+table — a label/value row is the chassis's own idiom, it survives Outlook,
+and it stacks on a phone instead of squeezing three columns.
+
+The plain-text half is still built in Python (`_build_email_body`), which
+is deliberate: it is correct, and CODE-119/CODE-178 pin its behaviour.
+
+Context contract:
+  headline, lede, preheader, customer_name, invoice_number,
+  invoice_date_display, payment_terms_display, line_items[{label,value}],
+  discount_display, tax_label, tax_display, total_display, points_line,
+  payment_link, pay_button_text, portal_url, note, body_paragraphs
+{% endcomment %}
+
+{% block email_title %}Invoice {{ invoice_number }}{% endblock %}
+{% block header_meta %}Invoice {{ invoice_number }}{% endblock %}
+{% block preheader %}{{ preheader }}{% endblock %}
+
+{% block content %}
+{% include "emails/components/headline.html" with headline=headline lede=lede %}
+
+{% comment %}
+A shop's own copy from BillingConfig.invoice_email_template. It used to
+reach the plain-text half only, so on the customer's actual screen the
+shop's message was invisible.
+{% endcomment %}
+{% for paragraph in body_paragraphs %}
+<p style="margin:16px 0 0 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:25px; color:#374151;">{{ paragraph }}</p>
+{% endfor %}
+
+{% include "emails/components/rows_start.html" %}
+    {% if customer_name %}{% include "emails/components/row.html" with label="Billed to" value=customer_name %}{% endif %}
+    {% include "emails/components/row.html" with label="Invoice" value=invoice_number %}
+    {% if invoice_date_display %}{% include "emails/components/row.html" with label="Date" value=invoice_date_display %}{% endif %}
+    {% if payment_terms_display %}{% include "emails/components/row.html" with label="Payment terms" value=payment_terms_display %}{% endif %}
+{% include "emails/components/rows_end.html" %}
+
+{% include "emails/components/rows_start.html" %}
+    {% for item in line_items %}
+    {% include "emails/components/row.html" with label=item.label value=item.value %}
+    {% endfor %}
+    {% if discount_display %}{% include "emails/components/row.html" with label="Discount" value=discount_display %}{% endif %}
+    {% if tax_display %}{% include "emails/components/row.html" with label=tax_label value=tax_display %}{% endif %}
+    {% include "emails/components/row.html" with label="Total due" value=total_display strong=1 %}
+{% include "emails/components/rows_end.html" %}
+
+{% if points_line %}
+<p style="margin:14px 0 0 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:21px; color:#6b7280;">{{ points_line }}</p>
+{% endif %}
+
+{% comment %}
+Paying is the action; viewing is the alternative. When the shop can't take
+payment online there is only one thing to do, so it becomes the button.
+{% endcomment %}
+{% if payment_link %}
+{% include "emails/components/button.html" with text=pay_button_text url=payment_link color=branding.primary_color %}
+{% include "emails/components/link.html" with text="View invoice online" url=portal_url color=branding.primary_color %}
+{% else %}
+{% include "emails/components/button.html" with text="View invoice online" url=portal_url color=branding.primary_color %}
+{% endif %}
+
+{% include "emails/components/note.html" with text=note %}
+{% endblock %}

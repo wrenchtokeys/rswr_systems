@@ -700,12 +700,16 @@ above had reached: two unrelated email systems, neither using the tokens.
 
 ## What landed
 
-**One chassis.** `templates/emails/base.html` is now the only email shell.
+**One chassis.** `templates/emails/base.html` is the email shell.
 `send_branded_email()` kept its signature — all 24 call sites unchanged — and
 renders `emails/generic.html` instead of building HTML in an f-string. The 14
 notification templates extend the same base. Components in
 `templates/emails/components/` (NOT `parts/` — `.gitignore` carries buildout's
 `parts/` rule and silently drops it from the commit).
+
+> This paragraph originally read "is now the **only** email shell". It was
+> wrong on the day it was written — there was a third, and it was the invoice.
+> See **The invoice email** below.
 
 **Tokens, not settings.** The chassis hardcodes the palette and reads only
 identity + `primary_color` from `branding`. `EmailBrandingConfig`'s colour and
@@ -741,13 +745,75 @@ chip repair sent five emails. Seven new templates (`replacement_*`), seeded by
 - **Buttons must resolve against `base_url`.** Nine templates passed a bare
   relative `action_url`; a relative href is dead in every mail client.
 
+## The invoice email — the third shell (2026-08-24)
+
+Found the way these things are always found: Drake deployed #200, sent a real
+invoice to himself, and the invoice looked exactly the same as before.
+
+It was a **third** email shell, and #200 never touched it —
+`InvoiceEmailService._build_html_email` built its own `<!DOCTYPE>` in an
+f-string: a `#1e40af` header bar, `#2563eb` buttons, a `#f3f4f6` ground, its
+own three-column line-item table and its own footer. It read the tenant's
+*name*, so the email was shop-named but not shop-branded: the one email that
+asks a customer for money was the one email a shop's brand colour never
+reached.
+
+It now renders `templates/emails/invoice.html`, which extends `base.html` like
+everything else.
+
+**What changed beyond the shell**
+
+- **Line items are label/value rows**, not a three-column table. The vehicle
+  rides in the label the way the plain-text half already did it — "Unit 4471 ·
+  Windshield Repair" for a fleet, "2019 Ford F-150 · …" for an individual — so
+  there is no column header that has to explain what the first column means,
+  and it stacks on a phone instead of squeezing three columns.
+- **Actions are sentence case** and there is one primary: "Pay invoice —
+  $84.75" as the button when the shop can take payment, "View invoice online"
+  as the link under it. A shop with no Stripe Connect gets the view as its
+  button rather than a dead-end pay button.
+- **`html.escape()` is gone from the path.** Django auto-escapes at the same
+  boundary; escaping first would print `&amp;lt;`. CODE-232's regression tests
+  pass unchanged, and a new test asserts nothing is escaped *twice*.
+- **The plain-text half is deliberately untouched.** `_build_email_body` is
+  correct and CODE-119/CODE-178 pin its behaviour. It is the one place the two
+  halves are still built separately — a known, accepted divergence.
+
+**Two live bugs found on the way**
+
+| | |
+|---|---|
+| **The shop's own copy was written to nobody** | `BillingConfig.invoice_email_template` (CODE-119) fed the plain-text alternative only. A shop that wrote "we're closed the week of the 4th, call Dana" onto its invoices was writing it to the half almost no mail client shows. It is now the HTML's body paragraphs too — on **both** the one-off path and `_send_batch_invoice_email`, which had the identical defect. |
+| **A tenant logo raised RuntimeError** | `_absolute_media_url` imported `django.contrib.sites.models` *outside* its own `try`, and `django.contrib.sites` is not in `INSTALLED_APPS` — so it raised `RuntimeError`, not `ImportError`, and took the whole email with it for any tenant with a logo. Production sets `AWS_S3_CUSTOM_DOMAIN` and returns before the import, which is why this only ever fired locally. Import moved inside the try, in both `_absolute_media_url` and `get_logo_url`. |
+
+**Traps**
+
+- **Three of CODE-119's tests were stale and red before this session** — they
+  patch `apps.billing.tasks.send_mail`, and that path moved to
+  `send_branded_email()` some time ago. Repointed at the real sender. Check
+  what a mail test actually patches before trusting it; a patch on a function
+  nobody calls asserts nothing.
+- **The CODE-232 fixtures build the tenant as a `MagicMock`**, so
+  `tenant.logo` and `tenant.branding_enabled` are both truthy and the branding
+  lookup takes its most expensive path. That is what surfaced the logo bug —
+  worth keeping rather than tidying into a real tenant.
+- `_build_html_email`'s **name and signature are load-bearing**: CODE-181 and
+  CODE-232 call it directly. Re-shelling inside it kept both suites honest.
+
+Tests: `tests/test_invoice_email_chassis.py` (21).
+
 ## Still open
 
 - **The in-app surfaces** in the canvas (notification bell, notifications page)
   are designed but NOT built. The bell still shows an unread row three ways at
   once — tinted background, "New" pill and bold title — and loses all of it on
   the 30-second poll that rewrites the list. `timesince` renders "0 minutes
-  ago". This is the obvious next session.
+  ago". This is the obvious next session, and with the invoice email folded in
+  it is the last thing standing between this phase and done.
+- **The invoice's plain-text half** is still built in Python
+  (`_build_email_body`) rather than rendered from the same context as the HTML.
+  Accepted, not forgotten: it is correct today and two bug-fix suites pin it.
+  If the two ever disagree, this is why.
 - **Safe drive-away time** is deliberately not implemented. Estimating cure
   time on a shop's behalf is a liability question, not a design one — Drake's
   call, 2026-08-24. Do not add it without him.

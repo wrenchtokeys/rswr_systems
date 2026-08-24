@@ -39,8 +39,13 @@ def _absolute_media_url(filefield):
         return ''
     if hasattr(settings, 'AWS_S3_CUSTOM_DOMAIN') and settings.AWS_S3_CUSTOM_DOMAIN:
         return filefield.url
-    from django.contrib.sites.models import Site
     try:
+        # Imported inside the try on purpose: django.contrib.sites is NOT in
+        # INSTALLED_APPS, so this import raises RuntimeError rather than
+        # ImportError, and outside the try it took the whole email with it.
+        # Production sets AWS_S3_CUSTOM_DOMAIN and returns above, which is
+        # why this only ever fired locally — on any tenant with a logo.
+        from django.contrib.sites.models import Site
         domain = Site.objects.get_current().domain
         protocol = 'https' if settings.USE_HTTPS else 'http'
         return f'{protocol}://{domain}{filefield.url}'
@@ -276,9 +281,11 @@ class EmailBrandingConfig(AutoUpdateTimestampMixin, models.Model):
             if hasattr(settings, 'AWS_S3_CUSTOM_DOMAIN') and settings.AWS_S3_CUSTOM_DOMAIN:
                 return self.logo.url
             else:
-                # Local development
-                from django.contrib.sites.models import Site
+                # Local development. The import belongs inside the try —
+                # django.contrib.sites is not in INSTALLED_APPS, so it raises
+                # RuntimeError (see _absolute_media_url).
                 try:
+                    from django.contrib.sites.models import Site
                     domain = Site.objects.get_current().domain
                     protocol = 'https' if settings.USE_HTTPS else 'http'
                     return f'{protocol}://{domain}{self.logo.url}'
