@@ -195,7 +195,15 @@ flags — see services/schedule_conflicts.py for what it deliberately doesn't.
             <select data-dispatch-tech id="book-tech-{{ job.service_type }}-{{ job.id }}"
                     class="min-h-11 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
                 {% for tech in roster %}
-                <option value="{{ tech.pk }}"{% if tech.pk == job.technician_id %} selected{% endif %}>{{ tech.user.get_full_name|default:tech.user.username }}</option>
+                {% comment %}
+                S8: an off-duty tech stays in the list, marked. A shop with
+                one truck down calls somebody in on their day off, and a
+                picker that silently omits the person the manager is on the
+                phone with reads as broken. The mark is for the day on screen
+                — the date box above can name another one, and the row's chip
+                tells the truth once the booking exists.
+                {% endcomment %}
+                <option value="{{ tech.pk }}"{% if tech.pk == job.technician_id %} selected{% endif %}>{{ tech.user.get_full_name|default:tech.user.username }}{% if tech.off_today %} — off {{ day|date:"D" }}{% endif %}</option>
                 {% endfor %}
             </select>
             {% endif %}
@@ -220,7 +228,15 @@ flags — see services/schedule_conflicts.py for what it deliberately doesn't.
             <select data-dispatch-tech id="move-tech-{{ job.service_type }}-{{ job.id }}"
                     class="min-h-11 px-3 py-2 border border-gray-200 rounded-lg text-xs bg-white text-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
                 {% for tech in roster %}
-                <option value="{{ tech.pk }}"{% if tech.pk == job.technician_id %} selected{% endif %}>{{ tech.user.get_full_name|default:tech.user.username }}</option>
+                {% comment %}
+                S8: an off-duty tech stays in the list, marked. A shop with
+                one truck down calls somebody in on their day off, and a
+                picker that silently omits the person the manager is on the
+                phone with reads as broken. The mark is for the day on screen
+                — the date box above can name another one, and the row's chip
+                tells the truth once the booking exists.
+                {% endcomment %}
+                <option value="{{ tech.pk }}"{% if tech.pk == job.technician_id %} selected{% endif %}>{{ tech.user.get_full_name|default:tech.user.username }}{% if tech.off_today %} — off {{ day|date:"D" }}{% endif %}</option>
                 {% endfor %}
             </select>
             <button type="submit" data-dispatch-submit

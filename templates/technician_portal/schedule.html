@@ -139,6 +139,21 @@
                     job length is a placeholder, not a measurement — nothing
                     models how long a job takes yet.
                     {% endcomment %}
+                    {% comment %}
+                    S8: what the shop said this person works, for the day on
+                    screen. Absent for anyone with no hours on file — which is
+                    every technician until somebody fills the form in, so this
+                    chip appears only where a shop has opted in.
+                    {% endcomment %}
+                    {% if group.technician.hours_today %}
+                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-500 border border-gray-200">
+                        {% if group.technician.off_today %}
+                        <i class="fas fa-moon"></i>Off {% if is_today %}today{% else %}{{ day|date:"D M j" }}{% endif %}
+                        {% else %}
+                        <i class="fas fa-clock"></i>{{ group.technician.hours_today }}
+                        {% endif %}
+                    </span>
+                    {% endif %}
                     {% if group.load.over_committed %}
                     <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-800 border border-red-200">
                         <i class="fas fa-triangle-exclamation"></i>{{ group.load.summary }}
@@ -158,8 +173,15 @@
                 {% endfor %}
             </div>
             {% else %}
+            {% comment %}
+            "Nothing scheduled" and "not working" look identical on a board
+            without hours and lead to opposite decisions — one is a gap to
+            fill, the other is a person to leave alone. S8 separates them.
+            {% endcomment %}
             <div class="px-6 py-4">
-                <p class="text-sm text-gray-400">Nothing scheduled</p>
+                <p class="text-sm text-gray-400">
+                    {% if group.technician.off_today %}Off {% if is_today %}today{% else %}{{ day|date:"D M j" }}{% endif %}{% else %}Nothing scheduled{% endif %}
+                </p>
             </div>
             {% endif %}
         </div>

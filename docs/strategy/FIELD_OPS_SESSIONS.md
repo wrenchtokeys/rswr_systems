@@ -19,21 +19,24 @@ This file is the **work queue** for making field operations real: a technician f
 | S — Where and when | S2 · Field dispatch (executes B1) | M | DONE (2026-08-15, PR #189) |
 | S — Where and when | S3 · Day / agenda view | M | DONE (2026-08-16, PR #190) |
 | S — Where and when | S4 · Customer requests carry when + where | M | DONE (2026-08-18, **PR #195**, deployed same day) |
-| S — Where and when | S5 · Dispatch board | L | DONE (2026-08-18, **PR #197**) — merged, NOT yet deployed |
+| S — Where and when | S5 · Dispatch board | L | DONE (built 2026-08-18, **PR #197** merged 2026-08-24) — **not yet deployed** |
 | S — Where and when | S6 · Routing / ETA / lot-walking | — | BACKLOG (deliberately deferred) |
 | S — Where and when | S7 · Drag to swap two appointments | M | DONE (2026-08-17, **PR #192**) |
-| S — Where and when | S8 · Technician working hours | M | TODO — spec pressure-tested 2026-08-19; **runs after S5 merges** |
+| S — Where and when | S8 · Technician working hours | M | DONE (2026-08-24, **PR #201**) — built in two halves, see Notes; **not yet deployed** |
 | P — Parts | P1 · Mygrant live quotes + ordering | M | IN PROGRESS (steps 3+4 MERGED+DEPLOYED 2026-08-15, PR #184; step 5 quote-only built 2026-08-15, **PR #186**; steps 1–2 wait on the Mygrant IT callback; step 6 ordering waits for quotes to prove out) |
 | P — Parts | P2 · Vehicle→NAGS part lookup | — | BACKLOG (blocked on a NAGS licensing decision — Appendix B) |
 
 **Suggested sequence:** N1 → N4 (start the review clock early — it's days-to-weeks of waiting either way) → S1 → S2 → S3 → N2 (whenever the TFN approves) → S4 → N3 → S5 → (S6 stays backlog until S3/S5 prove demand). **S7 slots in any time after S3** — it needs neither S4 nor S5, and S5 inherits its endpoint. P1 is independent of both arcs and can slot anywhere once Mygrant API onboarding is done (like N4, start that clock early — it's a phone call to the rep).
 Rationale: N1 is the reported bug and pays off alone. S1 is the schema foundation every S-session builds on. S2 is IMPROVEMENT_SESSIONS' "biggest daily-felt gain per hour spent." S4 before S5 because the board is only as good as the data flowing into it.
 
-**Where we are (2026-08-18, after S5):** the whole **S arc is built except S6**
-— N1, N4, S1, S2, S3, S4, S5 and S7 are done. A manager can now run the morning
-from one screen: the rail shows what the customer asked for, one click names a
-tech and a time, the tech is notified once, and accidental double-bookings are
-flagged.
+**Where we are (2026-08-24, after S8 — the arc is complete):** every session
+in this doc is now built or deliberately parked. N1, N4, S1, S2, S3, S4, S5,
+S7 and S8 are done; S6 and P2 are backlog by decision; N2 waits on a
+regulator, N3 is the one unblocked session left, and P1 waits on a vendor.
+A manager runs the morning from one screen: the rail shows what the customer
+asked for, one click names a tech and a time, the tech is notified once, the
+board knows who is actually working, and every disagreement between those
+facts is visible without blocking anybody.
 
 **Deploy state.** Everything through S4 is live: #190/#191/#192/#193 went out at
 10:20 CDT (version `app-ab584-…`, commit `ab5849e2`) and S4/#195 at 10:32 CDT
@@ -44,23 +47,46 @@ priorities uppercased). **Note what that last one switched on:** the customer
 "request received" email had never sent on any migration-seeded database,
 production included — as of that deploy it does, so the first shop-visible
 effect of S4 is customers getting an email that was silently discarded before.
-**S5/#197 is merged but deliberately NOT deployed** (Drake's call, 2026-08-18);
-it adds no migrations, so the deploy is code-only whenever he wants it.
 
-What's left:
+**There is a deploy backlog again, and it is bigger than one session.**
+Production runs `f435d46e` (`app-f435d-260824_104114923555`, deployed
+2026-08-24 10:41 CDT) — everything through S4, plus #199. Three PRs sit merged
+and undeployed behind it, and S8 makes a fourth. The three landed on `main` on
+2026-08-24 between 10:33 and 10:41 CDT; the deploy went out at 10:41 from a
+checkout of the tip as it stood at 08:57, so it carries none of them:
+
+| PR | What it is | Migrations |
+|---|---|---|
+| **#197** merged | S5 dispatch board | none |
+| **#198** merged | S8 spec (doc only) | none |
+| **#200** merged | Email / notification chassis + replacement lifecycle | check before deploying |
+| **#201** open | S8 technician working hours + this wrap-up | **none** — the column has existed since `0007` |
+
+Three of the four are code-only from this arc's point of view. **#200 is not
+this doc's work and is the one to look at first** — it is a rewrite of every
+notification email, it is the largest undeployed change, and it has already
+moved copy that S4's tests asserted on (see S8's Notes).
+
+*A caution worth keeping:* a `gh pr list` "updated" column is not a merge
+date. Reading it as one is how S5 came to be dated 2026-08-18 throughout this
+document — that is the day its branch was finished, not the day it reached
+`main`, which was 08-24. Check `git log --first-parent` for the real order and
+the EB version label for what is actually running.
+
+What's left in the queue:
 
 - **N2** is parked until the toll-free number clears review (Appendix A).
-- **N3** is the next code session by default, and S4/S5 both fed it: S4 found
-  the lowercase-priority bug that killed the customer's "request received"
-  email, and S5 left `repair_request_submitted` still on `['in_app','sms']`
-  (visible now, not hidden). N3's inventory is also where the two-notification-
-  systems drift gets settled.
-- **S6 item 4 (technician availability) is now the highest-value unbuilt item
-  in this arc**, not a backlog nicety. S4's EXACT windows let a fleet ask for
-  04:30 and S5 lets the shop agree to it, and nothing anywhere knows whether
-  anyone works then. S5's conflict signals are honest about this but cannot
-  fix it — see its Notes for why `Technician.working_hours` (a real, empty,
-  schema-less column) was deliberately left alone.
+- **N3 is the only unblocked session left in this document.** Three separate
+  sessions have now fed it: S4 found the lowercase-priority bug that killed
+  the customer's "request received" email, S5 left `repair_request_submitted`
+  on `['in_app','sms']`, and S8 found that #200's chassis makes a missing
+  `action_url` fatal to a whole email rather than to one button. Its
+  "Verified current state" was refreshed against post-#200 code on 2026-08-24.
+- **P1** waits on Mygrant (steps 1–2), **P2** on a NAGS licensing decision,
+  **S6** on demand that S3/S5/S8 have to prove first.
+- **S6 item 4 (technician availability) is done** — it graduated into S8 and
+  shipped on 2026-08-24. What stays in S6 is the part S8 explicitly refused:
+  date-ranged time off, coverage rules and customer-facing slot picking.
 
 Sizes: **S** ≈ half a day · **M** ≈ 1–2 days · **L** ≈ 3–5 days.
 
@@ -142,10 +168,16 @@ on top of it, and a fresh session should start from these rather than re-derive:
   flags double-bookings, over-committed days and bookings that miss the
   customer's ask — informational only, nothing blocks a write. The rail grew a
   technician picker and expands in place (`?rail=all`).
-- Still true and still unbuilt: no `Appointment`/`Availability` model and **no
-  technician working hours** (`Technician.working_hours` exists but is an
-  empty, schema-less JSONField with no consumer — see S5's Notes), and no
-  customer-facing rescheduling.
+- **S8** gave `Technician.working_hours` a shape and four readers
+  (`apps/technician_portal/services/working_hours.py`), so the board knows who
+  is actually working: an "outside hours" chip beside S5's three signals, an
+  "Off today" group line, off-duty marks in the dispatch picker that never
+  remove anybody, and declared hours as the capacity denominator. Editing is
+  on Settings → My Team behind its own endpoint. `{}` means *undeclared* —
+  available whenever, silent everywhere — and that is a rule with tests, not
+  a default.
+- Still true and still unbuilt: no `Appointment`/`Availability` model, no
+  date-ranged time off (PTO), and no customer-facing rescheduling.
 
 **Built (as of 2026-08-11): essentially nothing.**
 - `GlassService.service_date` (`apps/technician_portal/models.py:326`) is the only date on a job — a *completion* timestamp defaulting to `now()`. The primary QuickJobForm (`forms.py:872-1060`) has **no date input at all**; only the legacy RepairForm (:407-410) and the multi-break form expose one.
@@ -238,7 +270,7 @@ on top of it, and a fresh session should start from these rather than re-derive:
 
 **Notes**
 
-## N3 · Notification coverage audit — TODO
+## N3 · Notification coverage audit — TODO (**the only unblocked session left**)
 
 | Field | Value |
 |---|---|
@@ -246,11 +278,17 @@ on top of it, and a fresh session should start from these rather than re-derive:
 | **Size** | S |
 | **Depends on** | N1. Better after S4 exists (schedule-changed events). |
 | **Why it matters** | Two notification systems drifted apart once already — that's how this whole bug happened. |
-| **Verified current state** | `TechnicianNotification` writes are scattered (assignment views, redemption flows, replacement request `_notify_shop_replacement_requested` at `apps/customer_portal/views.py:1804+`). No `replacement_*` lifecycle templates exist (per CLAUDE.md). Bell reads `core.Notification` only. |
+| **Verified current state** *(refreshed 2026-08-24, after #200)* | **This session's ground moved on 2026-08-24: PR #200 landed an email/notification chassis and the replacement lifecycle** — merged, not deployed. Re-read before scoping; the pre-#200 survey below is kept because the structural problem it describes is unchanged. `TechnicianNotification` writes are scattered (assignment views, redemption flows, replacement request `_notify_shop_replacement_requested` at `apps/customer_portal/views.py:1804+`); the bell reads `core.Notification` only; two systems, no shared source of truth. What #200 changed: notification emails are now composed from `templates/emails/components/*` and much of the copy was rewritten (it moved S4-asserted wording — see S8's Notes), and `replacement_*` lifecycle coverage exists where CLAUDE.md still says it doesn't. **Three concrete defects are already on the table** — see "Where to start" below. |
 | **Considerations** | Inventory first: grep every `TechnicianNotification.objects.create` and decide each one — fold into `NotificationService`, keep as dashboard-only, or delete. Add the missing events found while writing this doc: customer-requested job auto-assigned (tech should hear), schedule confirmed/changed (after S4 — but note **S7 introduces the first schedule-change template**, so inventory it here rather than inventing a second one). Consider whether `TechnicianNotification` can become a thin projection of `core.Notification` instead of a second source of truth. |
 | **Decisions needed** | Whether to add `replacement_*` lifecycle templates now or keep replacements on the shop-email path (Drake previously deferred replacement lifecycle emails by choice — see `simplicity-first-product-direction`; don't expand customer-facing email without asking). |
 | **Acceptance criteria** | A written inventory table (in this doc's Notes) of every tech-facing event → recipient → channel; no event a tech must act on lands only in the dashboard list. |
 | **Out of scope** | Customer-facing notification redesign. |
+
+**Where to start (2026-08-24)** — three defects found by other sessions, none of them chased down. They are the audit's first rows, not its scope:
+
+1. **A missing `action_url` costs the whole email, not just the button.** *(found by S8)* Nineteen templates in `templates/emails/notifications/` render their CTA through `{% with url=base_url|add:action_url %}`, and `{% with %}` resolves filter arguments strictly — a context without `action_url` raises `VariableDoesNotExist`, killing the render. `NotificationTemplate.render()` (`core/models/notification_template.py:131`) renders `email_html` at `:176` but computes the DB `action_url_template` at `:179`, so the seeded value cannot rescue a caller that omits the key. Not live — every current call site passes it explicitly (`apps/technician_portal/signals.py`, `apps/technician_portal/services/assignments.py`) — but **three tests in `tests/test_primary_contact.py`, part of the smoke set this document tells every session to run, error on `main` because of it.** Decide the convention (guard with `{% if action_url %}`, default the key in `render()`, or require it loudly) and apply it to all nineteen at once.
+2. **`ReviewConfig` business hours are compared in UTC.** *(found by S8)* `_adjust_to_business_hours` (`apps/technician_portal/review_service.py:319-332`) clamps an aware UTC datetime by `.hour` against `business_hours_start/end` (defaults 9/19), so in production review-request emails queue for roughly **4 AM local**. Live today, shipping since the review system launched. One-line fix (`timezone.localtime()` before comparing, convert back), but it needs a test that would have caught it, which is why it belongs in an audit rather than in a drive-by.
+3. **`repair_request_submitted` still maps to `['in_app','sms']`.** *(found by S5)* Visible rather than hidden now, but nothing texts anybody until N2, so that event effectively has no channel.
 
 **Notes**
 
@@ -791,6 +829,11 @@ on top of it, and a fresh session should start from these rather than re-derive:
   fleet can still be promised 04:30 with nobody starting before 07:00. **S6
   item 4 is now the highest-value unbuilt thing in this arc** — EXACT windows
   made it matter sooner than the backlog assumed.
+  *(Update 2026-08-24: **S8 built it**, and the call above held up — it
+  invented the shape, the settings screen and the tolerant reader, and it
+  took a full session to do properly. `annotate_conflicts()` has a fourth
+  signal and `technician_load()` a real denominator; `NOMINAL_JOB_LENGTH` is
+  still a placeholder.)*
 - **Smaller things worth knowing:**
   - The rail's overflow used to link to the job list, which has no wish, no
     picker and no Book button — the three things a manager came here for. It
@@ -832,7 +875,7 @@ Not a session yet — a parking spot so nobody re-litigates scope. PRODUCT_DIREC
 1. **Lot-walking consumer** — `CustomerRepairPreference.lot_walking_*` (`apps/customer_portal/models.py:101-126`) is a complete recurring-visit spec with a UI and zero consumers. Feed it into the S3 day view / S5 board as recurring visit entries. Cheapest item here.
 2. **ETA texts** — "Marcus is on his way, ETA 2:15." Needs two-way SMS (B2, size L, provider work) or at minimum outbound-only ETA sends via the N2 plumbing.
 3. **Route ordering** — order a tech's day geographically (the ROADMAP's "lot-walking scheduler"). Needs S2's structured addresses; probably needs geocoding. Do not start before a shop asks.
-4. ~~**Technician availability / working hours**~~ — **promoted out of the backlog 2026-08-19 and specced as its own session: see S8.** S5 considered a minimal version and deliberately declined to fake it (`Technician.working_hours` exists but is a schema-less empty JSONField), and S4's EXACT windows made the gap bite sooner than this list assumed. Date-ranged time off / PTO stays here.
+4. ~~**Technician availability / working hours**~~ — **shipped as S8 on 2026-08-24** (promoted out of this backlog 2026-08-19). The weekly pattern, the board chip, the "Off today" line and the capacity denominator are done. What remains in *this* item is only what S8 explicitly refused: date-ranged time off (PTO, "gone next week"), coverage rules for it, and a real capacity model to replace `NOMINAL_JOB_LENGTH`. Those want a `TechnicianAvailability` table with date ranges; a weekly pattern does not, and now has one.
 5. **Self-service rescheduling** — customers changing a confirmed time from the portal (S4 deliberately excludes this). Needs a notify-shop + re-confirm loop so a reschedule can't silently invalidate a tech's day; pairs naturally with S8 once slots are real.
 
 ---
@@ -1020,7 +1063,7 @@ Not a session yet — a parking spot so nobody re-litigates scope. PRODUCT_DIREC
 
 ---
 
-## S8 · Technician working hours — TODO
+## S8 · Technician working hours — DONE (2026-08-24, PR #201)
 
 *(Added 2026-08-19, promoted out of S6 backlog item 4. S5's Notes call it "the
 highest-value unbuilt thing in this arc" — S4's EXACT windows made it matter
@@ -1125,7 +1168,103 @@ endpoint semantics, only a fact the board is currently missing.)*
   template work needs `./scripts/build_css.sh`, and dynamically composed classes
   must be safelisted.
 
-**Notes**
+**Notes** *(built in two sittings — foundation 2026-08-19 on
+`feat/fieldops-s8-working-hours`, board half 2026-08-24 on
+`feat/fieldops-s8-working-hours-board`; shipped together as PR #201)*
+
+- **Every recommended decision was taken, (a) through (f), unchanged.** Hours
+  live in the existing `working_hours` column with helpers rather than a new
+  model (no migration); the shape is the one the Django admin fieldset has
+  documented since `0007`; editing is a dedicated endpoint and form on
+  Settings → My Team with `update_team_member`'s permission rules *copied*
+  rather than extended; per-tech only, pre-filled Mon–Fri 08:00–17:00 but
+  unchecked; no date-ranged time off; and capacity now measures against
+  declared hours. `services/working_hours.py` owns the shape and every read.
+- **The session split in half, and the split is the lesson.** The foundation
+  branch was cut from `main` before S5 merged — the spec's own "S5 must merge
+  first" line was written and then not honoured — so it shipped the fact and
+  none of the consumers: hours could be set and read, and no screen was any
+  wiser. Nothing about it was wrong, and it was also not the session. When a
+  spec names a dependency, cutting the branch is the moment it applies; the
+  half that plugs into the dependency is the half that delivers the value.
+- **What the board actually gained (the four consumers).**
+  `annotate_conflicts()` has a fourth signal beside S5's three; `technician_
+  load()` has a denominator that means something; the group empty state
+  distinguishes "nobody booked Dana" from "Dana isn't working"; and the
+  dispatch picker marks off-duty techs while keeping them selectable.
+- **`covers()` returns `None`, not `False`, and that is the whole safety
+  design.** Three states, not two: covered, not covered, and *nobody said*.
+  Every consumer checks `is None` first and stays silent. That one API choice
+  is what makes "undeclared means available whenever" impossible to get wrong
+  by accident, and it is asserted per consumer rather than once in general —
+  five tests exist purely to prove that a technician with `{}` produces no
+  chip, no "Off today", no picker mark and no change in load.
+- **The span denominator was quietly wrong, and declared hours fixed a real
+  false positive.** S5's `technician_load()` compared nominal work against
+  *the span the jobs happened to occupy*, so two half-hour jobs booked back to
+  back read as over-committed (2h of nominal work in a 1h span) while a day
+  booked 07:00–19:00 never did. With hours on file the comparison is against
+  the shift, and both cases come out right. The span is kept for undeclared
+  techs because it is the only honest number available for them — `basis` in
+  the returned dict records which one was used.
+- **Chips name the weekday, not the date.** "Marcus is off Saturdays" is the
+  standing fact a dispatcher needs and it reads the same next week; the date
+  is already on the screen. Booking outside hours still succeeds — this is
+  informational exactly like S5's other three signals, and a test asserts the
+  write goes through, because a shop with one truck down calls people in.
+- **Finding: the board renders per-tech groups only once the day has work in
+  it.** An entirely empty day gets S3's single "Nothing scheduled today"
+  panel, so "Off today" — a *group* line — never appears on a day nobody is
+  booked. That is S3 behaviour, left alone deliberately, but it means the
+  answer to "is anyone working Saturday?" is still only visible on a Saturday
+  that already has a job on it. If a future session wants the roster on an
+  empty day, that is the one-line change (`{% if jobs %}` in `schedule.html`),
+  and it is a design decision about what an empty board should say, not a bug.
+- **Nothing was added to `update_team_member`, exactly as specced.** Three
+  forms POST that view and it reads checkboxes as absent-means-off, so a field
+  added there is silently cleared by whichever form omits it. The new endpoint
+  copies its permission rules (owner-only role changes; a manager may not edit
+  a peer manager or an owner, CODE-212; editing your own is allowed). Two
+  doors, one rulebook.
+- **Auto-assignment was left alone, also as specced.** Hours are not a filter
+  anywhere. A customer requesting work at 8 PM Saturday is the normal case,
+  and filtering on hours would re-create the CODE-160 dead end every evening.
+- **No CSS rebuild was needed.** Every class the new chips use was already
+  compiled into `static/css/app.css` (they are S5's chip classes), and both
+  icons are in the vendored Font Awesome. Verified before committing rather
+  than assumed — and it kept this session out of a file another session was
+  editing at the same time.
+- **Collateral repair: PR #200 broke an S4 assertion the morning this ran.**
+  The email chassis rewrote the request-received copy from "confirm your time"
+  to "we will confirm the time shortly" — the same promise — and
+  `test_request_received_email_does_not_say_scheduled` still asserted the old
+  phrasing. Fixed here by matching either wording while keeping the two
+  assertions that carry the actual intent (the email must never imply a time
+  nobody agreed to). Confirmed pre-existing on `origin/main` before touching
+  it.
+- **Finding for N3 — a missing `action_url` now costs the whole email.**
+  Nineteen templates under `templates/emails/notifications/` render their CTA
+  through `{% with url=base_url|add:action_url %}`, and `{% with %}` resolves
+  filter arguments strictly: a context without `action_url` raises
+  `VariableDoesNotExist` instead of dropping a button.
+  `NotificationTemplate.render()` (`core/models/notification_template.py:131`)
+  renders `email_html` at `:176` and only computes the DB `action_url_template`
+  at `:179`, so the seeded `action_url_template` cannot save a caller that
+  omits it. **Not live:** every real call site passes `action_url` explicitly
+  (`apps/technician_portal/signals.py`, `services/assignments.py`), which is
+  why the fieldops suites are green. But three tests in
+  `tests/test_primary_contact.py` — part of the **smoke set this doc tells
+  every session to run** — now error on `main` for exactly this reason. Left
+  for N3 rather than patched here: it is #200's code, the fix is a template
+  convention question across nineteen files, and it deserves the inventory N3
+  is for.
+- **Tests:** `tests/test_fieldops_s8.py`, 51 (30 foundation + 21 board).
+  Green alongside S1–S5, S7, `test_owner_setup` and
+  `test_settings_consolidation` (282 total). The three smoke-set errors above
+  reproduce identically on a clean `origin/main` worktree.
+- **Not done, deliberately:** PTO / date-ranged time off, customer-facing slot
+  picking, breaks and split shifts, per-tenant timezone, hours as an input to
+  auto-assignment, and any blocking validation anywhere.
 
 ---
 
@@ -1170,6 +1309,55 @@ Not a session yet — the blocker is a contract, not code. To show "2024 F-150 w
 
 ---
 
+## Where this document ends
+
+*(Written 2026-08-24, when the last buildable session closed. This section is
+the wrap-up: what the arc delivers, what is left, and what would reopen it.)*
+
+**The arc is complete.** A technician now finds out about a job the moment it
+is assigned (N1), knows where to go and when (S1–S4), and a manager runs the
+morning from one screen that knows who is working (S5, S7, S8). Read
+end-to-end, the fourteen sessions in this document did one thing: they turned
+a shop's day from something held in somebody's head into something the
+software can show, without ever blocking the shop from overriding it. Every
+scheduling signal in the product is informational by design — S5's conflicts,
+S4's missed wishes, S8's hours — because a glass shop's exceptions are the
+job, not an error state.
+
+**Nothing here is deployed yet.** #197, #198, #200 and #201 are merged and
+waiting; see "Deploy state" at the top for the table and the order to think
+about them in. That is the single next action this document implies, and it
+is Drake's call, not a session's.
+
+**What remains, and what unblocks it:**
+
+| Item | Status | Gate |
+|---|---|---|
+| **N3** · Notification coverage audit | The one unblocked session left | Nothing. It has three concrete defects waiting and a refreshed survey. Best run *after* #200 deploys, so the audit describes what shops actually have. |
+| **N2** · Tech assignment texts | Parked | The toll-free number clearing registration (Appendix A) — a regulator's clock, not ours. |
+| **P1** · Mygrant quotes + ordering | Steps 3–5 built and dark | Mygrant enabling API onboarding on `C027180-001`. Escalation path is in P1's Notes. |
+| **P2** · Vehicle→NAGS lookup | Backlog | A licensing decision with Mitchell (Appendix B). |
+| **S6** · Routing / ETA / PTO / self-service rescheduling | Backlog by decision | Demand. S3/S5/S8 exist now precisely so a shop can prove it. |
+
+**What would reopen this document rather than start a new one:** anything that
+is still *the tech finding out where and when*. Date-ranged time off, a
+customer rescheduling themselves, ETA texts, route ordering — those are S6
+items and they belong here. A calendar product, capacity planning, or
+multi-day jobs would not be; they are a different premise, and this doc's
+sizing (`S` ≈ half a day, `L` ≈ 3–5 days, one session one PR) would be lying
+about them.
+
+**If you are the next session here, read this first:** §0 is still accurate
+and still the fastest way in. The five load-bearing modules the arc left
+behind are `services/schedule_booking.py` (turn a wish into a booking),
+`services/schedule_swap.py` (trade two times), `services/dispatch.py` (who and
+when together), `services/schedule_conflicts.py` (everything the board says
+out loud) and `services/working_hours.py` (who is working). None of them
+blocks a write; all of them are called once per group from
+`views/schedule.py`, never per row from a template. Keep both properties.
+
+---
+
 ## Traps this work has already hit — don't repeat them
 
 - **`TechnicianNotification` is display-only.** It has no delivery machinery and doesn't even feed the bell. Writing one and believing "the tech was notified" is how the original bug shipped. *(exploration, 2026-08-11)*
@@ -1185,6 +1373,9 @@ Not a session yet — the blocker is a contract, not code. To show "2024 F-150 w
 - **`select_for_update()` is a silent no-op in dev.** *(S7, 2026-08-17)* Dev runs SQLite, so lock-ordering and race tests pass green while proving nothing — even a missing `atomic()` won't raise. Any concurrency guard has to be exercised against Postgres or labelled as argued-not-tested.
 - **An empty JSONField that nothing reads is not a foundation.** *(S8 exploration, 2026-08-19)* `Technician.working_hours` has existed since migration `0007` with `default=dict`, no schema, no validator, no writer and no reader outside a collapsed Django-admin fieldset — so every row in production holds `{}`. Its presence made "we sort of have availability" believable for a year. When it gets meaning, `{}` has to mean *undeclared* (available whenever, say nothing), never *unavailable*, or the first deploy flags every job in every shop.
 - **The app's only "business hours" are compared in UTC.** *(S8 exploration, 2026-08-19)* `_adjust_to_business_hours` (`apps/technician_portal/review_service.py:319-332`) clamps `timezone.now() + delay` using `dt.hour` — the UTC hour of an aware datetime — against `ReviewConfig.business_hours_start/end` (defaults 9/19). In prod that is 04:00–14:00 America/Chicago, so review-request emails queue for roughly 4 AM local. Live today; fix belongs to the review system (N3's neighbourhood). Do not copy the helper: schedule work must localize before comparing.
+- **`{% with %}` makes an optional email context key mandatory.** *(S8, 2026-08-24)* Django resolves filter arguments strictly inside `{% with %}`, so `{% with url=base_url|add:action_url %}` raises `VariableDoesNotExist` when `action_url` is absent — the whole email fails to render rather than losing a button. Nineteen notification templates do this. Everything else in these templates is written to the opposite convention (flat context, every optional key guarded by `{% if %}`), which is exactly why it is easy to miss. See N3.
+- **A `gh pr list` "updated" column is not a merge date.** *(S8, 2026-08-24)* Reading it as one put a wrong deploy claim into this document (S5 recorded as merged 08-18 and live; it merged 08-24 and was still undeployed). `gh pr list` prints `updatedAt` by default. Use `git log --first-parent` for the real order and the EB version label for what is actually running — `--json mergedAt` if you want the date from `gh`.
+- **A session's stated dependency applies when the branch is cut, not when the code is written.** *(S8, 2026-08-24)* S8's spec said "S5 must merge first"; its branch was cut from a `main` without S5, and the result was a half-session that shipped the fact with none of its consumers. Nothing in it was wrong and it still had to be finished twice.
 - **Full suite has ~90–105 pre-existing failures on main.** Compare against a fresh main baseline; never count absolute failures. Another session may share the working tree — print `git branch --show-current` with every run.
 
 ---
@@ -1309,3 +1500,4 @@ Key sources: Mygrant SOAP spec (committed PDF; mirror: aswadtsh.com/wp-content/u
 | 2026-08-15 | **PRs #184 + #183 merged and deployed** (health 200); `FIELD_ENCRYPTION_KEY` still pending Drake's one-liner (sandbox can't set prod secrets), Parts card in its designed "not available yet" state until then. **P1 step 5 BUILT (PR #186, `feat/mygrant-quotes`)** — quote button + SKU table + one-tap `parts_cost` + profit-on-this-job on `replacement_detail`, server-side quote cache (one billable search per quote, prices unforgeable), item-level errors surfaced, `mygrant_quote` management command for the staging-first proof. Ships dark behind `is_enabled()` until the Mygrant callback delivers the API key. P1 notes updated with the first-quote runbook and step-6 guidance (reuse the cached-SKU pick for exact-SKU orders). |
 | 2026-08-18 | **P1 onboarding, non-code session.** Owen (Little Rock branch) supplied the Mygrant IT support director's email 2026-08-17; written onboarding request sent (asks: enable API User onboarding on `C027180-001` so Generate Key appears, and confirm whether API Inquiries bill per-search like portal searches). Corrected a standing factual error: **Drake is the account owner** on `C027180-001` — his dad only uses it — so nothing about onboarding needs a third party. 24h of silence prompted the real question, now answered in P1's Considerations: per-shop onboarding is table stakes (every competitor POS works this way and `is_enabled()` keeps it off every other surface), but **the vendor must not be the one making the call** — a shop's own CSR handles this as routine where a cold vendor request has no SLA. Built the Connect card's **"Don't have an API key yet?"** panel (`owner_settings.html` Parts tab, open until a key is saved): who to call, what to ask for (their account number pre-filled), where Generate Key lives, that its *absence* means the rep hasn't finished, and a nudge to ask about search billing on the same call. No new CSS (every class already compiled). Queued for the first Mygrant call that connects: **does Mygrant have an integrator/partner listing for POS vendors** — worth more than our own key. Escalation if silent by ~2026-08-24 is Owen/the sales rep, not IT again. |
 | 2026-08-19 | **S8 specced (doc-only session).** Promoted S6 backlog item 4 — technician working hours — into a full session, pressure-tested against the real code the way S4 and S7 were before their builds. The finding that reframes it: `Technician.working_hours` has existed since migration `0007` and is completely inert (`default=dict`, no schema, no validator, **zero readers and zero writers** outside a collapsed Django-admin fieldset), so every production row holds `{}` — which means the session's first rule is that empty means *undeclared*, not *unavailable*. Recommended shape adopts the convention the admin help text already documents rather than inventing a better one. Named the three places it plugs in (`schedule_conflicts.annotate_conflicts` / `technician_load`, the board's roster, and S3's "Nothing scheduled" line, which should read "Off today"), and the two places it must **not** touch: `update_team_member` (three forms POST it, absent checkbox = false, so a field added there is silently erased) and auto-assignment (hours as a filter re-creates the CODE-160 dead end every evening and weekend). Recorded a live pre-existing bug found on the way: `_adjust_to_business_hours` compares **UTC** hours, so review-request emails clamp to 04:00–14:00 Central and effectively send at ~4 AM local — the fix belongs to the review system, S8's job is not to inherit it. Two traps added. |
+| 2026-08-24 | **S8 executed and the document wrapped up.** Merged the 2026-08-19 foundation branch (which had been cut before S5 landed and therefore shipped `services/working_hours.py`, the model delegates and the Settings → My Team editor with *no* consumers) and built the missing board half on top of a `main` that now has S5: a fourth conflict chip ("Outside Marcus's hours" / "Marcus is off Saturdays"), declared hours as `technician_load()`'s denominator in place of the span the jobs happen to occupy, "Off today" where the board used to say "Nothing scheduled", and off-duty marks in the dispatch picker that never remove anybody. 51 tests, no migration, no CSS rebuild. Also trued up an S4 assertion that #200 had broken hours earlier the same morning. **Corrected a deploy claim this doc had wrong:** S5 merged on 08-24, not 08-18, and is still undeployed — a `gh pr list` "updated" column is not a merge date, and that is now a trap. Rewrote the deploy state as a table of four merged-undeployed PRs (#197/#198/#200/#201), refreshed **N3** against post-#200 code with three concrete defects to start from (the `{% with %}`/`action_url` fragility that breaks the smoke set, the UTC review-hours bug, `repair_request_submitted`'s dead channel map), retired S6 backlog item 4 into S8, and added a closing **"Where this document ends"** section: what is left, what gates each item, and what would reopen this doc rather than start a new one. |

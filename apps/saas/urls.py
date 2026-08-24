@@ -59,6 +59,7 @@ urlpatterns = [
     # Team management (Phase 6)
     path('owner/team/add-self/', views.team_add_self, name='team_add_self'),
     path('owner/team/<int:membership_id>/update/', views.update_team_member, name='update_team_member'),
+    path('owner/team/<int:membership_id>/hours/', views.update_team_member_hours, name='update_team_member_hours'),
     path('owner/team/<int:membership_id>/deactivate/', views.deactivate_team_member, name='deactivate_team_member'),
     path('owner/team/<int:membership_id>/resend-invite/', views.resend_invite, name='resend_invite'),
 
