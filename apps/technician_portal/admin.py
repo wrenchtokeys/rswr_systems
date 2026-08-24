@@ -111,7 +111,14 @@ class TechnicianAdmin(TenantFilterMixin, admin.ModelAdmin):
         ('Schedule & Availability', {
             'fields': ('working_hours',),
             'classes': ('collapse',),
-            'description': 'Working hours in JSON format: {"monday": ["9:00", "17:00"], ...}'
+            'description': (
+                'Working hours in JSON format: {"monday": ["08:00", "17:00"], '
+                '"tuesday": null, ...} — wall-clock times in the shop\'s '
+                'timezone. An EMPTY value means hours are NOT DECLARED: the '
+                'technician is treated as available whenever and the schedule '
+                'screens say nothing about them. It does not mean "never '
+                'works". Shops edit this in Settings > My Team.'
+            )
         }),
     )
 
