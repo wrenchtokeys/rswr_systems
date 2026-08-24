@@ -1309,7 +1309,7 @@ def customer_batch_deny(request, batch_id):
                 denial_message = (f"{customer.name} declined all {break_count} breaks "
                                   f"on Unit #{unit_number}.")
                 if reason:
-                    denial_message += f" - Reason: {reason}"
+                    denial_message += f" Reason: {reason}"
                 TechnicianNotification.objects.create(
                     technician=technician,
                     message=denial_message,
@@ -1484,7 +1484,7 @@ def customer_replacement_deny(request, replacement_id):
                               f"{locked_replacement.get_glass_position_display().lower()}"
                               f"{on_vehicle(locked_replacement)}.")
                 if reason:
-                    denial_message += f". Reason: {reason}"
+                    denial_message += f" Reason: {reason}"
                 TechnicianNotification.objects.create(
                     technician=locked_replacement.technician,
                     message=denial_message,

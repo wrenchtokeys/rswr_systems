@@ -1,0 +1,29 @@
+{% extends "emails/base.html" %}
+{% comment %}
+Shop, a customer wants a replacement. This is the shop's highest-value
+inbound job and it sits at zero price until someone quotes it, so the
+action is "price it", not "assign it".
+{% endcomment %}
+
+{% block email_title %}New replacement request{% endblock %}
+{% block header_meta %}Request #{{ replacement_id }}{% endblock %}
+{% block preheader %}{{ customer_name }} needs a price.{% endblock %}
+{% block unsubscribe_url %}/tech/notifications/preferences/{% endblock %}
+
+{% block content %}
+{% include "emails/components/pill.html" with label="Needs pricing" tone="yellow" %}
+{% include "emails/components/headline.html" with headline="A customer requested a replacement." lede=customer_name %}
+
+{% include "emails/components/rows_start.html" %}
+    {% if customer_name %}{% include "emails/components/row.html" with label="Customer" value=customer_name %}{% endif %}
+    {% include "emails/components/vehicle_row.html" %}
+    {% if glass_position %}{% include "emails/components/row.html" with label="Glass" value=glass_position %}{% endif %}
+    {% if service_location %}{% include "emails/components/row.html" with label="Where" value=service_location %}{% endif %}
+    {% if customer_notes %}{% include "emails/components/row.html" with label="Customer notes" value=customer_notes %}{% endif %}
+{% include "emails/components/rows_end.html" %}
+
+{% with url=base_url|add:action_url %}
+{% include "emails/components/button.html" with text="Price this job" url=url color=branding.primary_color %}
+{% endwith %}
+{% include "emails/components/note.html" with text="The customer approves the price before any glass is ordered." %}
+{% endblock %}

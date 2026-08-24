@@ -686,3 +686,71 @@ Small, self-contained, and it removes a footgun that will otherwise bite the nex
 Add a strict **Content-Security-Policy**. S1 removed every third-party asset host, so the
 allowlist is now small: self + Stripe + Cloudflare Turnstile. This was impossible before
 and is the main security dividend of Phase 1 — don't leave it on the table.
+
+---
+
+# Phase 3 — Outbound: email and notifications ✅ DONE (PR #200)
+
+The design canvas that drove this:
+https://claude.ai/code/artifact/e43f623b-2e7c-4ea1-959e-93d17dbd7b6d
+
+Every surface in Phases 1 and 2 is a page the shop looks at. Email is the only
+surface the shop's *customers* see, and it was the one place none of the work
+above had reached: two unrelated email systems, neither using the tokens.
+
+## What landed
+
+**One chassis.** `templates/emails/base.html` is now the only email shell.
+`send_branded_email()` kept its signature — all 24 call sites unchanged — and
+renders `emails/generic.html` instead of building HTML in an f-string. The 14
+notification templates extend the same base. Components in
+`templates/emails/components/` (NOT `parts/` — `.gitignore` carries buildout's
+`parts/` rule and silently drops it from the commit).
+
+**Tokens, not settings.** The chassis hardcodes the palette and reads only
+identity + `primary_color` from `branding`. `EmailBrandingConfig`'s colour and
+font fields are platform-wide; letting them through is how the platform
+owner's look leaked onto other shops' mail. Status pills come from
+`core/templatetags/email_ui.py`, whose tone table mirrors `ui.py` — an email
+badge and a job-page badge cannot drift.
+
+**The replacement lifecycle now exists.** Every seeded template was `repair_*`,
+so the shop's most expensive job sent nothing after the request while a $40
+chip repair sent five emails. Seven new templates (`replacement_*`), seeded by
+`core/0032`, wired through `handle_replacement_status_change`.
+
+## Traps worth remembering
+
+- **A notification's context is flat and JSON-serializable.** It is persisted
+  on the `Notification` and re-rendered by the retry path, so the job object is
+  never in it. Three templates read `{{ repair.total_cost }}` anyway and
+  rendered a bare `$` — and `total_cost` is not a field on `Repair` (it is
+  `cost`). Derived values come from `notification_service.job_display_context()`.
+- **`PRIORITY_HIGH` sends in-app + SMS, NOT email.** SMS is dark (the toll-free
+  registration was denied), so a HIGH template with no `channels_override`
+  silently sends nothing. Every `replacement_*` template declares
+  `['in_app', 'email']` explicitly rather than trusting the priority mapping.
+- **`_handle_assignment_change` pops the tracking dict** and its receiver is
+  registered first, so the lifecycle handler needs its own
+  (`_replacement_previous_status`) or it always reads `old_status = None` and
+  never fires.
+- **A generous test fixture hides all of the above.** The first pass supplied
+  every variable a template might want and 16 tests passed over four real bugs.
+  `RealCallerContextTests` renders each template with exactly the context its
+  sender in `signals.py` builds.
+- **Buttons must resolve against `base_url`.** Nine templates passed a bare
+  relative `action_url`; a relative href is dead in every mail client.
+
+## Still open
+
+- **The in-app surfaces** in the canvas (notification bell, notifications page)
+  are designed but NOT built. The bell still shows an unread row three ways at
+  once — tinted background, "New" pill and bold title — and loses all of it on
+  the 30-second poll that rewrites the list. `timesince` renders "0 minutes
+  ago". This is the obvious next session.
+- **Safe drive-away time** is deliberately not implemented. Estimating cure
+  time on a shop's behalf is a liability question, not a design one — Drake's
+  call, 2026-08-24. Do not add it without him.
+- **Emoji in staff-only surfaces**: `technician_portal/admin.py`,
+  `billing/admin.py` and `process_billing.py` still carry them in admin action
+  labels and command output. Same sweep, no customer impact.

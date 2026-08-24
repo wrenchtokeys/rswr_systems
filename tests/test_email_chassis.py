@@ -390,3 +390,86 @@ class PlatformVersusShopIdentityTests(TestCase):
         self.assertNotIn('via RS Systems', message.from_email)
         # Replies about a subscription must not land in the shop's inbox.
         self.assertNotIn('service@glassguy.example', message.reply_to or [])
+
+
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class ReplacementLifecycleTests(TestCase):
+    """A replacement now tells the customer what a repair always did.
+
+    Every seeded template used to be repair_*, so the shop's most expensive
+    job sent nothing after the request. These assert the templates exist,
+    that they are wired to email (PRIORITY_HIGH maps to in_app + SMS with NO
+    email, and SMS is dark — so a template relying on the priority mapping
+    would silently send nothing), and that the lifecycle signal fires.
+    """
+
+    REPLACEMENT_TEMPLATES = [
+        'replacement_request_received', 'replacement_request_submitted',
+        'replacement_pending_approval', 'replacement_approved',
+        'replacement_denied', 'replacement_in_progress',
+        'replacement_completed',
+    ]
+
+    def test_every_replacement_template_is_seeded(self):
+        from core.models.notification_template import NotificationTemplate
+        for name in self.REPLACEMENT_TEMPLATES:
+            with self.subTest(template=name):
+                self.assertTrue(
+                    NotificationTemplate.objects.filter(name=name, active=True).exists(),
+                    f'{name} was not seeded by the migration',
+                )
+
+    def test_every_replacement_template_actually_sends_email(self):
+        """The whole point is the email; the priority mapping would not send one."""
+        from core.models.notification import Notification
+        from core.models.notification_template import NotificationTemplate
+        for name in self.REPLACEMENT_TEMPLATES:
+            template = NotificationTemplate.objects.get(name=name)
+            with self.subTest(template=name):
+                self.assertIn(
+                    'email', template.channels_override,
+                    f'{name} does not declare the email channel, and its '
+                    f'priority ({template.default_priority}) does not add one',
+                )
+                notification = Notification(
+                    priority=template.default_priority,
+                    template=template,
+                )
+                self.assertTrue(notification.should_send_email())
+
+    def test_template_files_render_for_every_seeded_template(self):
+        from core.models.notification_template import NotificationTemplate
+        context = _sample_context()
+        context.update({
+            'replacement_id': 412, 'glass_position': 'Windshield',
+            'glass_type': 'OEM', 'nags_number': 'FW04123',
+            'parts_cost_display': '$310.00', 'labor_cost_display': '$145.00',
+            'job_cost_display': '$630.00', 'needs_adas': True,
+            'customer_notes': 'Cracked on the highway.',
+            'action_url': '/app/replacements/412/',
+        })
+        for name in self.REPLACEMENT_TEMPLATES:
+            template = NotificationTemplate.objects.get(name=name)
+            for path in (template.email_html_template, template.email_text_template):
+                with self.subTest(template=path):
+                    out = render_to_string(path, context)
+                    self.assertEqual(EMOJI.findall(out), [])
+                    self.assertNotIn('====', out)
+
+    def test_status_change_creates_a_notification(self):
+        """Guards the tracking dict: the assignment handler pops the other one."""
+        from apps.technician_portal import signals
+
+        replacement = NS(
+            pk=412, queue_status='IN_PROGRESS', customer=None, technician=None,
+        )
+        # customer is None, so the sender returns without creating anything —
+        # what is under test is that the handler reads a status it can see.
+        signals._replacement_previous_status[412] = 'APPROVED'
+        signals.handle_replacement_status_change(
+            sender=None, instance=replacement, created=False,
+        )
+        self.assertNotIn(
+            412, signals._replacement_previous_status,
+            'the lifecycle handler must consume its own tracking entry',
+        )

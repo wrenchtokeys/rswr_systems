@@ -360,6 +360,161 @@ class Command(BaseCommand):
                 'action_url_template': '/tech/schedule/',
                 'required_context': ['day', 'summary'],
             },
+
+            # ---- REPLACEMENTS -------------------------------------------
+            # The shop's most valuable job had no lifecycle notifications at
+            # all: every template above is repair_*, so a customer booking a
+            # $600 replacement heard less than one booking a $40 chip repair.
+            # Vehicle wording comes from vehicle_label/vehicle_identifier,
+            # which notification_service.job_display_context() derives — an
+            # individual's car is never called a "Unit".
+
+            # 14. REPLACEMENT REQUEST RECEIVED (Customer)
+            {
+                'name': 'replacement_request_received',
+                'description': 'Customer confirmation that a replacement request arrived',
+                'category': Notification.CATEGORY_REPAIR_STATUS,
+                'default_priority': Notification.PRIORITY_MEDIUM,
+                'title_template': 'Replacement request received',
+                'message_template': (
+                    'We have your replacement request'
+                    '{% if vehicle_identifier %} for {{ vehicle_identifier }}{% endif %}. '
+                    'We will confirm the glass and the price before any work begins.'
+                ),
+                'email_subject_template': 'We have your replacement request',
+                'email_html_template': 'emails/notifications/replacement_request_received.html',
+                'email_text_template': 'emails/notifications/replacement_request_received.txt',
+                'sms_template': '',
+                'channels_override': ['in_app', 'email'],
+                'action_url_template': '/app/replacements/{{ replacement_id }}/',
+                'required_context': ['replacement_id', 'customer_name'],
+            },
+
+            # 15. REPLACEMENT REQUEST SUBMITTED (Shop)
+            {
+                'name': 'replacement_request_submitted',
+                'description': 'Shop notification that a customer wants a replacement',
+                'category': Notification.CATEGORY_REPAIR_STATUS,
+                'default_priority': Notification.PRIORITY_HIGH,
+                'title_template': 'New replacement request',
+                'message_template': (
+                    '{{ customer_name }} requested a replacement'
+                    '{% if glass_position %} — {{ glass_position|lower }}{% endif %}'
+                    '{% if vehicle_identifier %} on {{ vehicle_identifier }}{% endif %}. '
+                    'It needs a price.'
+                ),
+                'email_subject_template': 'New replacement request from {{ customer_name }}',
+                'email_html_template': 'emails/notifications/replacement_request_submitted.html',
+                'email_text_template': 'emails/notifications/replacement_request_submitted.txt',
+                'sms_template': '',
+                'channels_override': ['in_app', 'email'],
+                'action_url_template': '/tech/replacements/{{ replacement_id }}/',
+                'required_context': ['replacement_id', 'customer_name'],
+            },
+
+            # 16. REPLACEMENT NEEDS APPROVAL (Customer)
+            {
+                'name': 'replacement_pending_approval',
+                'description': 'Customer approval needed for a priced replacement',
+                'category': Notification.CATEGORY_APPROVAL,
+                'default_priority': Notification.PRIORITY_HIGH,
+                'title_template': 'Replacement needs your approval',
+                'message_template': (
+                    'Your glass replacement is priced'
+                    '{% if job_cost_display %} at {{ job_cost_display }}{% endif %}. '
+                    'Nothing is ordered until you approve it.'
+                ),
+                'email_subject_template': 'Your glass replacement is priced',
+                'email_html_template': 'emails/notifications/replacement_pending_approval.html',
+                'email_text_template': 'emails/notifications/replacement_pending_approval.txt',
+                'sms_template': '',
+                'channels_override': ['in_app', 'email'],
+                'action_url_template': '/app/replacements/{{ replacement_id }}/',
+                'required_context': ['replacement_id', 'customer_name'],
+            },
+
+            # 17. REPLACEMENT APPROVED (Technician)
+            {
+                'name': 'replacement_approved',
+                'description': 'Technician notification when a replacement is approved',
+                'category': Notification.CATEGORY_APPROVAL,
+                'default_priority': Notification.PRIORITY_HIGH,
+                'title_template': 'Replacement approved',
+                'message_template': (
+                    '{{ customer_name }} approved the replacement'
+                    '{% if vehicle_identifier %} on {{ vehicle_identifier }}{% endif %}. '
+                    'The glass can be ordered.'
+                ),
+                'email_subject_template': 'Replacement approved — {{ customer_name }}',
+                'email_html_template': 'emails/notifications/replacement_approved.html',
+                'email_text_template': 'emails/notifications/replacement_approved.txt',
+                'sms_template': '',
+                'channels_override': ['in_app', 'email'],
+                'action_url_template': '/tech/replacements/{{ replacement_id }}/',
+                'required_context': ['replacement_id', 'customer_name'],
+            },
+
+            # 18. REPLACEMENT DECLINED (Technician)
+            {
+                'name': 'replacement_denied',
+                'description': 'Technician notification when a replacement is declined',
+                'category': Notification.CATEGORY_APPROVAL,
+                'default_priority': Notification.PRIORITY_URGENT,
+                'title_template': 'Replacement declined',
+                'message_template': (
+                    '{{ customer_name }} declined the replacement'
+                    '{% if vehicle_identifier %} on {{ vehicle_identifier }}{% endif %}.'
+                    '{% if denial_reason %} {{ denial_reason }}{% endif %}'
+                ),
+                'email_subject_template': 'Replacement declined — {{ customer_name }}',
+                'email_html_template': 'emails/notifications/replacement_denied.html',
+                'email_text_template': 'emails/notifications/replacement_denied.txt',
+                'sms_template': '',
+                'channels_override': ['in_app', 'email'],
+                'action_url_template': '/tech/replacements/{{ replacement_id }}/',
+                'required_context': ['replacement_id', 'customer_name'],
+            },
+
+            # 19. REPLACEMENT IN PROGRESS (Customer)
+            {
+                'name': 'replacement_in_progress',
+                'description': 'Customer notification that replacement work started',
+                'category': Notification.CATEGORY_REPAIR_STATUS,
+                'default_priority': Notification.PRIORITY_MEDIUM,
+                'title_template': 'Replacement in progress',
+                'message_template': (
+                    '{% if technician_name %}{{ technician_name }} has started{% else %}Work has started{% endif %} '
+                    'on your glass replacement'
+                    '{% if vehicle_identifier %} for {{ vehicle_identifier }}{% endif %}.'
+                ),
+                'email_subject_template': 'Work has started on your glass',
+                'email_html_template': 'emails/notifications/replacement_in_progress.html',
+                'email_text_template': 'emails/notifications/replacement_in_progress.txt',
+                'sms_template': '',
+                'channels_override': ['in_app', 'email'],
+                'action_url_template': '/app/replacements/{{ replacement_id }}/',
+                'required_context': ['replacement_id', 'customer_name'],
+            },
+
+            # 20. REPLACEMENT COMPLETED (Customer)
+            {
+                'name': 'replacement_completed',
+                'description': 'Customer notification that a replacement is finished',
+                'category': Notification.CATEGORY_REPAIR_STATUS,
+                'default_priority': Notification.PRIORITY_HIGH,
+                'title_template': 'Replacement completed',
+                'message_template': (
+                    'Your glass replacement is done'
+                    '{% if vehicle_identifier %} — {{ vehicle_identifier }}{% endif %}.'
+                ),
+                'email_subject_template': 'Your glass replacement is done',
+                'email_html_template': 'emails/notifications/replacement_completed.html',
+                'email_text_template': 'emails/notifications/replacement_completed.txt',
+                'sms_template': '',
+                'channels_override': ['in_app', 'email'],
+                'action_url_template': '/app/replacements/{{ replacement_id }}/',
+                'required_context': ['replacement_id', 'customer_name'],
+            },
         ]
 
         created_count = 0

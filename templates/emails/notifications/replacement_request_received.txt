@@ -1,0 +1,21 @@
+{% load email_ui %}{% autoescape off %}We have your replacement request.
+
+We will confirm the glass and the price before any work begins. Nothing is
+charged yet.
+
+{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% if glass_position %}  {{ "Glass"|pad_label }}{{ glass_position }}
+{% endif %}{% if customer_notes %}  {{ "Your notes"|pad_label }}{{ customer_notes }}
+{% endif %}
+Track your request
+{{ base_url }}{{ action_url }}
+
+--
+{{ branding.company_name }}{% if branding.company_address %}
+{{ branding.company_address }}{% endif %}{% if branding.support_phone %}
+{{ branding.support_phone }}{% endif %}
+
+Manage notification preferences
+{{ base_url }}/app/notifications/preferences/
+{% endautoescape %}

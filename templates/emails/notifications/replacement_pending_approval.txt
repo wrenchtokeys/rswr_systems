@@ -1,0 +1,27 @@
+{% load email_ui %}{% autoescape off %}Your glass replacement is priced.
+
+Nothing is ordered and nothing is charged until you approve it.
+
+{% if vehicle_identifier %}  {{ vehicle_label|default:"Unit #"|pad_label }}{{ vehicle_identifier }}
+{% elif unit_number %}  {{ "Unit #"|pad_label }}{{ unit_number }}
+{% endif %}{% if glass_position %}  {{ "Glass"|pad_label }}{{ glass_position }}
+{% endif %}{% if glass_type %}  {{ "Glass type"|pad_label }}{{ glass_type }}
+{% endif %}{% if nags_number %}  {{ "NAGS part"|pad_label }}{{ nags_number }}
+{% endif %}{% if parts_cost_display %}  {{ "Parts"|pad_label }}{{ parts_cost_display }}
+{% endif %}{% if labor_cost_display %}  {{ "Labor"|pad_label }}{{ labor_cost_display }}
+{% endif %}{% if job_cost_display %}  {{ "Total"|pad_label }}{{ job_cost_display }}
+{% endif %}
+Review and approve
+{{ base_url }}{{ action_url }}
+
+{% if needs_adas %}Your vehicle has a camera behind the glass, so it has to be
+recalibrated after the swap. That is included in the total above.{% else %}You can decline on the same page, or reply here with a question.{% endif %}
+
+--
+{{ branding.company_name }}{% if branding.company_address %}
+{{ branding.company_address }}{% endif %}{% if branding.support_phone %}
+{{ branding.support_phone }}{% endif %}
+
+Manage notification preferences
+{{ base_url }}/app/notifications/preferences/
+{% endautoescape %}
