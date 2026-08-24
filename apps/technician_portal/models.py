@@ -1430,8 +1430,21 @@ class Repair(GlassService):
     # Batch repair helper methods
     @property
     def is_part_of_batch(self):
-        """Check if this repair is part of a multi-break batch or is a multi-break estimate."""
-        return (self.repair_batch_id is not None and self.total_breaks_in_batch and self.total_breaks_in_batch > 1) or self.is_multi_break_estimate
+        """True only when this repair actually belongs to a multi-break batch.
+
+        A multi-break *estimate* (the customer said "several breaks" without a
+        count) is a single row with no `repair_batch_id`. Reporting it as part
+        of a batch made every consumer reach for that null id: the customer
+        services list reversed `/app/batch/None/` (NoReverseMatch), the
+        dashboards dropped the repair when its batch summary came back empty,
+        and the technician detail page offered to "claim entire batch (all
+        breaks)" for a batch that does not exist.
+        """
+        if self.repair_batch_id is None:
+            return False
+        if self.is_multi_break_estimate:
+            return True
+        return bool(self.total_breaks_in_batch and self.total_breaks_in_batch > 1)
 
     @classmethod
     def get_batch_repairs(cls, batch_id, tenant=None):
