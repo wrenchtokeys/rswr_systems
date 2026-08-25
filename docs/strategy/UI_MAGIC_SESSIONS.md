@@ -19,7 +19,7 @@ session with no memory of this work can pick exactly one up and finish it.
 | 3 | S9 · Motion primitives: press feedback + enter/exit | **DONE** 2026-08-10 |
 | 3 | S10 · View Transitions for list → detail continuity | **DONE** 2026-08-11 |
 | 3 | S11 · Skeletons and optimistic status changes | TODO |
-| 3 | S12 · Auth pages: one brand mention, full-height, no marketing nav | **DONE** 2026-08-25 |
+| 3 | S12 · Auth pages: one brand mention, full-height, no marketing nav | **DONE** 2026-08-25 (PR #209) |
 | 3 | S13 · Icon language: Font Awesome solid → line-weight SVG sprite | TODO |
 | 4 | S14 · Landing: real product imagery instead of the fake mock | TODO |
 | 4 | S15 · Landing: trust bar rewrite | TODO |
@@ -623,7 +623,7 @@ never animate money).
 split panel stopped mid-viewport leaving dead white space.
 Dropped the marketing nav from the auth pages, made the split full-height, said the brand once.
 
-**What changed** (branch `feat/ui-s12-auth-pages`)
+**What changed** (PR #209, branch `feat/ui-s12-auth-pages`)
 
 | File | Change |
 |---|---|
