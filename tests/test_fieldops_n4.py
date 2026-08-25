@@ -8,8 +8,9 @@ or STOP/HELP. These tests lock down the fix:
 1. Shop-side customer forms carry carrier-compliant disclosure beside the
    consent checkbox (message types, frequency, "Msg & data rates", STOP/HELP,
    link to /sms/).
-2. The public invoice page offers a FIRST-PARTY opt-in when the customer has
-   a usable mobile and isn't opted in; records CUSTOMER-source consent.
+2. The public invoice page offers a FIRST-PARTY opt-in to any customer who
+   isn't opted in — asking for a mobile number when the shop has none on
+   file — and records CUSTOMER-source consent.
 3. Customer.record_sms_consent source semantics: first-party consent
    upgrades shop-attested consent, never the reverse.
 """
@@ -169,12 +170,24 @@ class PublicInvoiceOptInPageTests(TestCase):
             self.assertIn(phrase, content, f"Opt-in disclosure missing: {phrase!r}")
         self.assertIn('not a condition of purchase', content)
 
-    def test_no_widget_without_usable_phone(self):
+    def test_widget_asks_for_a_number_when_none_on_file(self):
+        # Phone is optional on Customer and most invoices are emailed, so the
+        # widget must still appear — with a field — or the shop's customers
+        # have no way to opt in at all.
         self.customer.phone = ''
         self.customer.save()
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
-        self.assertNotIn('sms_agree', response.content.decode())
+        content = response.content.decode()
+        self.assertIn('sms_agree', content)
+        self.assertIn('name="sms_phone"', content)
+        self.assertIn('I entered above', content)
+        for phrase in REQUIRED_DISCLOSURE:
+            self.assertIn(phrase, content, f"Opt-in disclosure missing: {phrase!r}")
+
+    def test_no_phone_field_when_number_already_on_file(self):
+        response = self.client.get(self.url)
+        self.assertNotIn('name="sms_phone"', response.content.decode())
 
     def test_confirmation_instead_of_form_when_opted_in(self):
         self.customer.record_sms_consent()
@@ -229,10 +242,45 @@ class PublicInvoiceOptInPostTests(TestCase):
         self.customer.refresh_from_db()
         self.assertFalse(self.customer.sms_opt_in)
 
-    def test_no_phone_redirects_without_consent(self):
+    def test_customer_supplied_number_is_saved_with_consent(self):
+        self.customer.phone = ''
+        self.customer.save()
+        response = self.client.post(
+            self.optin_url, {'sms_agree': '1', 'sms_phone': '(501) 555-0177'},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('sms=thanks', response['Location'])
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.phone, '+15015550177')
+        self.assertTrue(self.customer.sms_opt_in)
+        self.assertEqual(self.customer.sms_opt_in_source, Customer.SMS_CONSENT_CUSTOMER)
+
+    def test_supplied_number_never_overwrites_the_one_on_file(self):
+        response = self.client.post(
+            self.optin_url, {'sms_agree': '1', 'sms_phone': '(501) 555-0199'},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.phone, '501-555-0155')
+        self.assertTrue(self.customer.sms_opt_in)
+
+    def test_no_phone_anywhere_records_nothing(self):
         self.customer.phone = ''
         self.customer.save()
         response = self.client.post(self.optin_url, {'sms_agree': '1'})
         self.assertEqual(response.status_code, 302)
+        self.assertIn('sms=badphone', response['Location'])
         self.customer.refresh_from_db()
+        self.assertFalse(self.customer.sms_opt_in)
+
+    def test_unusable_supplied_number_records_nothing(self):
+        self.customer.phone = ''
+        self.customer.save()
+        response = self.client.post(
+            self.optin_url, {'sms_agree': '1', 'sms_phone': '555-0177'},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('sms=badphone', response['Location'])
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.phone, '')
         self.assertFalse(self.customer.sms_opt_in)

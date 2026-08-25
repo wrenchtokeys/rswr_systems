@@ -41,6 +41,8 @@
         .sms-optin input[type="checkbox"] { width: 18px; height: 18px; margin-top: 1px; flex-shrink: 0; }
         .sms-optin .btn-optin { display: inline-block; padding: 10px 20px; background: #0284c7; color: white; border: none; font-size: 14px; font-weight: 600; border-radius: 8px; cursor: pointer; }
         .sms-optin .error { color: #b91c1c; font-size: 13px; margin: 8px 0 0; }
+        .sms-optin .phone-field { display: block; margin: 12px 0 0; font-size: 13px; color: #374151; }
+        .sms-optin input[type="tel"] { display: block; width: 100%; max-width: 260px; margin-top: 6px; padding: 10px 12px; font-size: 16px; border: 1px solid #cbd5e1; border-radius: 8px; }
         .sms-confirmed { margin-top: 24px; padding: 12px 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; font-size: 13px; color: #166534; }
         .photos { margin-top: 24px; }
         .photos h2 { font-size: 15px; color: #111827; margin: 0 0 12px; }
@@ -113,8 +115,8 @@
                     <a class="btn-pdf" href="{{ pdf_url }}" target="_blank">📄 Download PDF</a>
                 </div>
 
-                {% if sms_optin_phone_last4 %}
-                    {% if sms_opted_in %}
+                {% if sms_optin_offered %}
+                    {% if sms_opted_in and sms_optin_phone_last4 %}
                     <div class="sms-confirmed" id="sms-updates">
                         {% if sms_optin_state == 'thanks' %}
                         <strong>You're signed up!</strong> {{ company_name }} can now text
@@ -130,17 +132,33 @@
                     <div class="sms-optin" id="sms-updates">
                         <h2>Get text updates from {{ company_name }}</h2>
                         <p style="margin: 0;">
+                            {% if sms_optin_phone_last4 %}
                             Prefer texts? Sign up and {{ company_name }} will text your
                             number ending in <strong>{{ sms_optin_phone_last4 }}</strong>
                             with service updates.
+                            {% else %}
+                            Prefer texts? Enter your mobile number and {{ company_name }}
+                            will text you with service updates.
+                            {% endif %}
                         </p>
                         <form method="post" action="{{ sms_optin_url }}">
                             {% csrf_token %}
+                            {% if not sms_optin_phone_last4 %}
+                            <label class="phone-field">
+                                Your mobile number
+                                <input type="tel" name="sms_phone" inputmode="tel"
+                                       autocomplete="tel" placeholder="(555) 123-4567" required>
+                            </label>
+                            {% if sms_optin_state == 'badphone' %}
+                            <p class="error">Please enter a valid 10-digit US mobile number.</p>
+                            {% endif %}
+                            {% endif %}
                             <label>
                                 <input type="checkbox" name="sms_agree" value="1" required>
                                 <span>I agree to receive automated service text messages from
-                                {{ company_name }} via RS Systems at the mobile number ending
-                                in {{ sms_optin_phone_last4 }} — invoice links and review
+                                {{ company_name }} via RS Systems at the mobile number
+                                {% if sms_optin_phone_last4 %}ending in {{ sms_optin_phone_last4 }}{% else %}I entered above{% endif %}
+                                &mdash; invoice links and review
                                 requests, typically 1&ndash;2 messages per completed job.
                                 Consent is not a condition of purchase.</span>
                             </label>

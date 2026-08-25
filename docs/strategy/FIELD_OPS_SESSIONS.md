@@ -14,7 +14,7 @@ This file is the **work queue** for making field operations real: a technician f
 | N — The tech finds out | N1 · Assignment notifications that deliver | M | DONE (2026-08-12, PR #179) |
 | N — The tech finds out | N2 · Fix dead verification SMS + tech texts | S | TODO (prod effect blocked on N4 — Appendix A) |
 | N — The tech finds out | N3 · Notification coverage audit | S | DONE (2026-08-24, **PR #204**) — grew well past S; see Notes |
-| N — The tech finds out | N4 · SMS opt-in compliance + registration v2 | S | CODE DONE + DEPLOYED (**PR #180**, merged 2026-08-13) — the deploy half is finished; v2 submission now waits on Drake alone (see Notes) |
+| N — The tech finds out | N4 · SMS opt-in compliance + registration v2 | S | CODE DONE + DEPLOYED (**PR #180**, merged 2026-08-13); **follow-up 2026-08-24** — the opt-in card was invisible on prod for customers with no phone on file, fixed on `fix/sms-optin-no-phone-on-file`. v2 submission still waits on Drake (see Notes) |
 | S — Where and when | S1 · A real "booked time" | M | DONE (2026-08-15, **PR #188**) |
 | S — Where and when | S2 · Field dispatch (executes B1) | M | DONE (2026-08-15, PR #189) |
 | S — Where and when | S3 · Day / agenda view | M | DONE (2026-08-16, PR #190) |
@@ -440,8 +440,8 @@ sweep (`test_code234` ×2, `test_code132`) are identical on `main`.
   `customer_edit.html` now carries the full disclosure (message types, "typically 1–2
   messages per completed job", msg & data rates, STOP/HELP, `/sms/` link). AND a
   **first-party opt-in on the public invoice page** (`templates/billing/public_invoice_view.html`):
-  a "Get text updates from {shop}" card with a required consent checkbox, shown whenever
-  the invoice's customer has a usable mobile and isn't opted in. POSTs to
+  a "Get text updates from {shop}" card with a required consent checkbox, shown to any
+  customer who isn't already opted in. POSTs to
   `/invoice/<id>/<token>/sms-opt-in/` (`public_invoice_sms_opt_in` in `rs_systems/views.py`).
   This is the screen to screenshot for registration v2 — it's the customer's own device,
   which is exactly what the reviewer objected to not having.
@@ -455,15 +455,28 @@ sweep (`test_code234` ×2, `test_code132`) are identical on `main`.
   for proof of consent, `sms_opt_in_at` + `sms_opt_in_source` is the audit answer.
 - **`/sms/` "How you opt in" rewritten** to lead with the self-serve invoice-page path so
   the program terms and the screenshot agree.
-- **Tests:** `tests/test_fieldops_n4.py` (15: disclosure phrases on both shop forms +
-  the invoice widget, consent-source semantics, POST endpoint incl. bad-token/GET/no-phone).
+- **Follow-up 2026-08-24 — the card was invisible on prod.** The widget was gated on the
+  invoice's customer already having a usable mobile in `Customer.phone`, which is an
+  optional field: Drake opened a live invoice (INV-1017, Rockstar) and there was no
+  sign-up at all, because that customer had no number on record. Every emailed invoice to
+  a customer the shop only has an email for was in the same state — the surface existed
+  and nobody could reach it. Fixed on branch `fix/sms-optin-no-phone-on-file`: with no
+  usable number on file the card renders a `tel` field and the customer types their own
+  mobile, which is *stronger* first-party consent, not weaker. The supplied number is
+  saved to `Customer.phone` (normalized E.164) **only when the shop has nothing usable**
+  — a public token must never overwrite a number the shop already has. Invalid entries
+  redirect back with `?sms=badphone` and record no consent.
+- **Tests:** `tests/test_fieldops_n4.py` (19: disclosure phrases on both shop forms +
+  the invoice widget in both variants, consent-source semantics, POST endpoint incl.
+  bad-token/GET/no-phone/customer-supplied-number).
   Also fixed a pre-existing N1-introduced failure in `test_invoice_send_polish` —
   creating a Replacement now emails the tech, so `mail.outbox[0]` was the assignment
   email, not the invoice email. Any outbox-indexing test that creates jobs is suspect now.
 - **What remains is Drake's (after this PR deploys):**
-  1. Make/pick a test customer **with a mobile number, not opted in** in the live shop,
-     open one of their invoice public links, screenshot the "Get text updates" card
-     (checkbox + disclosure visible, no real PII).
+  1. Pick a test customer **not opted in** in the live shop, open one of their invoice
+     public links, screenshot the "Get text updates" card (checkbox + disclosure visible,
+     no real PII). Either variant is screenshot-worthy; the number-entry one arguably
+     reads better to a reviewer, since the consumer types their own number.
   2. Update the registration: `optInDescription` should now say consent is collected
      first-party on the customer's own invoice page (checkbox with message types,
      frequency, rates, STOP/HELP), with shop-recorded consent as the secondary path;
@@ -1622,6 +1635,7 @@ Key sources: Mygrant SOAP spec (committed PDF; mirror: aswadtsh.com/wp-content/u
 | 2026-08-11 | Review pass with Drake: confirmed MVP-first sequencing over deeper upfront scheduling design. Named the two known gaps so they don't get lost — technician availability (S5 consideration + S6 backlog item 4) and self-service rescheduling (S6 backlog item 5). |
 | 2026-08-12 | Corrected the SMS status: the TFN registration was **denied** on 2026-08-11 (this doc said `REVIEWING` — it was written hours before the denial landed). Rewrote Appendix A with the reason and the resubmission path, and added **N4** to the queue, because the fix is product work on the consent surface, not a console edit. |
 | 2026-08-12 | **N1 executed** (branch `feat/fieldops-n1-assignment-notifications`): one assignment write path (`services/assignments.py`), per-template `channels_override`, staff email default-ON, Replacement signals, bulk summaries, rewritten assignment emails. §0 blockers 1–3 closed; blocker 4's SMS half stays with N2. Two traps added (NOT NULL technician; flat-context/absolute-link email rules). Merged as PR #179. |
+| 2026-08-24 | **N4 follow-up**: the first-party opt-in card never rendered on prod — it required a mobile already on `Customer.phone`, and phone is optional, so an emailed-only customer saw nothing. The card now asks for the number when the shop has none (branch `fix/sms-optin-no-phone-on-file`). Registration v2 is still unsubmitted; screenshot this surface. |
 | 2026-08-12 | **N4 code executed** (branch `feat/fieldops-n4-sms-opt-in`): compliant disclosure on both shop-side consent checkboxes, first-party opt-in card on the public invoice page (`/invoice/<id>/<token>/sms-opt-in/`), `Customer.sms_opt_in_source` provenance (core migration 0028), `/sms/` opt-in copy rewritten. Registration v2 submission is Drake's post-deploy step — checklist in N4 Notes. |
 | 2026-08-12 | Parts sourcing investigation (Drake's ask: own NAGS lookup + live Mygrant quotes/ordering). Findings in **Appendix B**; queued **P1** (Mygrant quotes+ordering — buildable now on Mygrant's documented SOAP API with shop credentials) and parked **P2** (vehicle→NAGS lookup — blocked on a negotiated Mitchell license). Committed the Mygrant spec PDF to `docs/reference/`. |
 | 2026-08-14 | Live portal walkthrough on the pilot account (Drake's dad's shop) — **Appendix B.5**. Confirmed: live per-brand shop pricing, 4-warehouse structure, PO-per-line ordering with Freight/Will-Call, PO-searchable history, and that Generate Key is absent until rep API-onboarding (the only real P1 blocker — call the rep). Investigated and **rejected portal automation** (site ToS §8.1). Reworked P1 around the multi-shop "Connect your Mygrant account" design (per-tenant `MygrantConfig` on the `TenantConfig` pattern; encryption-at-rest is a first-in-codebase decision), added Drake's dad's "portal is already easy — win on job context" principle, profit-on-ticket framing, and the ~$1/search cost constraint. Fixed stale `nags_number` line refs. Later same day: added the numbered **P1 order of work** (onboarding → billing → encryption decision → connect → quote-only → ordering); Drake left the onboarding voicemail with Mygrant IT. Later still: **P1 steps 3+4 BUILT (PR #184, `feat/mygrant-connect`)** — `common/encryption.py` (Fernet, `FIELD_ENCRYPTION_KEY`, first secret-storage mechanism in the codebase), `MygrantConfig` migration 0052, owner Settings Parts tab with the Connect card, staging-only Test connection, 20 tests. Deploy needs a one-time `eb setenv FIELD_ENCRYPTION_KEY`. |

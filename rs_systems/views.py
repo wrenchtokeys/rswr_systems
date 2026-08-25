@@ -679,8 +679,11 @@ def public_view_invoice(request, invoice_id, token):
         logger.warning(f"Could not load photos for public invoice {invoice_id}: {e}")
 
     # First-party SMS opt-in (toll-free registration requires consent from
-    # the customer's own screen, not shop attestation). Offered whenever the
-    # customer has a usable mobile on file — deliberately NOT gated on
+    # the customer's own screen, not shop attestation). Offered to every
+    # customer, with a number field when the shop has no usable mobile on
+    # file — most invoices are emailed and `Customer.phone` is optional, so
+    # gating the card on a stored phone hid it from the majority of the
+    # people whose consent the carrier wants. Deliberately NOT gated on
     # SMSService.is_enabled(), so consent can be collected (and the surface
     # screenshotted for carrier review) while the number awaits approval.
     from core.services.sms_service import SMSService
@@ -697,6 +700,7 @@ def public_view_invoice(request, invoice_id, token):
         'pay_url': f"/pay/{invoice.id}/{token}/",
         'pdf_url': f"/invoice/{invoice.id}/{token}/pdf/",
         'photos': photos,
+        'sms_optin_offered': customer is not None,
         'sms_optin_phone_last4': sms_phone[-4:] if sms_phone else '',
         'sms_opted_in': bool(customer and customer.sms_opt_in),
         'sms_optin_url': f"/invoice/{invoice.id}/{token}/sms-opt-in/",
@@ -719,11 +723,27 @@ def public_invoice_sms_opt_in(request, invoice_id, token):
 
     view_url = f"/invoice/{invoice.id}/{token}/"
     customer = invoice.customer
-    if customer is None or not SMSService.normalize_phone(customer.phone):
+    if customer is None:
         return redirect(view_url)
+
+    on_file = SMSService.normalize_phone(customer.phone)
+    # No usable mobile on file: the customer supplies one here. Their own
+    # entry is the strongest form of first-party consent, and it is only
+    # ever written when the shop has nothing usable — a public token must
+    # not overwrite a number the shop already has.
+    submitted = SMSService.normalize_phone(request.POST.get('sms_phone', ''))
+    if not on_file and not submitted:
+        return redirect(f"{view_url}?sms=badphone#sms-updates")
     if request.POST.get('sms_agree') != '1':
         return redirect(f"{view_url}?sms=missing#sms-updates")
 
+    if not on_file:
+        customer.phone = submitted
+        customer.save(update_fields=['phone'])
+        logger.info(
+            f"Customer {customer.id} supplied a mobile number via public "
+            f"invoice {invoice.id} while opting in to texts"
+        )
     customer.record_sms_consent(source=customer.SMS_CONSENT_CUSTOMER)
     logger.info(
         f"First-party SMS opt-in recorded for customer {customer.id} "
