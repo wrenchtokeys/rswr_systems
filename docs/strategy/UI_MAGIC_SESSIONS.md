@@ -908,7 +908,18 @@ is always reserved, so a row does not reflow when the dot clears.
   window is 30 seconds wide and only opens if you mark something read with the
   panel open.
 
-Tests: `tests/test_notification_surfaces.py` (40).
+Tests: `tests/test_notification_surfaces.py` (43), green 2026-08-25, along with
+the 59 in the four email-chassis suites and the 22 in CODE-234/CODE-087, which
+cover the cache key this PR gave one owner.
+
+**The documented test credentials do not work on a fresh machine.** "Running
+Tests" above prints a `LOCAL_DATABASE_URL` for an `amelia_test` Postgres role;
+that role does not authenticate here, and `.env` sets `LOCAL_DATABASE_URL` to
+`sqlite:///db.sqlite3`. These runs are SQLite. Nothing in this PR is
+backend-specific, but a suite that touches raw SQL or Postgres-only fields needs
+the real thing — and note the local Postgres 16 launchd daemon
+(`/Library/LaunchDaemons/postgresql-16.plist`) is not loaded at boot, so `pg` is
+simply down until someone loads it.
 
 ## Still open
 
