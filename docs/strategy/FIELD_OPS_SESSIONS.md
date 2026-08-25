@@ -13,16 +13,16 @@ This file is the **work queue** for making field operations real: a technician f
 |-------|---------|------|--------|
 | N — The tech finds out | N1 · Assignment notifications that deliver | M | DONE (2026-08-12, PR #179) |
 | N — The tech finds out | N2 · Fix dead verification SMS + tech texts | S | TODO (prod effect blocked on N4 — Appendix A) |
-| N — The tech finds out | N3 · Notification coverage audit | S | DONE (2026-08-24, **PR #204**) — grew well past S; see Notes |
+| N — The tech finds out | N3 · Notification coverage audit | S | DONE + DEPLOYED (2026-08-24, **PR #204**, live 2026-08-24 22:47) — grew well past S; see Notes |
 | N — The tech finds out | N4 · SMS opt-in compliance + registration v2 | S | **SUBMITTED 2026-08-25 — version 3 `REVIEWING`.** Card fixed (#205, deployed), screenshot taken from live prod, `optInDescription` rewritten first-party. Nothing left but waiting on the carrier; activation checklist in Appendix A |
 | S — Where and when | S1 · A real "booked time" | M | DONE (2026-08-15, **PR #188**) |
 | S — Where and when | S2 · Field dispatch (executes B1) | M | DONE (2026-08-15, PR #189) |
 | S — Where and when | S3 · Day / agenda view | M | DONE (2026-08-16, PR #190) |
 | S — Where and when | S4 · Customer requests carry when + where | M | DONE (2026-08-18, **PR #195**, deployed same day) |
-| S — Where and when | S5 · Dispatch board | L | DONE (built 2026-08-18, **PR #197** merged 2026-08-24) — **not yet deployed** |
+| S — Where and when | S5 · Dispatch board | L | DONE + DEPLOYED (built 2026-08-18, **PR #197** merged 2026-08-24, live 2026-08-24 22:47) |
 | S — Where and when | S6 · Routing / ETA / lot-walking | — | BACKLOG (deliberately deferred) |
 | S — Where and when | S7 · Drag to swap two appointments | M | DONE (2026-08-17, **PR #192**) |
-| S — Where and when | S8 · Technician working hours | M | DONE (2026-08-24, **PR #201**) — built in two halves, see Notes; **not yet deployed** |
+| S — Where and when | S8 · Technician working hours | M | DONE + DEPLOYED (2026-08-24, **PR #201**, live 2026-08-24 22:47) — built in two halves, see Notes |
 | P — Parts | P1 · Mygrant live quotes + ordering | M | IN PROGRESS (steps 3+4 MERGED+DEPLOYED 2026-08-15, PR #184; step 5 quote-only built 2026-08-15, **PR #186**; steps 1–2 wait on the Mygrant IT callback; step 6 ordering waits for quotes to prove out) |
 | P — Parts | P2 · Vehicle→NAGS part lookup | — | BACKLOG (blocked on a NAGS licensing decision — Appendix B) |
 
@@ -38,16 +38,13 @@ customer asked for, one click names a tech and a time, the tech is notified
 once, the board knows who is actually working, and — as of N3 — the
 notification actually leaves the building.
 
-**Deploy state: the backlog is cleared.** Production runs `d45a6384`
-(`app-d45a-260824_113708700489`, deployed 2026-08-24 11:37 CDT, health green),
-which carries everything through S8: #197 (S5 dispatch board), #198 (S8 spec),
-#199, #200 (the email/notification chassis) and #201 (S8 working hours). The
-four-PR backlog described here earlier went out in that single deploy.
-
-**N3 (PR #204) is the one thing built and not yet deployed.** It carries
-`core/0033`, a data migration, and it is the only change in this arc with a
-**shop-visible first effect**: two customer emails that have never sent on
-production start sending. Read N3's Notes before deploying it.
+**Deploy state: nothing in this arc is waiting.** Production runs `68dc31e9`
+(`app-68dc-260824_224726507237`, deployed 2026-08-24 22:47 CDT, health green),
+which carries the whole arc: #197 (S5 dispatch board), #198 (S8 spec), #199,
+#200 (the email/notification chassis), #201 (S8 working hours), #204 (N3, incl.
+`core/0033`) and #205 (the SMS opt-in card fix). Every session in this document
+is live. N3's shop-visible effect — two customer emails that had never sent on
+production — started on that deploy.
 
 What's left in the queue:
 
@@ -1468,17 +1465,17 @@ scheduling signal in the product is informational by design — S5's conflicts,
 S4's missed wishes, S8's hours — because a glass shop's exceptions are the
 job, not an error state.
 
-**Nothing here is deployed yet.** #197, #198, #200 and #201 are merged and
-waiting; see "Deploy state" at the top for the table and the order to think
-about them in. That is the single next action this document implies, and it
-is Drake's call, not a session's.
+**All of it is deployed.** #197, #198, #200, #201 and #204 went to production
+on 2026-08-24 (see "Deploy state" at the top). The document no longer implies a
+next action of its own — what is left is gated on other people: a carrier, a
+supplier, a licensing decision, and demand.
 
 **What remains, and what unblocks it:**
 
 | Item | Status | Gate |
 |---|---|---|
-| **N3** · Notification coverage audit | The one unblocked session left | Nothing. It has three concrete defects waiting and a refreshed survey. Best run *after* #200 deploys, so the audit describes what shops actually have. |
-| **N2** · Tech assignment texts | Parked | The toll-free number clearing registration (Appendix A) — a regulator's clock, not ours. |
+| **N3** · Notification coverage audit | Done and deployed (PR #204, live 2026-08-24) | — |
+| **N2** · Tech assignment texts | Parked | The toll-free number clearing registration — **version 3 submitted 2026-08-25, `REVIEWING`** (Appendix A). A carrier's clock, not ours. |
 | **P1** · Mygrant quotes + ordering | Steps 3–5 built and dark | Mygrant enabling API onboarding on `C027180-001`. Escalation path is in P1's Notes. |
 | **P2** · Vehicle→NAGS lookup | Backlog | A licensing decision with Mitchell (Appendix B). |
 | **S6** · Routing / ETA / PTO / self-service rescheduling | Backlog by decision | Demand. S3/S5/S8 exist now precisely so a shop can prove it. |
@@ -1661,6 +1658,7 @@ Key sources: Mygrant SOAP spec (committed PDF; mirror: aswadtsh.com/wp-content/u
 | 2026-08-11 | Review pass with Drake: confirmed MVP-first sequencing over deeper upfront scheduling design. Named the two known gaps so they don't get lost — technician availability (S5 consideration + S6 backlog item 4) and self-service rescheduling (S6 backlog item 5). |
 | 2026-08-12 | Corrected the SMS status: the TFN registration was **denied** on 2026-08-11 (this doc said `REVIEWING` — it was written hours before the denial landed). Rewrote Appendix A with the reason and the resubmission path, and added **N4** to the queue, because the fix is product work on the consent surface, not a console edit. |
 | 2026-08-12 | **N1 executed** (branch `feat/fieldops-n1-assignment-notifications`): one assignment write path (`services/assignments.py`), per-template `channels_override`, staff email default-ON, Replacement signals, bulk summaries, rewritten assignment emails. §0 blockers 1–3 closed; blocker 4's SMS half stays with N2. Two traps added (NOT NULL technician; flat-context/absolute-link email rules). Merged as PR #179. |
+| 2026-08-25 | **Deploy state trued up.** Every "not yet deployed" claim in this document was stale: #197, #198, #200, #201 and #204 all shipped in the 2026-08-24 22:47 deploy (`app-68dc`), which went out to carry the SMS opt-in card fix (#205) and took the whole merged backlog with it. S5, S8 and N3 rows corrected, the closing section rewritten. |
 | 2026-08-25 | **Toll-free registration version 3 SUBMITTED** (`REVIEWING`). Screenshot captured from the live opt-in card on prod with a number typed in; `optInDescription` rewritten first-party. Version 2 was auto-denied in seconds for "Missing required field" — `create-registration-version` opens an empty draft that inherits nothing, and field edits are locked (`EDIT_REGISTRATION_FIELD_VALUES_NOT_ALLOWED`) until a new version exists. Both traps in Appendix A. Also verified the opt-in flow end to end on prod: TEST CUSTOMER opted in first-party, then was reset (phone cleared, checkbox unchecked) for the screenshot. |
 | 2026-08-24 | **N4 follow-up**: the first-party opt-in card never rendered on prod — it required a mobile already on `Customer.phone`, and phone is optional, so an emailed-only customer saw nothing. The card now asks for the number when the shop has none (branch `fix/sms-optin-no-phone-on-file`). Registration v2 is still unsubmitted; screenshot this surface. |
 | 2026-08-12 | **N4 code executed** (branch `feat/fieldops-n4-sms-opt-in`): compliant disclosure on both shop-side consent checkboxes, first-party opt-in card on the public invoice page (`/invoice/<id>/<token>/sms-opt-in/`), `Customer.sms_opt_in_source` provenance (core migration 0028), `/sms/` opt-in copy rewritten. Registration v2 submission is Drake's post-deploy step — checklist in N4 Notes. |
