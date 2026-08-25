@@ -5252,6 +5252,7 @@ def owner_invoice_bulk_action(request):
                 return JsonResponse({'success': False, 'error': 'Invalid payment date.'}, status=400)
 
         updated = 0
+        paid_ids = []
         payments_by_customer = {}
         payable = invoices.filter(status__in=['SENT', 'PARTIAL', 'OVERDUE', 'DRAFT'])
         for inv in payable.select_related('customer'):
@@ -5276,6 +5277,7 @@ def owner_invoice_bulk_action(request):
                 logger.warning(f"Bulk mark_paid: could not create payment for invoice {inv.id}: {e}")
             else:
                 updated += 1
+                paid_ids.append(inv.id)
                 payments_by_customer.setdefault(inv.customer_id, []).append(payment)
 
         # Receipts: one combined email per customer (the single-invoice
@@ -5289,9 +5291,26 @@ def owner_invoice_bulk_action(request):
         except Exception as e:
             logger.warning(f"Bulk mark_paid: receipt notification failed: {e}")
 
+        # paid_ids / skipped_ids are the contract the invoice list's optimistic
+        # rows reconcile against (UI_MAGIC S11). A bulk mark-paid can partly
+        # succeed — an already-paid or cancelled invoice is skipped, and so is
+        # one whose Payment could not be written — and `updated` alone cannot
+        # say WHICH, so the page could only ever have flipped every selected
+        # row and hoped. These name them, and the rows that were not paid roll
+        # back where the owner can see it.
+        requested_ids = []
+        for raw in invoice_ids:
+            try:
+                requested_ids.append(int(raw))
+            except (TypeError, ValueError):
+                continue
+        paid_set = set(paid_ids)
+        skipped_ids = [i for i in requested_ids if i not in paid_set]
         return JsonResponse({
             'success': True,
             'message': f'{updated} invoice(s) marked as paid.',
+            'paid_ids': paid_ids,
+            'skipped_ids': skipped_ids,
         })
 
     elif action == 'void':

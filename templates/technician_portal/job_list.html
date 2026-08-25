@@ -280,7 +280,10 @@
             <span class="num">{{ page_obj.start_index }}&ndash;{{ page_obj.end_index }}</span> of <span class="num">{{ total_jobs }}</span>
         </div>
         <!-- ===== MOBILE: Card Layout ===== -->
-        <div class="sm:hidden space-y-3">
+        {% comment %}data-skeleton-list: static/js/list-loading.js traces these
+        rows into a skeleton while a filter/sort/page navigation is in flight
+        (S11). It is on both breakpoint twins; only the painted one traces.{% endcomment %}
+        <div class="sm:hidden space-y-3" data-skeleton-list>
             {% for job in jobs %}
             <a href="{% if job.service_type == 'repair' %}{% url 'repair_detail' job.id %}{% else %}{% url 'replacement_detail' job.id %}{% endif %}" data-vt-key="{% if job.service_type == 'repair' %}{% url 'repair_detail' job.id %}{% else %}{% url 'replacement_detail' job.id %}{% endif %}" class="repair-card block bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md press-card">
                 <div class="flex items-start justify-between mb-2">
@@ -372,9 +375,9 @@
                         <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-24">Actions</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-100">
+                <tbody class="divide-y divide-gray-100" data-skeleton-list>
                     {% for job in jobs %}
-                    <tr data-vt-key="{% if job.service_type == 'repair' %}{% url 'repair_detail' job.id %}{% else %}{% url 'replacement_detail' job.id %}{% endif %}" class="group hover:bg-gray-50 transition-colors {% if job.queue_status == 'REQUESTED' %}bg-yellow-50/50{% endif %}">
+                    <tr {% if job.service_type == 'repair' %}data-optimistic-row="repair-{{ job.id }}"{% endif %} data-vt-key="{% if job.service_type == 'repair' %}{% url 'repair_detail' job.id %}{% else %}{% url 'replacement_detail' job.id %}{% endif %}" class="group hover:bg-gray-50 transition-colors {% if job.queue_status == 'REQUESTED' %}bg-yellow-50/50{% endif %}">
                         {% if shop_offers_repairs %}
                         <td class="px-4 py-3">
                             {% if job.service_type == 'repair' %}
@@ -409,7 +412,7 @@
                         </td>
                         {% endif %}
                         <td class="px-4 py-3">
-                            {% status_badge job.queue_status label=job.get_queue_status_display %}
+                            {% status_badge job.queue_status label=job.get_queue_status_display optimistic=True %}
                             {% if job.has_warranty %}
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold {% if job.warranty_expiring_soon %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %} ml-1" title="{% if job.warranty_expiring_soon %}Warranty expiring soon{% elif job.warranty_expires_at %}Under Warranty until {{ job.warranty_expires_at|date:'M d, Y' }}{% else %}Lifetime Warranty{% endif %}">
                                 {% if job.warranty_expiring_soon %}⌛{% else %}✅{% endif %} W
@@ -730,7 +733,27 @@ function bulkReassign() {
     }
 }
 
+// The bulk actions POST and navigate, so the row's real reconciliation is the
+// redirect. What optimism buys here is the second in between: the badges show
+// the answer the moment the confirm dialog closes, instead of the list sitting
+// visibly unchanged while the request runs. There is no rollback branch —
+// whatever the server decides is what the next render shows.
+const BULK_STATUS = {
+    approve: ['bg-indigo-100 text-indigo-800', 'Approved'],
+    deny: ['bg-red-100 text-red-800', 'Denied by Customer'],
+    reset_to_pending: ['bg-amber-100 text-amber-800', 'Approval Pending'],
+};
+
+function showBulkStatusOptimistically(action, repairIds) {
+    const target = BULK_STATUS[action];
+    if (!target || !window.Optimistic) return;
+    Optimistic.begin(repairIds.map(id => 'repair-' + id), function (row) {
+        Optimistic.setBadge(row, target[0], target[1]);
+    });
+}
+
 function submitBulkAction(action, repairIds) {
+    showBulkStatusOptimistically(action, repairIds);
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = '{% url "tech_bulk_repair_action" %}';

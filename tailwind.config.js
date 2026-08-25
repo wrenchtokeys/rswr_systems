@@ -32,6 +32,14 @@ module.exports = {
     // static/js/schedule_swap.js and never appear in a template, so the
     // purge has nothing to anchor them to.
     { pattern: /^swap-(row-dragging|row-target|row-selected|dragging|busy)$/ },
+    // Skeleton + optimistic row state (S11). Built by static/js/list-loading.js
+    // and static/js/optimistic.js, which the content glob does scan — but these
+    // are the vocabulary those two files hand to the rest of the app, and a
+    // page that starts using `.sk-bar` in its own markup should not have to
+    // discover that the purge already took it.
+    { pattern: /^sk-(bar|lines|list)$/ },
+    { pattern: /^row-(pending|rollback)$/ },
+    'paid-check',
   ],
   theme: {
     extend: {

@@ -18,7 +18,7 @@ session with no memory of this work can pick exactly one up and finish it.
 | 2 | S8 · Retire the second accent everywhere else (FAB, black pills) | **DONE** 2026-08-10 |
 | 3 | S9 · Motion primitives: press feedback + enter/exit | **DONE** 2026-08-10 |
 | 3 | S10 · View Transitions for list → detail continuity | **DONE** 2026-08-11 |
-| 3 | S11 · Skeletons and optimistic status changes | TODO |
+| 3 | S11 · Skeletons and optimistic status changes | **DONE** 2026-08-25 |
 | 3 | S12 · Auth pages: one brand mention, full-height, no marketing nav | **DONE** 2026-08-25 (PR #209) |
 | 3 | S13 · Icon language: Font Awesome solid → line-weight SVG sprite | TODO |
 | 4 | S14 · Landing: real product imagery instead of the fake mock | TODO |
@@ -131,6 +131,16 @@ Replaying only the failing modules takes ~7 min instead of another full hour.
   `saas/base_public.html`'s footer was the only route to Terms and Privacy from the login
   funnel, and its nav height was baked into every `min-h-[calc(100vh-4rem)]` below it.
   Diff the *rendered* HTML before and after a base swap, not the template. (S12)
+- **Both breakpoint twins are in the DOM at every width.** These lists render the
+  phone card *and* the desktop row for every record; the card comes first, and on a
+  desktop viewport it is `display: none`. So `document.querySelector('.my-state')`
+  hands you the invisible one, where `getAnimations()` is empty and computed styles
+  are frozen at the first keyframe — a perfect description of a broken feature that
+  is in fact working one element later. Scope the selector to the twin you can see. (S11)
+- **A tracing that keeps its colours is not a skeleton.** Blanking a row's text but
+  leaving its status pill blue and its row tint yellow reads as a half-real list —
+  and that colour is from the list being *left*, which after a status filter is the
+  exact thing about to change. (S11)
 - **A page can be full of `brand-*` classes and still leak RS blue.** Component CSS under
   `static/css/components/` and inline `<style>` blocks use raw hex, load *after* `app.css`,
   and win. Two files were overriding the shared `.btn-primary` this way (S7, S8). Grep for
@@ -610,12 +620,142 @@ one small script, `data-vt-*` on three lists and `.vt-hero` on four detail title
   `data-vt-key`/`data-vt-hero` contract on each keyed list, and `.vt-hero` on the
   detail titles.
 
-## S11 · Skeletons and optimistic status changes
+## S11 · Skeletons and optimistic status changes — DONE
 
-Skeletons shaped like the final layout (not spinners) for the jobs and invoices lists.
-Optimistic status transitions that roll back visibly on failure. One restrained success
-moment when an invoice is paid — confirmation, not confetti (R4 + the Part 4 guardrail:
-never animate money).
+Branch `feat/ui-s11-skeletons`. Both lists now say something during the second they
+spend waiting on the server, and marking invoices paid shows the answer before the
+round trip finishes — then puts back, visibly, whatever the server refuses.
+
+**What changed** (PR #TBD, branch `feat/ui-s11-skeletons`)
+
+| File | Change |
+|---|---|
+| `static/js/list-loading.js` | **new** — traces the live list into a skeleton while a same-path navigation is in flight |
+| `static/js/optimistic.js` | **new** — `Optimistic.begin/commit/rollback/setBadge`, the three row states |
+| `static/css/src/input.css` | `--sk-tone` token; `.sk-bar` / `.sk-lines` / `.sk-list`, `.row-pending` / `.row-rollback` / `.paid-check`; three keyframes |
+| `core/templatetags/ui.py`, `components/status_badge.html` | `{% status_badge … optimistic=True %}` emits the repaint + tick hooks |
+| `technician_portal/job_list.html` | `data-skeleton-list` on both twins; `data-optimistic-row="repair-<id>"`; bulk approve/deny/reset flip the badges before submitting |
+| `saas/owner_invoices.html` | same skeleton hooks; row/badge/due/actions handles; modal spinner → shaped skeleton; `doMarkSelectedPaid` rewritten |
+| `apps/saas/views.py` | `owner_invoice_bulk_action` returns `paid_ids` / `skipped_ids` |
+| `templates/base_app.html`, `tailwind.config.js` | load the two scripts; safelist the new component classes |
+| `tests/test_list_skeletons.py` | **new** — 10 tests, the regression guard |
+
+**Notes**
+
+- **The skeleton is a tracing of the list you are leaving, not a drawing of the one
+  you are going to.** Each row is cloned and every text run in the clone is replaced
+  by a `.sk-bar` of that run's measured width — one bar per rendered *line*, so
+  wrapped text stays two bars tall. Nothing in the JS knows what a job row or an
+  invoice row looks like, no page hand-authors a skeleton that will drift from its
+  own table, and column widths, row heights and alignment survive because the markup
+  does. It works unchanged on the mobile card stack and the desktop table, which are
+  two completely different layouts. The whole contract is `data-skeleton-list` on the
+  row container.
+- **The trees are walked twice in lockstep.** A `TreeWalker` over the live row gives
+  the measurements; the identical walk over its clone applies them. That is what
+  removes the need to thread ids or markers through the markup — same tree, same
+  order, same node.
+- **Same pathname = this list, re-queried. Different pathname = a row opening.** That
+  one rule is the entire trigger, and it is why a row → detail click is excluded for
+  free — which matters, because skeletoning that click would have replaced S10's
+  row-into-title morph with a grey bar flying into a heading. It also means no page
+  has to annotate its filter links, its pagination, or its search form.
+- **The status `<select>` navigates with `location.href =`**, which no click or
+  submit listener can see. The Navigation API's `navigate` event can, and it is the
+  only reason that listener exists. `traverse` is excluded: skeletoning a Back
+  navigation would freeze a skeleton into bfcache.
+- **A tracing that keeps its colours is not a skeleton.** The first version blanked
+  the text and left the status pills blue/red/green and the `bg-yellow-50/50` row
+  tint on the REQUESTED rows. It reads as a half-real list — worse, the colour is
+  from the list being *left*, and after a status filter it is the exact thing about
+  to change. Chips now keep their shape in `--sk-tone`; anything wider than half the
+  row loses its tint entirely. Told apart by width, because a chip is small and a
+  row tint is not.
+- **180ms of grace.** Nothing paints before that, so a list that comes back fast
+  looks like it never left. Verified both ways against a deliberately slowed dev
+  server: 240 bars during a 900ms wait, nothing at all inside the grace window.
+- **`pagehide`, not `pageswap`, is where the skeleton is undone.** S10's snapshot is
+  already taken by then, so the undo is invisible — and it keeps a skeleton out of
+  bfcache. There is also a 12s failsafe, because a cancelled navigation tells you
+  nothing.
+- **Optimism buys the round trip; it does not buy the truth.** Marking invoices paid
+  flips the rows instantly and still reloads on full success — after the tick has
+  drawn. "Owed to you", the aging bar and the status filter are all server-computed,
+  and a page that turned six rows green while the total above them sat still would
+  be worse than the wait it replaced. A **partial** failure deliberately does *not*
+  reload: the owner needs to stay and watch which ones came back.
+- **`paid_ids` is what makes the optimism honest.** `mark_paid` can partly succeed —
+  an already-paid, cancelled or fully-credited invoice is skipped — and `updated`
+  alone cannot say *which*, so the page could only ever have flipped every selected
+  row and hoped. The endpoint now names them, and the refused rows roll back with an
+  amber return and a toast that says why.
+- **Rollback restores saved `innerHTML`, not an inverse of each edit.** Every handler
+  on these rows is an inline `onclick` attribute, which survives that round trip. It
+  would not survive it on a row wired with `addEventListener`, and `optimistic.js`
+  says so at the top.
+- **`.row-rollback` is an animation on purpose.** These rows carry a
+  `hover:bg-gray-50` utility, and a components-layer background loses to it at equal
+  specificity. Animation-origin declarations outrank every normal rule regardless of
+  layer, so the amber wins without a doubled-class hack.
+- **Money is not animated.** The amount due just changes to `$0.00`; the only motion
+  is the tick drawing itself inside the Paid pill, ~420ms, once, and nothing under
+  reduced motion. The two amount-due cells did pick up S4's `.num` — an optimistic
+  `$142.50 → $0.00` in proportional figures reflows the column mid-gesture, which is
+  the closest this could get to animating a number by accident.
+- **The create-invoice modal's skeleton is hand-drawn, and that is the right call.**
+  Its target is a fixed, known shape (checkbox, unit line, date line, right-aligned
+  amount) and there is no live list to trace — the tracer only has something to copy
+  when the thing being replaced is already on screen.
+
+**Traps hit this session**
+
+- **`document.querySelector('.row-rollback')` finds the hidden mobile twin.** Both
+  lists render the phone card *and* the desktop row for every record, at every
+  width. The card comes first in the DOM, and at 1440px it is `display: none` — so
+  the probe reported `getAnimations() === []` and a background frozen at the 0%
+  keyframe, for two seconds, on an animation that was in fact running perfectly one
+  element later. A screenshot settled it in one look. Scope to `tr.row-rollback`, or
+  to the twin you can actually see. (Same shape as S9's stale-`getComputedStyle`
+  lesson: when the numbers stop making sense, take a picture.)
+- **`Network.emulateNetworkConditions` does not slow down loopback.** Twenty minutes
+  went into "the skeleton never paints" before the truth turned out to be "the
+  navigation finished in 40ms". A four-line middleware that `time.sleep(0.9)`s on a
+  list re-query is the honest way to see a loading state on a dev server.
+- **A navigation destroys the JS context that observed it.** Anything measured in the
+  outgoing document has to be left in `sessionStorage` for the incoming one to
+  report, or the `Runtime.evaluate` that reads it dies with "Inspected target
+  navigated or closed".
+
+**Verified:** 10 new tests green, and all 10 fail on the pre-change markup (stash the
+six touched files, run, pop — six failures, four errors). Skeleton tracing confirmed
+in a rendering headless Chrome at 1440×900 and 390×844: 24 traced job rows / 240 bars,
+14 invoice rows / 180 bars desktop and 152 mobile, zero duplicate ids, zero
+`data-vt-key` leaked into a tracing. Optimistic mark-paid exercised on all three
+branches — partial (one tick, one amber return), refused (both return, error toast)
+and real (`paid_ids: [1, 2]`, ticks, reload). Reduced motion checked with the media
+feature emulated: bars still show but do not sweep, the rollback becomes a solid amber
+outline instead of a flash, and the tick renders already drawn. `collectstatic` passes
+under the production manifest storage (196 copied / 556 post-processed); no third-party
+asset hosts in either list's rendered HTML. 213 targeted tests green. Full suite: 4341
+tests, `53F/36E`; replaying those 38 modules on a clean `main` worktree gives the same
+`53F/36E` and the two sorted `FAIL:/ERROR:` lists diff to **zero lines in either
+direction**.
+
+**Left for later, deliberately**
+
+- **The jobs list has no rollback branch.** Its bulk actions POST and navigate, so
+  the redirect *is* the reconciliation and there is nothing to roll back to. The
+  badges flip at confirm-time and the server decides; that is all optimism can buy
+  on a form post.
+- **The repair detail page's status buttons are untouched.** Six `<form method=post>`
+  submissions, each with real side effects (notifications, invoicing). Converting
+  them to fetch to make them optimistic is a behaviour change, not a paint change,
+  and it belongs to whoever next owns that page.
+- **Thirteen `fa-spinner` uses remain** across six files (the repair and multi-break
+  forms, the customer request form, autosave, the referrals dashboard, the batch
+  detail page, and two inside this page's own Send/Create buttons). Every one of them
+  is progress on a *submit* rather than a content load — the one job a spinner is
+  still right for. The one this session replaced was the only content load among them.
 
 ## S12 · Auth pages: one brand mention, full-height, no marketing nav — DONE
 

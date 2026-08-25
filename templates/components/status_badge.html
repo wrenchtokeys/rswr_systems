@@ -1,1 +1,1 @@
-<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold {{ classes }}">{{ label }}</span>
+<span{% if optimistic %} data-optimistic-badge data-optimistic-check{% endif %} class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold {{ classes }}">{{ label }}</span>

@@ -60,6 +60,10 @@
   --surface-raised: #ffffff;
   --surface-overlay: #ffffff;
   --hairline: rgb(16 24 40 / 0.08);
+  /* The one grey a loading skeleton is allowed to be. Named because
+     static/js/list-loading.js paints traced status pills with it too, and the
+     bars and the pills drifting apart would be visible. */
+  --sk-tone: #e9ebf0;
 
   --shadow-raised: 0 1px 2px rgb(16 24 40 / 0.04), 0 8px 24px -8px rgb(16 24 40 / 0.08);
   --shadow-float: 0 2px 4px rgb(16 24 40 / 0.04), 0 16px 40px -12px rgb(16 24 40 / 0.14);
@@ -91,6 +95,26 @@
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* ---- Loading + optimistic state (UI_MAGIC S11) --------------------------
+   `sk-sweep` is the skeleton's only motion: a slow light pass over the bars,
+   not a pulse. A pulsing opacity on a list of 25 rows reads as an error
+   state; a sweep reads as work in progress. `row-rollback` is the one-shot
+   amber return an optimistic row makes when the server refuses it — it is
+   declared as an animation on purpose, because animation-origin declarations
+   outrank every normal rule regardless of layer, and these rows carry a
+   `hover:bg-gray-50` utility that a components-layer background would lose to. */
+@keyframes sk-sweep {
+  from { background-position: 180% 0; }
+  to   { background-position: -80% 0; }
+}
+@keyframes row-rollback {
+  0%   { background-color: rgb(251 191 36 / 0.35); }
+  100% { background-color: rgb(251 191 36 / 0); }
+}
+@keyframes paid-check-draw {
+  to { stroke-dashoffset: 0; }
 }
 
 @layer base {
@@ -476,6 +500,96 @@
   }
   .swap-busy {
     cursor: progress;
+  }
+
+  /* ---- Skeletons (UI_MAGIC S11) -----------------------------------------
+     A skeleton here is a TRACING of the list you are already looking at, not
+     a hand-drawn guess at the one that is coming: static/js/list-loading.js
+     clones each row and swaps every text run for a `.sk-bar` of that run's
+     measured width. That is why there is no `.sk-row` or `.sk-cell` in this
+     file — the shape comes from the real markup, and these two classes are
+     the only paint.
+
+     `.sk-bar` is `inline-block` because it replaces a TEXT NODE in place; a
+     block-level bar would break out of table cells and flex rows and the
+     tracing would stop tracing anything. */
+  .sk-bar {
+    display: inline-block;
+    vertical-align: middle;
+    min-width: 1.25rem;
+    border-radius: 0.25rem;
+    background-color: var(--sk-tone);
+    background-image: linear-gradient(90deg, var(--sk-tone) 0%, #f3f4f7 45%, var(--sk-tone) 90%);
+    background-size: 220% 100%;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .sk-bar {
+      animation: sk-sweep 1.6s var(--ease-in-out) infinite;
+    }
+  }
+  /* A wrapped text run traces as one bar per line, stacked. */
+  .sk-lines {
+    display: inline-block;
+    vertical-align: middle;
+  }
+  .sk-lines .sk-bar {
+    display: block;
+  }
+  .sk-lines .sk-bar + .sk-bar {
+    margin-top: 3px;
+  }
+  /* The container the tracing is injected into. Inert: it is scenery, and a
+     tabbable control inside it would steal focus from the page being left. */
+  .sk-list {
+    pointer-events: none;
+    user-select: none;
+  }
+  /* Set on <html> by list-loading.js for as long as a tracing is up. */
+  [data-list-loading] {
+    cursor: progress;
+  }
+
+  /* ---- Optimistic rows (UI_MAGIC S11) ------------------------------------
+     Three states, one row. `.row-pending` says "shown, not yet agreed": the
+     new badge is already there, the row is dimmed until the server answers.
+     `.row-rollback` is the visible return when it says no. `.paid-check` is
+     the whole success moment — a tick that draws itself once, next to the
+     badge. Money is never animated (UI_MAGIC_PLAN Part 4): the amount due
+     just changes. */
+  .row-pending {
+    opacity: 0.5;
+    transition: opacity var(--dur-fast) var(--ease-out);
+  }
+  .row-rollback {
+    animation: row-rollback 900ms var(--ease-out) 1;
+  }
+  .paid-check {
+    display: inline-block;
+    width: 0.75rem;
+    height: 0.75rem;
+    margin-right: 0.25rem;
+    vertical-align: -1px;
+  }
+  .paid-check path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.25;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .paid-check path {
+      stroke-dasharray: 16;
+      stroke-dashoffset: 16;
+      animation: paid-check-draw 420ms var(--ease-out) forwards;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .row-rollback {
+      animation: none;
+      outline: 2px solid #f59e0b;
+      outline-offset: -2px;
+    }
   }
 }
 
