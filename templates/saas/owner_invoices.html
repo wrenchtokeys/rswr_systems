@@ -196,9 +196,12 @@
          The table below drops Date, Due Date, Paid and the whole Actions column
          under sm:, which left an owner checking invoices on a phone with no way
          to see when something was due or to chase it. Cards carry all of it. -->
-    <div class="sm:hidden divide-y divide-gray-100">
+    {% comment %}data-skeleton-list: static/js/list-loading.js traces these rows
+    into a skeleton while a filter or page navigation is in flight (S11). It is
+    on both breakpoint twins; only the painted one traces.{% endcomment %}
+    <div class="sm:hidden divide-y divide-gray-100" data-skeleton-list>
         {% for inv in invoices %}
-        <div class="p-4">
+        <div class="p-4" data-optimistic-row="invoice-{{ inv.id }}">
             <div class="flex items-start gap-3">
                 <input type="checkbox" name="invoice_select" value="{{ inv.id }}"
                     onchange="updateBatchBar()"
@@ -210,7 +213,7 @@
                             <div class="text-sm text-gray-700 truncate">{{ inv.customer.name }}</div>
                         </div>
                         <div class="shrink-0 text-right">
-                            {% status_badge inv.status kind='invoice' %}
+                            {% status_badge inv.status kind='invoice' optimistic=True %}
                             {% if inv.email_delivery_status == 'bounced' or inv.email_delivery_status == 'rejected' %}
                             <div class="mt-1 text-xs text-red-600" title="{{ inv.email_delivery_detail|default:'The email could not be delivered' }}"><i class="fas fa-exclamation-triangle mr-0.5"></i>Not delivered</div>
                             {% elif inv.email_delivery_status == 'complained' %}
@@ -235,7 +238,7 @@
                             · Due {{ inv.due_date|date:"M d, Y" }}
                             {% endif %}
                         </span>
-                        <span class="text-base font-semibold
+                        <span data-optimistic-due class="num text-base font-semibold
                             {% if inv.status == 'OVERDUE' %}text-red-600
                             {% elif inv.amount_due > 0 %}text-gray-900
                             {% else %}text-green-600{% endif %}">
@@ -251,7 +254,7 @@
             </div>
 
             {% if inv.status in 'OVERDUE,SENT,PARTIAL,DRAFT' and inv.amount_due > 0 or inv.status in 'OVERDUE,SENT,PARTIAL' and inv.customer.email %}
-            <div class="mt-3 pl-7 flex gap-2">
+            <div class="mt-3 pl-7 flex gap-2" data-optimistic-actions>
                 {% if inv.status in 'OVERDUE,SENT,PARTIAL,DRAFT' and inv.amount_due > 0 %}
                 <button onclick="openQuickPayModal({{ inv.id }}, '{{ inv.invoice_number|escapejs }}', '{{ inv.customer.name|escapejs }}', '{{ inv.amount_due }}')"
                     class="inline-flex items-center justify-center flex-1 min-h-11 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
@@ -291,9 +294,9 @@
                     <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Actions</th>
                 </tr>
             </thead>
-            <tbody class="bg-white divide-y divide-gray-100">
+            <tbody class="bg-white divide-y divide-gray-100" data-skeleton-list>
                 {% for inv in invoices %}
-                <tr data-vt-key="{% url 'owner_invoice_detail' invoice_id=inv.id %}" class="hover:bg-gray-50 cursor-pointer" onclick="if(!event.target.closest('.no-nav'))window.location='{% url 'owner_invoice_detail' invoice_id=inv.id %}'">
+                <tr data-optimistic-row="invoice-{{ inv.id }}" data-vt-key="{% url 'owner_invoice_detail' invoice_id=inv.id %}" class="hover:bg-gray-50 cursor-pointer" onclick="if(!event.target.closest('.no-nav'))window.location='{% url 'owner_invoice_detail' invoice_id=inv.id %}'">
                     <td class="px-3 py-4 no-nav" onclick="event.stopPropagation()">
                         <input type="checkbox" name="invoice_select" value="{{ inv.id }}"
                             onchange="updateBatchBar()"
@@ -309,14 +312,14 @@
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 text-right">${{ inv.total|floatformat:2 }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-right hidden sm:table-cell">${{ inv.amount_paid|floatformat:2 }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right
+                    <td data-optimistic-due class="num px-6 py-4 whitespace-nowrap text-sm font-semibold text-right
                         {% if inv.status == 'OVERDUE' %}text-red-600
                         {% elif inv.amount_due > 0 %}text-gray-900
                         {% else %}text-green-600{% endif %}">
                         ${{ inv.amount_due|floatformat:2 }}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-center">
-                        {% status_badge inv.status kind='invoice' %}
+                        {% status_badge inv.status kind='invoice' optimistic=True %}
                         {% if inv.email_delivery_status == 'bounced' or inv.email_delivery_status == 'rejected' %}
                         <div class="mt-1 text-xs text-red-600" title="{{ inv.email_delivery_detail|default:'The email could not be delivered' }}"><i class="fas fa-exclamation-triangle mr-0.5"></i>Not delivered</div>
                         {% elif inv.email_delivery_status == 'complained' %}
@@ -333,7 +336,7 @@
                         {% endif %}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-center hidden sm:table-cell no-nav" onclick="event.stopPropagation()">
-                        <div class="inline-flex items-center gap-1.5">
+                        <div class="inline-flex items-center gap-1.5" data-optimistic-actions>
                             {% if inv.status in 'OVERDUE,SENT,PARTIAL,DRAFT' and inv.amount_due > 0 %}
                             <button onclick="openQuickPayModal({{ inv.id }}, '{{ inv.invoice_number|escapejs }}', '{{ inv.customer.name|escapejs }}', '{{ inv.amount_due }}')"
                                 class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -464,10 +467,24 @@
                 </button>
             </div>
 
-            <!-- Loading state -->
-            <div id="modal-loading" class="px-6 py-8 text-center">
-                <i class="fas fa-spinner fa-spin text-2xl text-gray-400"></i>
-                <p class="text-sm text-gray-500 mt-2">Loading repairs...</p>
+            {% comment %}Loading state. The list this replaces is a fixed, known
+            shape — a checkbox, a unit line, a date line and a right-aligned
+            amount — so it is drawn by hand rather than traced. A spinner told
+            the owner "wait"; this tells them what is arriving, and the rows
+            land in the boxes their outlines already occupy (S11).{% endcomment %}
+            <div id="modal-loading" class="sk-list" aria-busy="true" aria-label="Loading uninvoiced work">
+                <div class="divide-y divide-gray-100">
+                    {% for i in "123" %}
+                    <div class="flex items-center gap-3 px-6 py-3">
+                        <span class="sk-bar" style="width:16px;height:16px;border-radius:4px"></span>
+                        <div class="flex-1 min-w-0">
+                            <span class="sk-bar" style="width:{% if forloop.first %}42%{% elif forloop.last %}30%{% else %}36%{% endif %};height:11px"></span>
+                            <span class="sk-bar block mt-1.5" style="width:{% if forloop.first %}58%{% else %}64%{% endif %};height:9px"></span>
+                        </div>
+                        <span class="sk-bar" style="width:52px;height:11px"></span>
+                    </div>
+                    {% endfor %}
+                </div>
             </div>
 
             <!-- Repairs list -->
@@ -861,6 +878,49 @@ function closeBulkPaidModal() {
     document.getElementById('bulk-paid-modal').classList.add('hidden');
 }
 
+{% comment %}Marking paid used to be: disable the button, wait, hard-reload.
+The rows now show the answer immediately and the request reconciles behind
+them (S11).
+
+Two rules make that honest rather than a lie told quickly:
+
+ * The server names the invoices it actually paid (`paid_ids`). A bulk
+   mark-paid can partly succeed, so anything it did NOT pay rolls back
+   visibly instead of being left looking paid until the next page load.
+ * A full success still reloads — after the tick has drawn. The optimism is
+   worth the round trip, not the truth: "Owed to you", the aging bar and the
+   status filter are all server-computed, and a page that flipped six rows
+   green while the total above them stayed put would be worse than the wait
+   it replaced. A partial failure does NOT reload — the owner needs to stay
+   and see which ones came back.{% endcomment %}
+const PAID_BADGE = ['bg-green-100 text-green-800', 'Paid'];
+
+{% comment %}Rolling a row back is only half of putting the owner where they
+were: the selection was cleared when the request went out, so without this the
+batch bar is gone and the retry starts from re-ticking boxes.{% endcomment %}
+function reselect(ids) {
+    const wanted = ids.map(String);
+    document.querySelectorAll('.invoice-checkbox').forEach(cb => {
+        if (wanted.indexOf(cb.value) !== -1) cb.checked = true;
+    });
+    updateBatchBar();
+}
+
+function showPaidOptimistically(ids) {
+    return Optimistic.begin(ids.map(id => 'invoice-' + id), function (row) {
+        Optimistic.setBadge(row, PAID_BADGE[0], PAID_BADGE[1]);
+        const due = row.querySelector('[data-optimistic-due]');
+        if (due) {
+            due.classList.remove('text-red-600', 'text-gray-900');
+            due.classList.add('text-green-600');
+            due.textContent = '$0.00';
+        }
+        // Record payment / Send reminder no longer apply to a paid invoice.
+        const actions = row.querySelector('[data-optimistic-actions]');
+        if (actions) actions.remove();
+    });
+}
+
 function doMarkSelectedPaid() {
     const ids = invoiceCheckboxes('.invoice-checkbox:checked').map(cb => parseInt(cb.value));
     if (!ids.length) { closeBulkPaidModal(); return; }
@@ -869,31 +929,59 @@ function doMarkSelectedPaid() {
         document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
 
     const btn = document.getElementById('bp-confirm');
+    const payload = {
+        action: 'mark_paid',
+        invoice_ids: ids,
+        payment_method: document.getElementById('bp-method').value,
+        payment_date: document.getElementById('bp-date').value,
+        reference_number: document.getElementById('bp-reference').value.trim(),
+    };
+
+    // Close and flip first: the modal has served its purpose, and leaving it
+    // up over the rows it just changed is the whole feeling being removed.
+    closeBulkPaidModal();
+    clearSelection();
+    const token = showPaidOptimistically(ids);
+
     btn.disabled = true;
     fetch('{% url "owner_invoice_bulk_action" %}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-        body: JSON.stringify({
-            action: 'mark_paid',
-            invoice_ids: ids,
-            payment_method: document.getElementById('bp-method').value,
-            payment_date: document.getElementById('bp-date').value,
-            reference_number: document.getElementById('bp-reference').value.trim(),
-        }),
+        body: JSON.stringify(payload),
     })
     .then(r => r.json())
     .then(data => {
         btn.disabled = false;
-        if (data.success) {
-            closeBulkPaidModal();
-            UI.flash(data.message, 'success');
-            clearSelection();
-            window.location.reload();
-        } else {
+        if (!data.success) {
+            Optimistic.rollback(token, undefined);
+            reselect(ids);
             UI.toast(data.error || 'Failed to mark invoices as paid', 'error');
+            return;
         }
+        const paid = data.paid_ids || ids;
+        const refused = ids.filter(id => paid.indexOf(id) === -1);
+        Optimistic.commit(token, { ids: paid.map(id => 'invoice-' + id), check: true });
+        if (refused.length) {
+            Optimistic.rollback(token, refused.map(id => 'invoice-' + id));
+            reselect(refused);
+            UI.toast(
+                refused.length + ' invoice' + (refused.length === 1 ? ' was' : 's were') +
+                ' not marked paid — already paid, voided, or nothing left owing.',
+                'warning');
+            if (paid.length) UI.toast(data.message, 'success');
+            return;
+        }
+        UI.flash(data.message, 'success');
+        // Long enough for the tick to finish drawing, short enough that the
+        // reload still belongs to the same gesture.
+        setTimeout(() => window.location.reload(), 700);
     })
-    .catch(err => { btn.disabled = false; UI.toast('Error: ' + err.message, 'error'); });
+    .catch(err => {
+        btn.disabled = false;
+        Optimistic.rollback(token, undefined);
+        reselect(ids);
+        UI.toast('Error: ' + err.message, 'error');
+    });
 }
 
 // === Quick Record Payment (per-row) ===

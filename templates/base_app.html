@@ -291,6 +291,12 @@
        NOTE: {# #} comments are single-line only — a multi-line one renders
        as visible page text, which is exactly what happened here.{% endcomment %}
     <script src="{% static 'js/ui.js' %}?v=3"></script>
+    {% comment %}S11. list-loading.js only needs to exist before the user
+    clicks a filter, so the end of <body> is early enough — unlike
+    view-transitions.js in <head>, whose pagereveal listener does not have
+    that luxury.{% endcomment %}
+    <script src="{% static 'js/list-loading.js' %}?v=1"></script>
+    <script src="{% static 'js/optimistic.js' %}?v=1"></script>
     <script src="{% static 'js/vendor/driver.iife.js' %}?v=1"></script>
     <script src="{% static 'js/tours.js' %}?v=3"></script>
     {% block extra_js %}{% endblock %}

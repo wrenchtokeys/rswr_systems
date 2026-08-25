@@ -73,6 +73,27 @@ There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are ven
 - **`@view-transition { navigation: auto; }` must stay inline** in the `<style>` block of `templates/includes/head_assets.html`. Chrome ignores the opt-in from an external stylesheet, so moving it into `input.css` silently turns every page transition back into a hard swap with nothing in the console. `tests/test_view_transitions.py` guards it.
 - List rows opt into the row→title morph with `data-vt-key="<detail url>"` + a `data-vt-hero` inside; the detail page's `<h1>` carries `.vt-hero`. Only pair them where the two texts are the same thing. `static/js/view-transitions.js` (loaded from `<head>`, not deferred — its `pagereveal` listener must exist before first render) does the naming.
 
+### Skeletons and optimistic rows
+- **List skeletons are traced, not authored.** `static/js/list-loading.js` clones the
+  live rows and swaps each text run for a `.sk-bar` of its measured width. A list opts
+  in with `data-skeleton-list` on its row container — put it on **both** breakpoint
+  twins (the mobile card stack and the desktop `<tbody>`); only the painted one traces.
+  Never hand-write a per-page skeleton: it drifts from the table within a release.
+- **It fires on a same-pathname navigation only.** That is what keeps a row → detail
+  click (and S10's row-into-title morph) out of it, and why filter links, pagination
+  and search forms need no markup of their own. 180ms of grace before anything paints.
+- **Optimistic rows use `static/js/optimistic.js`**: `data-optimistic-row="<type>-<id>"`
+  on both twins (prefix the type — a repair and a replacement can share an id),
+  `{% status_badge … optimistic=True %}` for the pill it repaints, and
+  `data-optimistic-due` / `-actions` for whatever else the change invalidates.
+  `Optimistic.rollback` restores saved `innerHTML`, so the row's handlers must be
+  inline `onclick` attributes, not `addEventListener` bindings.
+- **An endpoint an optimistic row reconciles against must name what it changed**, not
+  count it. `owner_invoice_bulk_action` returns `paid_ids`/`skipped_ids` for exactly
+  this reason — a bulk action that partly succeeds cannot be reconciled from a total.
+- **Never animate money** (UI_MAGIC_PLAN Part 4). Amounts change; only the badge and
+  its tick move.
+
 ### Color rules
 - **Interactive/brand colour → `brand-*` tokens**, never hardcoded `blue-*`. `{% tenant_brand_css %}` is injected in `base_app.html`, `base_auth.html` and `customer_portal/base_customer.html`, so a shop's `Tenant.brand_color` rethemes the whole product.
 - **Semantic status colour stays literal `blue-*`** (`core/templatetags/ui.py` is the source of truth: IN_PROGRESS/SENT are blue alongside green/amber/red). A red-branded shop must not get a red "In Progress" badge next to a red "Denied" one. Prefer `{% status_badge %}` over hand-rolled conditionals.
