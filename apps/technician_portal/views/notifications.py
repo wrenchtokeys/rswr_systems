@@ -5,6 +5,7 @@ Includes preferences, history, verification, and AJAX endpoints.
 """
 
 from django.shortcuts import render, redirect, get_object_or_404
+from django.template.loader import render_to_string
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
@@ -43,6 +44,19 @@ def _get_technician_for_tenant(request):
         return request.user.technician
     except Technician.DoesNotExist:
         return None
+
+
+def _unread_cache_key(request, technician):
+    """Cache key for the bell's unread payload.
+
+    Tenant-scoped (CODE-087) so a tech who works at two shops does not see one
+    shop's count on the other's bell. Kept in one place because three callers
+    need to agree on it: get_unread_count writes it, mark_all_read deletes it,
+    and the post_save signal in signals.py rebuilds the same string (CODE-234).
+    """
+    tenant = getattr(request, 'tenant', None)
+    tenant_suffix = f':{tenant.pk}' if tenant else ''
+    return f'notif_unread_count:tech:{technician.id}{tenant_suffix}'
 
 
 @login_required
@@ -108,7 +122,11 @@ def notification_history(request):
         'template'
     ).order_by('-created_at')
 
-    show_read = request.GET.get('show_read', 'false') == 'true'
+    # Default flipped to showing everything. The bell's footer link says "View all
+    # notifications" and then landed on a page filtered to unread only, so a tech
+    # looking for the assignment they read this morning found an empty page. Unread
+    # is now a segment you choose, not the default you have to undo.
+    show_read = request.GET.get('show_read', 'true') != 'false'
     category = request.GET.get('category', '')
 
     if not show_read:
@@ -116,6 +134,12 @@ def notification_history(request):
 
     if category:
         notifications = notifications.filter(category=category)
+
+    unread_count = Notification.objects.filter(
+        recipient_type=technician_ct,
+        recipient_id=technician.id,
+        read=False,
+    ).count()
 
     paginator = Paginator(notifications, 25)
     page_number = request.GET.get('page')
@@ -125,6 +149,7 @@ def notification_history(request):
         'notifications': page_obj,
         'show_read': show_read,
         'category': category,
+        'unread_count': unread_count,
         'categories': Notification.CATEGORY_CHOICES,
         'technician': technician,
     }
@@ -176,6 +201,13 @@ def mark_all_read(request):
             read=False
         ).update(read=True, read_at=timezone.now())
 
+        # A queryset .update() does not fire post_save, so the CODE-234 signal that
+        # normally invalidates this key never runs here. Without this delete the bell
+        # went to zero on click and then bounced back to the stale cached count on the
+        # next 30-second poll, for up to the 120-second TTL. The customer portal's
+        # mark-all-read has always cleared its own key; this one never did.
+        cache.delete(_unread_cache_key(request, technician))
+
         return JsonResponse({'success': True, 'count': updated})
 
     except Exception as e:
@@ -196,10 +228,7 @@ def get_unread_count(request):
 
         technician_ct = ContentType.objects.get_for_model(Technician)
 
-        # Cache key includes tenant to avoid cross-tenant cache collisions.
-        tenant = getattr(request, 'tenant', None)
-        tenant_suffix = f':{tenant.pk}' if tenant else ''
-        cache_key = f'notif_unread_count:tech:{technician.id}{tenant_suffix}'
+        cache_key = _unread_cache_key(request, technician)
         cached_data = cache.get(cache_key)
 
         if cached_data is not None:
@@ -228,7 +257,15 @@ def get_unread_count(request):
         response_data = {
             'success': True,
             'count': count,
-            'notifications': notifications_data
+            'notifications': notifications_data,
+            # The bell's poll drops this straight into the dropdown. Rendering it here
+            # keeps one copy of the row markup (components/notification_row.html) and
+            # keeps notification text inside Django's autoescaping — the JS template
+            # literal it replaces interpolated titles and messages raw.
+            'html': render_to_string(
+                'components/notification_list.html',
+                {'notifications': recent_notifications},
+            ),
         }
 
         cache.set(cache_key, response_data, timeout=120)

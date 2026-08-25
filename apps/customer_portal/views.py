@@ -1,4 +1,5 @@
 from django.shortcuts import render, get_object_or_404, redirect
+from django.template.loader import render_to_string
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.conf import settings
@@ -3289,7 +3290,13 @@ def get_notification_context(customer):
 
     return {
         'unread_count': unread_count,
-        'recent_notifications': list(recent_notifications)
+        'recent_notifications': list(recent_notifications),
+        # Tells the bell its list is real. Only two views call this helper, so on
+        # every other page the bell renders with no context at all — it must not
+        # print "You're all caught up" at someone who has four unread. Unset, the
+        # bell shows a neutral placeholder and polls once immediately instead of
+        # waiting out the first 30-second tick.
+        'bell_prefetched': True,
     }
 
 
@@ -3585,8 +3592,9 @@ def customer_notification_history(request):
         'template'
     ).order_by('-created_at')
 
-    # Filters
-    show_read = request.GET.get('show_read', 'false') == 'true'
+    # Filters. Default shows everything — see the technician portal's
+    # notification_history for why the unread-only default was wrong.
+    show_read = request.GET.get('show_read', 'true') != 'false'
     category = request.GET.get('category', '')
 
     if not show_read:
@@ -3594,6 +3602,12 @@ def customer_notification_history(request):
 
     if category:
         notifications = notifications.filter(category=category)
+
+    unread_count = Notification.objects.filter(
+        recipient_type=customer_ct,
+        recipient_id=customer.id,
+        read=False,
+    ).count()
 
     # Pagination
     paginator = Paginator(notifications, 25)
@@ -3604,6 +3618,7 @@ def customer_notification_history(request):
         'notifications': page_obj,
         'show_read': show_read,
         'category': category,
+        'unread_count': unread_count,
         'categories': Notification.CATEGORY_CHOICES,
         'customer': customer,
         'customer_user': customer_user,
@@ -3716,7 +3731,17 @@ def customer_get_unread_count(request):
         response_data = {
             'success': True,
             'count': count,
-            'notifications': notifications_data
+            'notifications': notifications_data,
+            # Rendered here, not rebuilt in the bell's JS — see the technician
+            # portal's get_unread_count for why.
+            'html': render_to_string(
+                'components/notification_list.html',
+                {
+                    'notifications': recent_notifications,
+                    'empty_title': "You're all caught up",
+                    'empty_message': 'Updates on your vehicle land here.',
+                },
+            ),
         }
 
         # Cache for 2 minutes

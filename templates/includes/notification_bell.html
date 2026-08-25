@@ -1,306 +1,220 @@
+{% load notifications_ui %}
 {% comment %}
 Shared notification bell for customer + technician portals.
 Usage: {% include "includes/notification_bell.html" with bell_role="customer" %}
        {% include "includes/notification_bell.html" with bell_role="tech" %}
 Expects `unread_count` and `recent_notifications` in context.
+
+Two rules this file exists to hold:
+
+1. **The poll reconciles, it does not replace.** The old version rewrote
+   innerHTML every 30 seconds unconditionally. Two things fell out of that: the
+   click handlers were bound once at load, so after the first tick clicking an
+   unread row silently stopped marking it read; and a reader who had the panel
+   open watched the list rebuild under their cursor. Now rows are handled by
+   delegation (they survive any re-render) and a re-render is skipped entirely
+   while the panel is open — the payload is held and applied on close.
+
+2. **The server renders the rows.** The endpoint returns finished HTML from
+   components/notification_list.html rather than JSON this file re-templates.
 {% endcomment %}
-<!-- Notification Bell Icon -->
 <div class="relative inline-block" id="notification-dropdown">
     <button type="button"
             id="notificationDropdown"
-            class="relative p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 {% if bell_role == 'customer' %}focus:ring-brand-500{% else %}focus:ring-brand-500{% endif %} rounded-full"
+            class="relative p-2 text-gray-600 hover:text-gray-900 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 press"
             aria-expanded="false"
-            aria-haspopup="true">
-        <span class="sr-only">View notifications</span>
-        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+            aria-haspopup="true"
+            aria-controls="notification-menu">
+        <span class="sr-only">Notifications</span>
+        <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 8a6 6 0 1 0-12 0c0 6-3 7-3 7h18s-3-1-3-7"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>
         </svg>
         <span id="unread-badge"
-              class="absolute top-0 right-0 block h-5 w-5 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center"
+              class="absolute top-0.5 right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-600 text-white text-[11px] font-semibold items-center justify-center tabular-nums"
               style="display: {% if unread_count > 0 %}flex{% else %}none{% endif %};">
             {{ unread_count|default:0 }}
         </span>
+        <span id="unread-badge-label" class="sr-only" aria-live="polite">
+            {% if unread_count %}{{ unread_count }} unread notifications{% endif %}
+        </span>
     </button>
 
-    <!-- Dropdown Menu -->
     <div id="notification-menu"
-         class="hidden origin-top-right absolute {% if bell_role == 'customer' %}right-0 left-0 sm:left-auto mt-2 w-full sm:w-96{% else %}right-0 mt-2 w-96{% endif %} rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-50"
+         class="hidden origin-top-right absolute {% if bell_role == 'customer' %}right-0 left-0 sm:left-auto mt-2 w-full sm:w-[380px]{% else %}right-0 mt-2 w-[380px]{% endif %} rounded-xl shadow-lg bg-white ring-1 ring-black/5 overflow-hidden z-50"
          role="menu"
          aria-orientation="vertical"
          aria-labelledby="notificationDropdown">
 
-        <!-- Header -->
-        <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+        <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
             <h3 class="text-sm font-semibold text-gray-900">Notifications</h3>
-            <button id="mark-all-read"
-                    class="text-xs text-brand-600 hover:text-brand-800 font-medium focus:outline-none">
+            <button type="button" id="mark-all-read"
+                    class="text-xs text-brand-600 hover:text-brand-700 font-medium focus:outline-none focus-visible:underline">
                 Mark all read
             </button>
         </div>
 
-        <!-- Notifications List -->
-        <div id="notification-list"
-             class="max-h-96 overflow-y-auto">
-            {% if recent_notifications %}
-                {% for notification in recent_notifications %}
-                    <a href="{{ notification.action_url|default:'#' }}"
-                       class="block px-4 py-3 hover:bg-gray-50 border-b border-gray-100 notification-item {% if not notification.read %}bg-brand-50{% endif %}"
-                       data-notification-id="{{ notification.id }}"
-                       role="menuitem">
-                        <div class="flex items-start justify-between">
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm font-medium text-gray-900 truncate">
-                                    {{ notification.title }}
-                                </p>
-                                <p class="text-sm text-gray-600 line-clamp-2 mt-1">
-                                    {{ notification.message|truncatewords:15 }}
-                                </p>
-                                <p class="text-xs text-gray-500 mt-1">
-                                    {{ notification.created_at|timesince }} ago
-                                </p>
-                            </div>
-                            {% if not notification.read %}
-                                <span class="ml-2 flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-brand-600 text-white">
-                                    New
-                                </span>
-                            {% endif %}
-                        </div>
-                    </a>
-                {% endfor %}
+        <div id="notification-list" class="max-h-[420px] overflow-y-auto" data-prefetched="{{ bell_prefetched|yesno:'1,0' }}">
+            {% if bell_prefetched %}
+                {% include "components/notification_list.html" with notifications=recent_notifications %}
             {% else %}
-                <div class="px-4 py-12 text-center">
-                    <svg class="mx-auto h-10 w-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
-                    </svg>
-                    <p class="mt-2 text-sm text-gray-500">No notifications</p>
-                </div>
+                {# No view context here — say nothing rather than something false. #}
+                <p class="px-4 py-11 text-center text-[13px] text-gray-400">Loading notifications…</p>
             {% endif %}
         </div>
 
-        <!-- Footer -->
-        <div class="border-t border-gray-200">
-            <a href="{% if bell_role == 'customer' %}{% url 'customer_notification_history' %}{% else %}{% url 'notification_history' %}{% endif %}"
-               class="block px-4 py-3 text-center text-sm text-brand-600 hover:text-brand-800 hover:bg-gray-50 font-medium"
-               role="menuitem">
-                View All Notifications
-            </a>
-        </div>
+        <a href="{% if bell_role == 'customer' %}{% url 'customer_notification_history' %}{% else %}{% url 'notification_history' %}{% endif %}"
+           class="block px-4 py-3 text-center text-[13px] font-medium text-brand-600 hover:text-brand-700 hover:bg-gray-50 border-t border-gray-100"
+           role="menuitem">
+            View all notifications
+        </a>
     </div>
 </div>
 
-<style>
-/* Hover on an unread (brand-tinted) row followed the brand class but hovered to
-   hardcoded RS blue. */
-.notification-item.bg-brand-50:hover {
-    background-color: rgb(var(--brand-500) / 0.16);
-}
-
-.line-clamp-2 {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-</style>
-
+{% include "components/notification_row_script.html" %}
 <script>
 (function() {
     const NOTIFY_BASE = '{% if bell_role == "customer" %}/app/notifications{% else %}/tech/notifications{% endif %}';
-    const dropdown = document.getElementById('notificationDropdown');
+    const trigger = document.getElementById('notificationDropdown');
     const menu = document.getElementById('notification-menu');
+    const list = document.getElementById('notification-list');
+    const badge = document.getElementById('unread-badge');
+    const badgeLabel = document.getElementById('unread-badge-label');
     const markAllBtn = document.getElementById('mark-all-read');
+    if (!trigger || !menu || !list) return;
 
-    // Toggle dropdown
-    dropdown.addEventListener('click', function(e) {
-        e.stopPropagation();
-        menu.classList.toggle('hidden');
-    });
+    // Held payload from a poll that arrived while the panel was open. Applying it
+    // then would rewrite the list the reader is mid-glance through, which is the
+    // exact behaviour this replaces.
+    let pending = null;
+    let lastHtml = null;
 
-    // Close dropdown when clicking outside
-    document.addEventListener('click', function(e) {
-        if (!menu.contains(e.target) && !dropdown.contains(e.target)) {
-            menu.classList.add('hidden');
+    function isOpen() { return !menu.classList.contains('hidden'); }
+
+    function setOpen(open) {
+        menu.classList.toggle('hidden', !open);
+        trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (!open && pending !== null) {
+            applyList(pending);
+            pending = null;
         }
-    });
-
-    // Get CSRF token — from hidden form field first (works with httpOnly cookies),
-    // falls back to cookie for non-httpOnly environments
-    function getCookie(name) {
-        const formEl = document.querySelector('[name=csrfmiddlewaretoken]');
-        if (formEl) return formEl.value;
-        let cookieValue = null;
-        if (document.cookie && document.cookie !== '') {
-            const cookies = document.cookie.split(';');
-            for (let i = 0; i < cookies.length; i++) {
-                const cookie = cookies[i].trim();
-                if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                    break;
-                }
-            }
-        }
-        return cookieValue;
     }
 
-    // Mark notification as read when clicked
-    document.querySelectorAll('.notification-item').forEach(item => {
-        item.addEventListener('click', function(e) {
-            const notificationId = this.dataset.notificationId;
-            if (notificationId && this.classList.contains('bg-brand-50')) {
-                fetch(`${NOTIFY_BASE}/${notificationId}/mark-read/`, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRFToken': getCookie('csrftoken'),
-                        'Content-Type': 'application/json'
-                    }
-                }).then(response => response.json())
-                  .then(data => {
-                      if (data.success) {
-                          updateUnreadCount(-1);
-                          this.classList.remove('bg-brand-50');
-                          const badge = this.querySelector('.bg-brand-600');
-                          if (badge) badge.remove();
-                      }
-                  });
-            }
-        });
+    trigger.addEventListener('click', function(e) {
+        e.stopPropagation();
+        setOpen(!isOpen());
     });
 
-    // Mark all notifications as read
+    document.addEventListener('click', function(e) {
+        if (isOpen() && !menu.contains(e.target) && !trigger.contains(e.target)) setOpen(false);
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && isOpen()) {
+            setOpen(false);
+            trigger.focus();
+        }
+    });
+
+    // CSRF from a hidden form field first (works with httpOnly cookies), cookie otherwise.
+    function getCsrfToken() {
+        const formEl = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (formEl) return formEl.value;
+        const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
+        return match ? decodeURIComponent(match[1]) : null;
+    }
+
+    function post(url) {
+        return fetch(url, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrfToken(), 'Content-Type': 'application/json'},
+        }).then(response => {
+            if (!response.ok) {
+                if (response.status === 403) throw new Error('Permission denied. Please refresh the page and try again.');
+                if (response.status === 401) throw new Error('You have been logged out. Please log in again.');
+                throw new Error(`Server error: ${response.status}`);
+            }
+            return response.json();
+        });
+    }
+
+    function setUnreadCount(count) {
+        const n = Math.max(0, count);
+        badge.textContent = n;
+        badge.style.display = n > 0 ? 'flex' : 'none';
+        if (badgeLabel) badgeLabel.textContent = n > 0 ? `${n} unread notifications` : '';
+    }
+
+    function currentCount() { return parseInt(badge.textContent, 10) || 0; }
+
+    function applyList(html) {
+        if (html === lastHtml) return;
+        lastHtml = html;
+        list.innerHTML = html;   // server-rendered, Django-escaped
+    }
+
+    // Any local read-state change makes an in-flight or held payload stale: it was
+    // fetched before the click, so applying it on close would put the dots back on
+    // rows the reader has just cleared. Drop it and let the next poll re-sync.
+    function invalidateHeldPayload() {
+        pending = null;
+        lastHtml = null;
+    }
+
+    // Delegated: rows replaced by a poll keep working. The old version bound
+    // handlers to the rows present at page load and lost them on first tick.
+    list.addEventListener('click', function(e) {
+        const row = e.target.closest('.notification-row');
+        if (!row || row.dataset.read === '1') return;
+        const id = row.dataset.notificationId;
+        if (!id) return;
+        // Optimistic — the navigation this click starts must not wait on the POST.
+        window.NotificationRow.markRead(row);
+        setUnreadCount(currentCount() - 1);
+        invalidateHeldPayload();
+        post(`${NOTIFY_BASE}/${id}/mark-read/`).catch(err => console.error('Error marking notification read:', err));
+    });
+
     if (markAllBtn) {
         markAllBtn.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
-
-            fetch(`${NOTIFY_BASE}/mark-all-read/`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': getCookie('csrftoken'),
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => {
-                // Check for HTTP errors before parsing JSON
-                if (!response.ok) {
-                    if (response.status === 403) {
-                        throw new Error('Permission denied. Please refresh the page and try again.');
-                    } else if (response.status === 401) {
-                        throw new Error('You have been logged out. Please log in again.');
-                    } else {
-                        throw new Error(`Server error: ${response.status}`);
+            post(`${NOTIFY_BASE}/mark-all-read/`)
+                .then(data => {
+                    if (!data.success) {
+                        UI.toast(`Failed: ${data.error || 'Unknown error'}`, 'error');
+                        return;
                     }
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    updateUnreadCount(-data.count);
-                    // Remove "unread" styling from all items
-                    document.querySelectorAll('.notification-item.bg-brand-50').forEach(item => {
-                        item.classList.remove('bg-brand-50');
-                        const badge = item.querySelector('.bg-brand-600');
-                        if (badge) badge.remove();
-                    });
-                } else {
-                    UI.toast(`Failed: ${data.error || 'Unknown error'}`, 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                UI.toast(`Error marking notifications as read: ${error.message}`, 'error');
-            });
+                    setUnreadCount(0);
+                    list.querySelectorAll('.notification-row[data-read="0"]').forEach(row => window.NotificationRow.markRead(row));
+                    invalidateHeldPayload();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    UI.toast(`Error marking notifications as read: ${error.message}`, 'error');
+                });
         });
     }
 
-    // Update unread count
-    function updateUnreadCount(delta) {
-        const badge = document.getElementById('unread-badge');
-        const currentCount = parseInt(badge.textContent) || 0;
-        const newCount = Math.max(0, currentCount + delta);
-
-        badge.textContent = newCount;
-        badge.style.display = newCount > 0 ? 'flex' : 'none';
-    }
-
-    // Poll for new notifications every 30 seconds
-    setInterval(function() {
-        fetch(`${NOTIFY_BASE}/unread-count/`)
+    function refresh() {
+        return fetch(`${NOTIFY_BASE}/unread-count/`)
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
-                    const badge = document.getElementById('unread-badge');
-                    badge.textContent = data.count;
-                    badge.style.display = data.count > 0 ? 'flex' : 'none';
-
-                    // Update notification list
-                    if (data.notifications && data.notifications.length > 0) {
-                        updateNotificationList(data.notifications);
-                    }
-                }
+                if (!data.success) return;
+                setUnreadCount(data.count);
+                if (typeof data.html !== 'string') return;
+                // Hold, don't replace, while the reader has the panel open.
+                if (isOpen()) pending = data.html;
+                else applyList(data.html);
             })
             .catch(error => console.error('Error polling notifications:', error));
-    }, 30000); // 30 seconds
-
-    // Update notification list in dropdown
-    function updateNotificationList(notifications) {
-        const listContainer = document.getElementById('notification-list');
-
-        if (notifications.length === 0) {
-            listContainer.innerHTML = `
-                <div class="px-4 py-12 text-center">
-                    <svg class="mx-auto h-10 w-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
-                    </svg>
-                    <p class="mt-2 text-sm text-gray-500">No notifications</p>
-                </div>
-            `;
-            return;
-        }
-
-        let html = '';
-        notifications.forEach(notification => {
-            const created = new Date(notification.created_at);
-            const now = new Date();
-            const diffMinutes = Math.floor((now - created) / 60000);
-            let timeAgo;
-            if (diffMinutes < 60) {
-                timeAgo = `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} ago`;
-            } else if (diffMinutes < 1440) {
-                const hours = Math.floor(diffMinutes / 60);
-                timeAgo = `${hours} hour${hours !== 1 ? 's' : ''} ago`;
-            } else {
-                const days = Math.floor(diffMinutes / 1440);
-                timeAgo = `${days} day${days !== 1 ? 's' : ''} ago`;
-            }
-
-            html += `
-                <a href="${notification.action_url || '#'}"
-                   class="block px-4 py-3 hover:bg-gray-50 border-b border-gray-100 notification-item ${!notification.read ? 'bg-brand-50' : ''}"
-                   data-notification-id="${notification.id}"
-                   role="menuitem">
-                    <div class="flex items-start justify-between">
-                        <div class="flex-1 min-w-0">
-                            <p class="text-sm font-medium text-gray-900 truncate">
-                                ${notification.title}
-                            </p>
-                            <p class="text-sm text-gray-600 line-clamp-2 mt-1">
-                                ${notification.message.substring(0, 100)}${notification.message.length > 100 ? '...' : ''}
-                            </p>
-                            <p class="text-xs text-gray-500 mt-1">
-                                ${timeAgo}
-                            </p>
-                        </div>
-                        ${!notification.read ? `
-                            <span class="ml-2 flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-brand-600 text-white">
-                                New
-                            </span>
-                        ` : ''}
-                    </div>
-                </a>
-            `;
-        });
-
-        listContainer.innerHTML = html;
     }
+
+    // Only two views prefetch the bell (the two dashboards). Everywhere else it
+    // ships empty, and used to stay empty for a full 30 seconds. The endpoint is
+    // cached for 120s, so asking for it immediately costs a request, not a query.
+    if (list.dataset.prefetched !== '1') refresh();
+
+    setInterval(refresh, 30000);
 })();
 </script>

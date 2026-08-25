@@ -1,0 +1,26 @@
+{% comment %}
+Clearing a row's unread affordance, in one place.
+
+The bell and both history pages all need it, and all three must clear the *same*
+set of markers that components/notification_row.html sets — the dot, the title
+weight, the data-read flag and the screen-reader announcement. A row that keeps
+its "Unread." sr-only text after being read is a row that lies to a screen reader
+while looking correct on screen, which is exactly the kind of drift three copies
+of this function would produce.
+{% endcomment %}
+<script>
+window.NotificationRow = window.NotificationRow || {
+    markRead: function(row) {
+        row.dataset.read = '1';
+        const dot = row.querySelector('.notification-dot');
+        if (dot) dot.classList.add('opacity-0');
+        const title = row.querySelector('.notification-title');
+        if (title) {
+            title.classList.remove('font-semibold', 'text-gray-900');
+            title.classList.add('font-medium', 'text-gray-700');
+        }
+        const announced = row.querySelector('.notification-sr-state');
+        if (announced) announced.textContent = '';
+    }
+};
+</script>

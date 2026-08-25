@@ -1,0 +1,39 @@
+{% load notifications_ui %}
+{% comment %}
+Segmented filter for the notification history pages.
+
+Replaces a checkbox-plus-dropdown-plus-Filter-button form. Filtering is the
+reason anyone opens this page, so it is one tap and one GET — no submit, and
+the current filter is in the URL where it can be linked and gone back to.
+
+Params: categories (Notification.CATEGORY_CHOICES), category (current),
+        show_read (bool), unread_count (int).
+Preserves every other querystring param via {% querystring %}, so a filter
+change from page 4 does not silently keep you on page 4 of a different list —
+page is dropped explicitly.
+{% endcomment %}
+<div class="flex flex-wrap items-center gap-1.5 mb-4" role="group" aria-label="Filter notifications">
+    {% with base="text-[13px] font-medium px-3 py-1.5 rounded-lg border transition-colors" on="bg-brand-600 border-brand-600 text-white" off="bg-white border-gray-200 text-gray-600 hover:bg-gray-50" %}
+        {% comment %}
+        "All" drops every param, so {% templatetag openblock %} querystring {% templatetag closeblock %} renders the empty string — and an
+        empty href resolves to the current URL *including* its query string, which
+        would make this segment a no-op from any other segment. Fall back to the path.
+        {% endcomment %}
+        {% querystring category=None show_read=None page=None as all_qs %}
+        <a href="{{ all_qs|default:request.path }}"
+           class="{{ base }} {% if show_read and not category %}{{ on }}{% else %}{{ off }}{% endif %}"
+           {% if show_read and not category %}aria-current="true"{% endif %}>All</a>
+
+        <a href="{% querystring category=None show_read='false' page=None %}"
+           class="{{ base }} {% if not show_read %}{{ on }}{% else %}{{ off }}{% endif %}"
+           {% if not show_read %}aria-current="true"{% endif %}>
+            Unread{% if unread_count %} <span class="tabular-nums opacity-70">{{ unread_count }}</span>{% endif %}
+        </a>
+
+        {% for value, label in categories %}
+            <a href="{% querystring category=value show_read=None page=None %}"
+               class="{{ base }} {% if category == value %}{{ on }}{% else %}{{ off }}{% endif %}"
+               {% if category == value %}aria-current="true"{% endif %}>{{ value|notification_category_label }}</a>
+        {% endfor %}
+    {% endwith %}
+</div>
