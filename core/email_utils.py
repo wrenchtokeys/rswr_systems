@@ -71,6 +71,83 @@ def _normalize_detail_rows(detail_rows):
     return rows
 
 
+def render_branded_email(
+    subject,
+    headline,
+    body_paragraphs,
+    *,
+    tenant=None,
+    platform=False,
+    lede=None,
+    note=None,
+    preheader=None,
+    pill_label=None,
+    pill_tone=None,
+    header_meta=None,
+    unsubscribe_path=None,
+    button_text=None,
+    button_url=None,
+    secondary_button_text=None,
+    secondary_button_url=None,
+    detail_rows=None,
+    plain_text=None,
+    tracking_pixel_url=None,
+):
+    """Render a branded email without sending it.
+
+    The rendering half of send_branded_email, split out so `manage.py
+    preview_emails` renders EXACTLY what a real send would produce —
+    identity resolution, row normalization and all. Previews that
+    hand-build the template context drift the day someone edits the real
+    context and not the copy.
+
+    Returns:
+        tuple: (html str, plain_text str)
+    """
+    from django.template.loader import render_to_string
+
+    from core.models.email_branding import EmailBrandingConfig
+
+    # Identity. A platform email (subscription, billing, account) is from
+    # RS Systems, so it resolves branding with no tenant — platform name,
+    # platform blue — and carries the shop's name on the right of the header
+    # instead. Letting a shop's brand colour onto a platform email is how
+    # an owner ends up unable to tell who is asking them for money.
+    branding = EmailBrandingConfig.get_tenant_context(None if platform else tenant)
+    if platform and tenant is not None and not header_meta:
+        header_meta = tenant.name or ''
+
+    rows = _normalize_detail_rows(detail_rows)
+    context = {
+        'subject': subject,
+        'headline': headline,
+        'lede': lede,
+        'note': note,
+        'preheader': preheader or lede or '',
+        'pill_label': pill_label,
+        'pill_tone': pill_tone,
+        'header_meta': header_meta,
+        'unsubscribe_path': unsubscribe_path,
+        'body_paragraphs': body_paragraphs or [],
+        'detail_rows': rows,
+        'button_text': button_text,
+        'button_url': button_url,
+        'secondary_button_text': secondary_button_text,
+        'secondary_button_url': secondary_button_url,
+        'tracking_pixel_url': tracking_pixel_url,
+        'branding': branding,
+        'base_url': getattr(settings, 'SITE_URL', 'https://rssystems.io').rstrip('/'),
+    }
+
+    html = render_to_string('emails/generic.html', context)
+    if not plain_text:
+        # Rendered from the same context as the HTML, so the two halves
+        # cannot say different things. The template owns the layout — the
+        # rows of '=' rulers this used to emit are gone for good.
+        plain_text = render_to_string('emails/generic.txt', context).strip() + '\n'
+    return html, plain_text
+
+
 def send_branded_email(
     subject,
     recipient_list,
@@ -140,48 +217,29 @@ def send_branded_email(
     Returns:
         int: Number of emails sent (0 or 1)
     """
-    from django.template.loader import render_to_string
-
-    from core.models.email_branding import EmailBrandingConfig
-
-    # Identity. A platform email (subscription, billing, account) is from
-    # RS Systems, so it resolves branding with no tenant — platform name,
-    # platform blue — and carries the shop's name on the right of the header
-    # instead. Letting a shop's brand colour onto a platform email is how
-    # an owner ends up unable to tell who is asking them for money.
-    branding = EmailBrandingConfig.get_tenant_context(None if platform else tenant)
-    if platform and tenant is not None and not header_meta:
-        header_meta = tenant.name or ''
     reply_to_email = '' if platform else (tenant.business_email or '' if tenant else '')
 
-    rows = _normalize_detail_rows(detail_rows)
-    context = {
-        'subject': subject,
-        'headline': headline,
-        'lede': lede,
-        'note': note,
-        'preheader': preheader or lede or '',
-        'pill_label': pill_label,
-        'pill_tone': pill_tone,
-        'header_meta': header_meta,
-        'unsubscribe_path': unsubscribe_path,
-        'body_paragraphs': body_paragraphs or [],
-        'detail_rows': rows,
-        'button_text': button_text,
-        'button_url': button_url,
-        'secondary_button_text': secondary_button_text,
-        'secondary_button_url': secondary_button_url,
-        'tracking_pixel_url': tracking_pixel_url,
-        'branding': branding,
-        'base_url': getattr(settings, 'SITE_URL', 'https://rssystems.io').rstrip('/'),
-    }
-
-    html = render_to_string('emails/generic.html', context)
-    if not plain_text:
-        # Rendered from the same context as the HTML, so the two halves
-        # cannot say different things. The template owns the layout — the
-        # rows of '=' rulers this used to emit are gone for good.
-        plain_text = render_to_string('emails/generic.txt', context).strip() + '\n'
+    html, plain_text = render_branded_email(
+        subject,
+        headline,
+        body_paragraphs,
+        tenant=tenant,
+        platform=platform,
+        lede=lede,
+        note=note,
+        preheader=preheader,
+        pill_label=pill_label,
+        pill_tone=pill_tone,
+        header_meta=header_meta,
+        unsubscribe_path=unsubscribe_path,
+        button_text=button_text,
+        button_url=button_url,
+        secondary_button_text=secondary_button_text,
+        secondary_button_url=secondary_button_url,
+        detail_rows=detail_rows,
+        plain_text=plain_text,
+        tracking_pixel_url=tracking_pixel_url,
+    )
 
     # A platform email is from RS Systems, not "<Shop> via RS Systems" —
     # the From line has to agree with the header the reader is looking at,

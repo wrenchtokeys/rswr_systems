@@ -244,17 +244,19 @@ class SendCustomerReceiptTests(PaymentNotificationServiceTestCase):
 
 class SendOwnerNotificationTests(PaymentNotificationServiceTestCase):
 
-    @patch('apps.billing.services.payment_notification_service.EmailMultiAlternatives')
-    def test_happy_path_returns_true(self, mock_email_cls):
-        """Owner notification sent when BillingConfig.company_email is set → True."""
-        mock_email_instance = MagicMock()
-        mock_email_cls.return_value = mock_email_instance
+    @patch('core.email_utils.send_branded_email', return_value=1)
+    def test_happy_path_returns_true(self, mock_send):
+        """Owner notification sent when BillingConfig.company_email is set → True.
 
+        The owner notification goes out through send_branded_email (the
+        chassis), not a hand-built EmailMultiAlternatives — the old patch
+        target here missed the real send entirely.
+        """
         svc = self._make_svc()
         result = svc.send_owner_notification(self.payment)
 
         self.assertTrue(result)
-        mock_email_instance.send.assert_called_once()
+        mock_send.assert_called_once()
 
     def test_no_owner_email_returns_false(self):
         """No email anywhere (BillingConfig, tenant, owner) → returns False."""
@@ -297,13 +299,9 @@ class SendOwnerNotificationTests(PaymentNotificationServiceTestCase):
             mock_send.call_args.kwargs.get('recipient_list', []),
         )
 
-    @patch('apps.billing.services.payment_notification_service.EmailMultiAlternatives')
-    def test_smtp_exception_returns_false(self, mock_email_cls):
+    @patch('core.email_utils.send_branded_email', side_effect=Exception('SMTP error'))
+    def test_smtp_exception_returns_false(self, mock_send):
         """SMTP failure in send_owner_notification → returns False, no crash."""
-        mock_email_instance = MagicMock()
-        mock_email_instance.send.side_effect = Exception('SMTP error')
-        mock_email_cls.return_value = mock_email_instance
-
         svc = self._make_svc()
         result = svc.send_owner_notification(self.payment)
         self.assertFalse(result)

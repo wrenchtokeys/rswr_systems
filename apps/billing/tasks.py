@@ -18,7 +18,6 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.conf import settings
-from django.core.mail import send_mail
 from django.db import transaction
 from django.utils import timezone
 
@@ -589,18 +588,25 @@ def _calculate_due_date(config, payment_terms_override=None):
 
 
 def _send_batch_invoice_email(invoice, config):
-    """Send batch invoice email to customer.
+    """Send the batch invoice email through the one invoice-email path.
+
+    This used to be a separate invoice email: send_branded_email with four
+    detail rows, no line items, and a default body that said "Please find
+    attached your invoice" while attaching nothing. InvoiceEmailService
+    sends the same receipt-shaped email as every other invoice path — line
+    items grouped per vehicle, amount-first, the shop's CODE-119 template
+    reaching both halves — and attaches the PDF it promises.
+
+    Recipient resolution stays here (CODE-139): billing_email over
+    customer.email, so a fleet AP-only account with no customer.email
+    still gets its invoice. `config` is unused now but kept in the
+    signature — the service resolves the same BillingConfig itself.
 
     Returns:
         bool: True if email was sent successfully, False otherwise.
     """
     customer = invoice.customer
 
-    # Prefer billing_email from CustomerRepairPreference when set — fleet customers
-    # often have a dedicated AP email that is different from their general contact
-    # email.  All other invoice-send paths (owner_send_invoice, owner_email_invoice,
-    # owner_send_reminder, _send_overdue_reminder) already do this; the batch
-    # invoice task must be consistent.  (CODE-139)
     recipient_email = None
     try:
         prefs = customer.repair_preferences
@@ -615,87 +621,27 @@ def _send_batch_invoice_email(invoice, config):
         )
         return False
 
-    _company_name = config.company_name or (invoice.tenant.name if invoice.tenant else '')
-    _company_phone = config.company_phone or (invoice.tenant.business_phone if invoice.tenant else '')
-    _company_email = config.company_email or (invoice.tenant.business_email if invoice.tenant else '')
-
-    subject = f"Invoice {invoice.invoice_number} from {_company_name}"
-
-    # CODE-119: Apply shop-defined invoice email template if one is configured.
-    body = ''
-    if config.invoice_email_template:
-        try:
-            body = config.invoice_email_template.format(
-                customer_name=customer.name,
-                invoice_number=invoice.invoice_number,
-                total=f'${invoice.total:,.2f}',
-                invoice_date=invoice.invoice_date.strftime('%B %d, %Y') if invoice.invoice_date else 'N/A',
-                company_name=_company_name,
-            )
-        except (KeyError, IndexError, ValueError):
-            # Unknown placeholder in template — fall back to default body.
-            body = ''
-
-    if not body:
-        body = f"""Dear {customer.name},
-
-Please find attached your invoice for recent services.
-
-Invoice Number: {invoice.invoice_number}
-Invoice Date: {invoice.invoice_date.strftime('%B %d, %Y')}
-Due Date: {invoice.due_date.strftime('%B %d, %Y')}
-Total Amount: ${invoice.total:.2f}
-
-Thank you for your business!
-
-{_company_name}
-{_company_phone}
-{_company_email}
-"""
-
-    # Public payment link — only when the shop can take online payments
-    # (active Stripe Connect); otherwise the button dead-ends.
-    from apps.billing.pay_links import public_pay_url
-    pay_url = public_pay_url(invoice)
-
-    # A shop's own copy (CODE-119) used to reach `plain_text` and stop there,
-    # so the HTML half — the one the customer actually looks at — still read
-    # the generic "Please find your invoice" while the shop's message went
-    # only to the text alternative. Same defect as the one-off invoice path;
-    # see InvoiceEmailService._html_body_paragraphs.
-    if config.invoice_email_template and body:
-        body_paragraphs = [p.strip() for p in body.split('\n\n') if p.strip()]
-    else:
-        body_paragraphs = [
-            f"Dear {customer.name},",
-            "Please find your invoice for recent services below.",
-        ]
-
+    from apps.billing.services.invoice_email_service import InvoiceEmailService
     try:
-        from core.email_utils import send_branded_email
-        sent_count = send_branded_email(
-            subject=subject,
-            recipient_list=[recipient_email],
-            headline=f'Invoice {invoice.invoice_number}',
-            body_paragraphs=body_paragraphs,
-            detail_rows=[
-                ('Invoice #', invoice.invoice_number),
-                ('Date', invoice.invoice_date.strftime('%B %d, %Y')),
-                ('Due date', invoice.due_date.strftime('%B %d, %Y')),
-                ('Total', f'${invoice.total:,.2f}', 'strong'),
-            ],
-            button_text='Pay invoice' if pay_url else None,
-            button_url=pay_url,
-            tenant=invoice.tenant,
-            plain_text=body,
-            headers={'X-SES-MESSAGE-TAGS': f'rs_invoice_id={invoice.id}'},
+        service = InvoiceEmailService(tenant=invoice.tenant)
+        success, message = service.send_invoice_email(
+            customer_id=customer.id,
+            recipient_email=recipient_email,
+            invoice=invoice,
+            invoice_number=invoice.invoice_number,
+            invoice_date=invoice.invoice_date,
         )
-        return sent_count > 0
     except Exception as e:
         logger.error(
             f"Failed to send batch invoice email for {invoice.invoice_number}: {e}"
         )
         return False
+
+    if not success:
+        logger.warning(
+            f"Batch invoice email for {invoice.invoice_number} not sent: {message}"
+        )
+    return success
 
 
 # =============================================================================

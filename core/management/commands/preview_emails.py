@@ -82,6 +82,8 @@ class Command(BaseCommand):
 
         pages = []
         pages += self._invoice_previews(out_dir, tenant)
+        pages += self._direct_template_previews(out_dir, tenant)
+        pages += self._branded_previews(out_dir, tenant)
         pages += self._notification_previews(out_dir, tenant)
         index = self._write_index(out_dir, pages)
 
@@ -139,6 +141,124 @@ class Command(BaseCommand):
                 data, payment_link=pay_link,
                 view_link='https://example.invalid/invoice/',
             )
+            pages.append({'title': title, 'file': self._write(out_dir, name, html)})
+        return pages
+
+    def _direct_template_previews(self, out_dir, tenant):
+        """Emails rendered straight from a template file, not a DB row."""
+        import decimal
+
+        from django.template.loader import render_to_string
+
+        from core.models.email_branding import EmailBrandingConfig
+
+        branding = EmailBrandingConfig.get_tenant_context(tenant)
+        paid_invoice = {
+            'invoice_number': 'INV-1042', 'total': decimal.Decimal('1337.62'),
+            'amount_due': decimal.Decimal('0.00'),
+        }
+        partial_invoice = dict(paid_invoice, amount_due=decimal.Decimal('637.62'))
+        payment = {
+            'amount': decimal.Decimal('700.00'),
+            'get_payment_method_display': 'Card',
+            'payment_date': datetime.date(2026, 8, 25),
+            'reference_number': 'PMT-2201',
+        }
+        fixtures = [
+            ('payment receipt — paid in full', 'payment_received_paid.html',
+             'emails/notifications/payment_received.html',
+             {'branding': branding, 'invoice': paid_invoice,
+              'payment': dict(payment, amount=decimal.Decimal('1337.62')),
+              'pay_url': '', 'receipt_pdf_url': 'https://example.invalid/receipt.pdf'}),
+            ('payment receipt — partial payment', 'payment_received_partial.html',
+             'emails/notifications/payment_received.html',
+             {'branding': branding, 'invoice': partial_invoice, 'payment': payment,
+              'pay_url': 'https://example.invalid/pay/',
+              'receipt_pdf_url': 'https://example.invalid/receipt.pdf'}),
+            ('customer portal invitation', 'customer_invitation.html',
+             'emails/customer_invitation.html',
+             {'branding': branding, 'recipient_name': 'Dana',
+              'inviter_name': 'Ray Duncan', 'customer_name': 'Penske Truck Leasing',
+              'shop_name': branding.get('company_name', 'RS Systems'),
+              'invite_url': 'https://rssystems.io/app/invite/3f9c2a71b64d/'}),
+        ]
+        pages = []
+        for title, name, template, context in fixtures:
+            html = render_to_string(template, context)
+            pages.append({'title': title, 'file': self._write(out_dir, name, html)})
+        return pages
+
+    def _branded_previews(self, out_dir, tenant):
+        """send_branded_email() callers, through the real rendering half.
+
+        The kwargs are representative samples of what the call sites pass —
+        the context assembly itself is render_branded_email, so the shell,
+        identity rules and row normalization cannot drift from a real send.
+        """
+        from core.email_utils import render_branded_email
+
+        fixtures = [
+            ('owner — payment received', 'branded_owner_payment.html', dict(
+                subject='Payment: $84.75 from Penske Truck Leasing (paid in full)',
+                headline='Penske Truck Leasing just paid $84.75.',
+                lede='Applied to invoice INV-1042.',
+                body_paragraphs=[],
+                detail_rows=[
+                    ('Customer', 'Penske Truck Leasing'),
+                    ('Invoice', 'INV-1042'),
+                    ('Amount paid', '$84.75', 'strong money'),
+                    ('Method', 'Card'),
+                    ('Date', 'August 25, 2026'),
+                    ('Invoice total', '$84.75'),
+                    ('Total paid', '$84.75'),
+                    ('Balance', '$0.00', 'strong money'),
+                ],
+                tenant=tenant,
+            )),
+            ('customer — combined fleet receipt', 'branded_combined_receipt.html', dict(
+                subject='Your receipt from The Shop — $1,337.62 across 3 invoices',
+                headline='Payment received — thank you.',
+                lede='Your payment of $1,337.62 was applied across 3 invoices as shown below.',
+                body_paragraphs=[],
+                detail_rows=[
+                    ('Amount received', '$1,337.62', 'strong money'),
+                    ('Method', 'Check'),
+                    ('Date', 'August 25, 2026'),
+                    ('Invoice INV-1039', '$425.00 — paid in full'),
+                    ('Invoice INV-1040', '$512.62 — paid in full'),
+                    ('Invoice INV-1042', '$400.00 — $84.75 remaining'),
+                ],
+                tenant=tenant,
+            )),
+            ('customer — review request', 'branded_review_request.html', dict(
+                subject='How was your experience?',
+                headline='How was your experience with us?',
+                body_paragraphs=[
+                    'Thanks for trusting us with your windshield. If we did a '
+                    'good job, a quick Google review helps other drivers find us.',
+                ],
+                button_text='Leave a Google Review',
+                button_url='https://example.invalid/review/',
+                secondary_button_text='Unsubscribe from review requests',
+                secondary_button_url='https://example.invalid/opt-out/',
+                tenant=tenant,
+            )),
+            ('platform — trial ending alert', 'branded_trial_alert.html', dict(
+                subject='Your trial ends in 3 days',
+                headline='Your trial ends in 3 days.',
+                body_paragraphs=[
+                    'Pick a plan before Thursday to keep your shop running '
+                    'without interruption. Your data stays put either way.',
+                ],
+                button_text='Choose a plan',
+                button_url='https://rssystems.io/owner/billing/',
+                tenant=tenant,
+                platform=True,
+            )),
+        ]
+        pages = []
+        for title, name, kwargs in fixtures:
+            html, _text = render_branded_email(**kwargs)
             pages.append({'title': title, 'file': self._write(out_dir, name, html)})
         return pages
 

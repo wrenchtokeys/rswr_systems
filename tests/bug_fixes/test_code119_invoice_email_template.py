@@ -174,7 +174,16 @@ class SendInvoiceEmailTemplateTests(TestCase):
 
 
 class BatchInvoiceEmailTemplateTests(TestCase):
-    """Unit tests for template application in _send_batch_invoice_email."""
+    """The batch path delegates to the one invoice-email path.
+
+    _send_batch_invoice_email used to apply the CODE-119 template itself in
+    a second copy of the logic (and a third email design). It now hands the
+    invoice to InvoiceEmailService.send_invoice_email, whose own tests
+    above pin the template behaviour — both halves included. What is left
+    to pin here is the delegation: the existing record is what gets sent.
+    """
+
+    SERVICE = 'apps.billing.services.invoice_email_service.InvoiceEmailService'
 
     def _make_invoice(self):
         invoice = MagicMock()
@@ -183,8 +192,10 @@ class BatchInvoiceEmailTemplateTests(TestCase):
         invoice.due_date = date(2026, 4, 20)
         invoice.total = Decimal('320.00')
         customer = MagicMock()
+        customer.id = 7
         customer.name = 'Big Fleet Co'
         customer.email = 'fleet@bigco.com'
+        customer.repair_preferences.billing_email = ''
         invoice.customer = customer
         tenant = MagicMock()
         tenant.name = 'BatchShop'
@@ -199,73 +210,33 @@ class BatchInvoiceEmailTemplateTests(TestCase):
         config.invoice_email_template = template
         return config
 
-    @patch('core.email_utils.send_branded_email', return_value=1)
-    def test_batch_uses_template_when_configured(self, mock_send):
+    def test_batch_sends_the_existing_record_through_the_service(self):
         from apps.billing.tasks import _send_batch_invoice_email
         invoice = self._make_invoice()
-        config = self._make_config(
-            template='Hi {customer_name}, batch invoice {invoice_number} total {total}.'
-        )
+        config = self._make_config()
 
-        result = _send_batch_invoice_email(invoice, config)
+        with patch(self.SERVICE) as MockService:
+            MockService.return_value.send_invoice_email.return_value = (True, 'ok')
+            result = _send_batch_invoice_email(invoice, config)
 
         self.assertTrue(result)
-        body = mock_send.call_args[1]['plain_text']
-        self.assertIn('Big Fleet Co', body)
-        self.assertIn('BATCH-007', body)
-        self.assertIn('$320.00', body)
-        # Rendered template — default preamble should NOT appear
-        self.assertNotIn('Please find attached', body)
+        MockService.assert_called_once_with(tenant=invoice.tenant)
+        kwargs = MockService.return_value.send_invoice_email.call_args.kwargs
+        # The record itself — never a repair lookback that could re-derive
+        # different line items than the invoice the customer will be paying.
+        self.assertIs(kwargs['invoice'], invoice)
+        self.assertEqual(kwargs['invoice_number'], 'BATCH-007')
+        self.assertEqual(kwargs['invoice_date'], date(2026, 3, 21))
+        self.assertEqual(kwargs['recipient_email'], 'fleet@bigco.com')
 
-    @patch('core.email_utils.send_branded_email', return_value=1)
-    def test_batch_template_also_reaches_the_html_half(self, mock_send):
-        """The shop's copy has to land where the customer actually reads it.
-
-        `plain_text` is the alternative almost nobody sees. The template
-        used to stop there while the HTML kept saying "Please find your
-        invoice for recent services below."
-        """
+    def test_batch_reports_a_failed_send_as_false(self):
         from apps.billing.tasks import _send_batch_invoice_email
         invoice = self._make_invoice()
-        config = self._make_config(
-            template='Hi {customer_name}, batch invoice {invoice_number} total {total}.'
-        )
 
-        _send_batch_invoice_email(invoice, config)
+        with patch(self.SERVICE) as MockService:
+            MockService.return_value.send_invoice_email.return_value = (
+                False, 'no line items'
+            )
+            result = _send_batch_invoice_email(invoice, self._make_config())
 
-        paragraphs = mock_send.call_args[1]['body_paragraphs']
-        self.assertIn('Big Fleet Co', ' '.join(paragraphs))
-        self.assertNotIn('Please find your invoice', ' '.join(paragraphs))
-
-    @patch('core.email_utils.send_branded_email', return_value=1)
-    def test_batch_falls_back_when_template_blank(self, mock_send):
-        from apps.billing.tasks import _send_batch_invoice_email
-        invoice = self._make_invoice()
-        config = self._make_config(template='')
-
-        result = _send_batch_invoice_email(invoice, config)
-
-        self.assertTrue(result)
-        body = mock_send.call_args[1]['plain_text']
-        # Default body has "Please find attached"
-        self.assertIn('Please find attached', body)
-        # ...and the HTML half keeps its own default preamble.
-        self.assertIn(
-            'Please find your invoice',
-            ' '.join(mock_send.call_args[1]['body_paragraphs']),
-        )
-
-    @patch('core.email_utils.send_branded_email', return_value=1)
-    def test_batch_falls_back_on_unknown_placeholder(self, mock_send):
-        from apps.billing.tasks import _send_batch_invoice_email
-        invoice = self._make_invoice()
-        config = self._make_config(
-            template='Hi {customer_name}, ref {nonexistent_key}.'
-        )
-
-        result = _send_batch_invoice_email(invoice, config)
-
-        self.assertTrue(result)
-        # Should fall back to default body — doesn't crash
-        body = mock_send.call_args[1]['plain_text']
-        self.assertIn('Please find attached', body)
+        self.assertFalse(result)

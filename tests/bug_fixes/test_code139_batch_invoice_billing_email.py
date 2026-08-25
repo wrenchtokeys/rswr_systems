@@ -87,14 +87,30 @@ class BatchInvoiceBillingEmailTest(TestCase):
         self.config = BillingConfig.get_for_tenant(self.tenant)
 
     # ------------------------------------------------------------------
+    # _send_batch_invoice_email now delegates the send to
+    # InvoiceEmailService (the one invoice-email path), so these tests
+    # patch the service and assert the resolved recipient it was handed.
+    # The CODE-139 rule under test is unchanged: billing_email wins,
+    # customer.email is the fallback, no email anywhere means no send.
+    # ------------------------------------------------------------------
+
+    SERVICE = 'apps.billing.services.invoice_email_service.InvoiceEmailService'
+
+    def _mock_service(self, MockService, success=True):
+        MockService.return_value.send_invoice_email.return_value = (
+            success, 'ok' if success else 'boom'
+        )
+        return MockService.return_value.send_invoice_email
+
+    # ------------------------------------------------------------------
     # 1. Sends to billing_email when both billing_email and customer.email exist
     # ------------------------------------------------------------------
-    @patch('apps.billing.tasks.send_mail')
-    def test_prefers_billing_email_over_customer_email(self, mock_send):
+    @patch(SERVICE)
+    def test_prefers_billing_email_over_customer_email(self, MockService):
         """When billing_email is set, invoice goes to billing_email, not customer.email."""
         from apps.billing.tasks import _send_batch_invoice_email
 
-        mock_send.return_value = 1
+        mock_send = self._mock_service(MockService)
         customer = _make_customer(self.tenant, email='general@eos.com')
         CustomerRepairPreference.objects.create(
             customer=customer,
@@ -106,23 +122,19 @@ class BatchInvoiceBillingEmailTest(TestCase):
 
         self.assertTrue(result)
         mock_send.assert_called_once()
-        call_kwargs = mock_send.call_args
-        recipient_list = (
-            call_kwargs.kwargs.get('recipient_list')
-            or call_kwargs.args[3]  # positional arg position
+        self.assertEqual(
+            mock_send.call_args.kwargs['recipient_email'], 'ap@eos.com'
         )
-        self.assertIn('ap@eos.com', recipient_list)
-        self.assertNotIn('general@eos.com', recipient_list)
 
     # ------------------------------------------------------------------
     # 2. Falls back to customer.email when billing_email is empty
     # ------------------------------------------------------------------
-    @patch('apps.billing.tasks.send_mail')
-    def test_falls_back_to_customer_email(self, mock_send):
+    @patch(SERVICE)
+    def test_falls_back_to_customer_email(self, MockService):
         """When billing_email is blank, customer.email is used as fallback."""
         from apps.billing.tasks import _send_batch_invoice_email
 
-        mock_send.return_value = 1
+        mock_send = self._mock_service(MockService)
         customer = _make_customer(self.tenant, email='contact@fleet.com')
         CustomerRepairPreference.objects.create(
             customer=customer,
@@ -133,23 +145,19 @@ class BatchInvoiceBillingEmailTest(TestCase):
         result = _send_batch_invoice_email(invoice, self.config)
 
         self.assertTrue(result)
-        mock_send.assert_called_once()
-        call_kwargs = mock_send.call_args
-        recipient_list = (
-            call_kwargs.kwargs.get('recipient_list')
-            or call_kwargs.args[3]
+        self.assertEqual(
+            mock_send.call_args.kwargs['recipient_email'], 'contact@fleet.com'
         )
-        self.assertIn('contact@fleet.com', recipient_list)
 
     # ------------------------------------------------------------------
     # 3. Sends to billing_email even when customer.email is NULL (fleet AP-only accounts)
     # ------------------------------------------------------------------
-    @patch('apps.billing.tasks.send_mail')
-    def test_sends_when_only_billing_email_set(self, mock_send):
+    @patch(SERVICE)
+    def test_sends_when_only_billing_email_set(self, MockService):
         """Fleet customer with billing_email but no customer.email: invoice is sent."""
         from apps.billing.tasks import _send_batch_invoice_email
 
-        mock_send.return_value = 1
+        mock_send = self._mock_service(MockService)
         customer = _make_customer(self.tenant, email=None)  # no general email
         CustomerRepairPreference.objects.create(
             customer=customer,
@@ -160,22 +168,19 @@ class BatchInvoiceBillingEmailTest(TestCase):
         result = _send_batch_invoice_email(invoice, self.config)
 
         self.assertTrue(result, 'Should send when billing_email is present even with no customer.email')
-        mock_send.assert_called_once()
-        call_kwargs = mock_send.call_args
-        recipient_list = (
-            call_kwargs.kwargs.get('recipient_list')
-            or call_kwargs.args[3]
+        self.assertEqual(
+            mock_send.call_args.kwargs['recipient_email'], 'accounts@penske.com'
         )
-        self.assertIn('accounts@penske.com', recipient_list)
 
     # ------------------------------------------------------------------
     # 4. Returns False (and does NOT send) when no email at all
     # ------------------------------------------------------------------
-    @patch('apps.billing.tasks.send_mail')
-    def test_skips_when_no_email_anywhere(self, mock_send):
-        """Customer with no email at all → returns False, send_mail not called."""
+    @patch(SERVICE)
+    def test_skips_when_no_email_anywhere(self, MockService):
+        """Customer with no email at all → returns False, nothing sent."""
         from apps.billing.tasks import _send_batch_invoice_email
 
+        mock_send = self._mock_service(MockService)
         customer = _make_customer(self.tenant, email=None)
         # No CustomerRepairPreference → exception path → falls back to None
         invoice = _make_invoice(customer, self.tenant)
@@ -188,12 +193,12 @@ class BatchInvoiceBillingEmailTest(TestCase):
     # ------------------------------------------------------------------
     # 5. Falls back gracefully when CustomerRepairPreference does not exist
     # ------------------------------------------------------------------
-    @patch('apps.billing.tasks.send_mail')
-    def test_no_repair_preferences_falls_back_to_customer_email(self, mock_send):
+    @patch(SERVICE)
+    def test_no_repair_preferences_falls_back_to_customer_email(self, MockService):
         """No CustomerRepairPreference → uses customer.email without error."""
         from apps.billing.tasks import _send_batch_invoice_email
 
-        mock_send.return_value = 1
+        mock_send = self._mock_service(MockService)
         customer = _make_customer(self.tenant, email='owner@company.com')
         # Deliberately no CustomerRepairPreference record
         invoice = _make_invoice(customer, self.tenant)
@@ -201,20 +206,16 @@ class BatchInvoiceBillingEmailTest(TestCase):
         result = _send_batch_invoice_email(invoice, self.config)
 
         self.assertTrue(result)
-        mock_send.assert_called_once()
-        call_kwargs = mock_send.call_args
-        recipient_list = (
-            call_kwargs.kwargs.get('recipient_list')
-            or call_kwargs.args[3]
+        self.assertEqual(
+            mock_send.call_args.kwargs['recipient_email'], 'owner@company.com'
         )
-        self.assertIn('owner@company.com', recipient_list)
 
     # ------------------------------------------------------------------
-    # 6. Returns False when send_mail raises an exception
+    # 6. Returns False when the service raises an exception
     # ------------------------------------------------------------------
-    @patch('apps.billing.tasks.send_mail', side_effect=Exception('SMTP error'))
-    def test_returns_false_on_send_exception(self, mock_send):
-        """send_mail exception → returns False (does not raise)."""
+    @patch(SERVICE, side_effect=Exception('SMTP error'))
+    def test_returns_false_on_send_exception(self, MockService):
+        """A service blow-up → returns False (does not raise)."""
         from apps.billing.tasks import _send_batch_invoice_email
 
         customer = _make_customer(self.tenant, email='billing@fleet.com')
