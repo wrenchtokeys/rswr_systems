@@ -13,7 +13,7 @@ Usage:
 
 from django.core.management.base import BaseCommand
 from django.conf import settings
-from apps.technician_portal.models import Repair
+from apps.technician_portal.models import Repair, RepairPhotoCrop, Replacement
 import boto3
 import os
 
@@ -78,16 +78,23 @@ class Command(BaseCommand):
         # Get all photo references from database
         self.stdout.write('Fetching photo references from database...')
         db_photos = set()
-        repairs = Repair.objects.all()
 
-        for repair in repairs:
-            if repair.customer_submitted_photo:
+        # all_objects: soft-deleted jobs are restorable for 30 days, so their
+        # photos are NOT orphans. Replacements share the same photo fields and
+        # upload paths, so they must be enumerated too, or --delete eats them.
+        for service in list(Repair.all_objects.all()) + list(Replacement.all_objects.all()):
+            if service.customer_submitted_photo:
                 # Extract just the S3 key from the field
-                db_photos.add(repair.customer_submitted_photo.name)
-            if repair.damage_photo_before:
-                db_photos.add(repair.damage_photo_before.name)
-            if repair.damage_photo_after:
-                db_photos.add(repair.damage_photo_after.name)
+                db_photos.add(service.customer_submitted_photo.name)
+            if service.damage_photo_before:
+                db_photos.add(service.damage_photo_before.name)
+            if service.damage_photo_after:
+                db_photos.add(service.damage_photo_after.name)
+
+        # Tap-to-crop derivatives live under repair_photos/crops/.
+        for crop in RepairPhotoCrop.objects.all():
+            if crop.cropped_image:
+                db_photos.add(crop.cropped_image.name)
 
         self.stdout.write(f'Found {len(db_photos)} photo references in database\n')
 

@@ -1035,13 +1035,22 @@ class QuickJobForm(forms.Form):
     # 10MB nginx/Django cap, and a phone camera clears that on its own — the
     # old repair form always compressed, this one used to post raw and lose
     # the whole job to a 413.
+    # data-tap-crop: static/js/photo_tap_crop.js offers a "tap the break"
+    # modal after compression; the value names the crop_x_/crop_y_ hidden
+    # inputs the tap writes to.
     damage_photo_before = forms.ImageField(
         required=False,
-        widget=forms.ClearableFileInput(attrs={'accept': 'image/*', 'data-compress': '1'}),
+        widget=forms.ClearableFileInput(attrs={
+            'accept': 'image/*', 'data-compress': '1',
+            'data-tap-crop': 'damage_photo_before',
+        }),
     )
     damage_photo_after = forms.ImageField(
         required=False,
-        widget=forms.ClearableFileInput(attrs={'accept': 'image/*', 'data-compress': '1'}),
+        widget=forms.ClearableFileInput(attrs={
+            'accept': 'image/*', 'data-compress': '1',
+            'data-tap-crop': 'damage_photo_after',
+        }),
     )
     # Service location (S2): where the vehicle is for this job. Prefilled by
     # the template's picker JS from the chosen customer's address; clean()

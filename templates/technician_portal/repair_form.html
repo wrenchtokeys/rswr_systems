@@ -486,6 +486,7 @@
                                        name="damage_photo_before"
                                        id="id_damage_photo_before"
                                        accept="image/*"
+                                       data-tap-crop="damage_photo_before"
                                        class="mobile-camera-input">
                             </div>
                             {% if form.damage_photo_before.errors %}
@@ -529,6 +530,7 @@
                                        name="damage_photo_after"
                                        id="id_damage_photo_after"
                                        accept="image/*"
+                                       data-tap-crop="damage_photo_after"
                                        class="mobile-camera-input">
                             </div>
                             {% if form.damage_photo_after.errors %}
@@ -889,17 +891,30 @@
                             Back to Dashboard
                         </a>
                     </div>
+
+                    {% comment %}
+                    Tap-to-crop coordinates (percent of the displayed image),
+                    written by photo_tap_crop.js when the tech taps the break.
+                    Empty = skipped; the server only crops when both are set.
+                    {% endcomment %}
+                    <input type="hidden" name="crop_x_damage_photo_before" id="crop_x_damage_photo_before">
+                    <input type="hidden" name="crop_y_damage_photo_before" id="crop_y_damage_photo_before">
+                    <input type="hidden" name="crop_x_damage_photo_after" id="crop_x_damage_photo_after">
+                    <input type="hidden" name="crop_y_damage_photo_after" id="crop_y_damage_photo_after">
                 </form>
             </div>
         </div>
     </div>
 </div>
 
+{% include 'technician_portal/partials/photo_crop_modal.html' %}
+
 <!-- Scripts -->
 <script src="{% static 'js/form_autosave.js' %}"></script>
 <script src="{% static 'js/image_compress.js' %}"></script>
 <script src="{% static 'js/viscosity_suggestion.js' %}"></script>
 <script src="{% static 'js/repair_form.js' %}"></script>
+<script src="{% static 'js/photo_tap_crop.js' %}"></script>
 
 <!-- Customer type field toggle -->
 <script>

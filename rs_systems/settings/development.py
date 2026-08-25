@@ -86,6 +86,7 @@ else:
     MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
     os.makedirs(os.path.join(MEDIA_ROOT, 'repair_photos', 'before'), exist_ok=True)
     os.makedirs(os.path.join(MEDIA_ROOT, 'repair_photos', 'after'), exist_ok=True)
+    os.makedirs(os.path.join(MEDIA_ROOT, 'repair_photos', 'crops'), exist_ok=True)
 
 # =========================================
 # SECURITY

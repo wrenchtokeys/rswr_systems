@@ -158,6 +158,8 @@
             input.value = '';
             box.textContent = '';
             box.classList.add('hidden');
+            // Dropping the photo also drops any tap-to-crop tap on it.
+            if (window.PhotoTapCrop) window.PhotoTapCrop.clear(input);
         });
 
         box.appendChild(img);
@@ -209,6 +211,16 @@
                 }
                 if (file !== original) ImageCompressor.replaceInputFile(input, file);
                 if (box) renderPreview(box, file, input);
+                // Offer the photo to photo_tap_crop.js (if loaded) so the
+                // tech can tap the break for a saved close-up.
+                var offer;
+                try {
+                    offer = new CustomEvent('photocrop:offer', { detail: { file: file }, bubbles: true });
+                } catch (e) {
+                    offer = document.createEvent('CustomEvent');
+                    offer.initCustomEvent('photocrop:offer', true, false, { file: file });
+                }
+                input.dispatchEvent(offer);
             });
         });
     }

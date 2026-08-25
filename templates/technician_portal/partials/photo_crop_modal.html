@@ -1,0 +1,30 @@
+{% comment %}
+Tap-to-crop modal. Opened by static/js/photo_tap_crop.js after a damage
+photo is picked (repairs only): the tech taps the break, the tap lands in
+hidden crop_x_/crop_y_ inputs, and the server crops around it on save.
+Skippable — closing without confirming just uploads the photo as always.
+{% endcomment %}
+<div id="photoCropModal" class="modal-overlay hidden" data-modal data-modal-overlay>
+    <div class="modal-panel max-w-lg">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <h5 class="text-base font-semibold text-gray-900" id="photoCropTitle">Tap the break</h5>
+            <button type="button" data-modal-close class="btn-ghost btn-sm tap-target" aria-label="Close">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="p-4">
+            <p class="text-sm text-gray-500 mb-3" id="photoCropHint">Tap the damage so we can save a close-up with this job. Skip if you're in a hurry.</p>
+            <div class="relative inline-block w-full text-center">
+                <img id="photoCropImage" src="" alt="Damage photo"
+                     class="block max-w-full mx-auto rounded-lg select-none"
+                     style="max-height: 70vh; touch-action: manipulation;">
+                <div id="photoCropMarker" class="hidden" aria-hidden="true"
+                     style="position: absolute; width: 28px; height: 28px; border: 3px solid #fff; border-radius: 9999px; box-shadow: 0 0 0 2px rgba(0,0,0,.6), inset 0 0 0 2px rgba(0,0,0,.6); transform: translate(-50%, -50%); pointer-events: none;"></div>
+            </div>
+        </div>
+        <div class="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-100">
+            <button type="button" id="photoCropSkip" data-modal-close class="btn-ghost">Skip</button>
+            <button type="button" id="photoCropConfirm" class="btn-primary" disabled>Save close-up</button>
+        </div>
+    </div>
+</div>

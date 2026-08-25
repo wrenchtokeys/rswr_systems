@@ -393,6 +393,9 @@ def create_repair(request):
                     messages.error(request, "You don't have a technician profile to create repairs.")
                     return redirect('technician_dashboard')
 
+            from apps.technician_portal.services.photo_crops import process_tap_coordinates
+            process_tap_coordinates(repair, request.POST, technician=repair.technician)
+
             if charges:
                 _save_extra_charges(repair, charges, tenant, taxable=not repair.no_tax)
 
@@ -552,6 +555,9 @@ def update_repair(request, repair_id):
             updated_repair = form.save(commit=False)
 
             # Handle photo deletion
+            from apps.technician_portal.services.photo_crops import (
+                delete_crops_for, process_tap_coordinates,
+            )
             for field_name in ['damage_photo_before', 'damage_photo_after']:
                 delete_flag = request.POST.get(f'{field_name}-DELETE')
                 if delete_flag == 'true':
@@ -559,6 +565,7 @@ def update_repair(request, repair_id):
                     if current_photo:
                         current_photo.delete(save=False)
                         setattr(updated_repair, field_name, None)
+                    delete_crops_for(updated_repair, field_name)
 
             if not user_is_admin:
                 logger.info(f"UPDATE_REPAIR: Restoring technician_id from original_technician_id={original_technician_id}")
@@ -606,6 +613,11 @@ def update_repair(request, repair_id):
             updated_repair._assignment_actor_user_id = request.user.id
             updated_repair.save()
             form.save_m2m()
+
+            process_tap_coordinates(
+                updated_repair, request.POST,
+                technician=updated_repair.technician,
+            )
 
             # Completed just now and the customer still has an unused waiting
             # reward? Say so — nothing is applied silently anymore.

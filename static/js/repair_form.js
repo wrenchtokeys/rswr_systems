@@ -32,7 +32,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize autosave
     const autosave = new FormAutosave('repairForm', {
         saveDelay: 2000,
-        excludeFields: ['csrfmiddlewaretoken', 'damage_photo_before', 'damage_photo_after', 'customer_submitted_photo', 'repair_date'],
+        excludeFields: ['csrfmiddlewaretoken', 'damage_photo_before', 'damage_photo_after', 'customer_submitted_photo', 'repair_date',
+            // Tap-to-crop coords: restoring them would orphan them from a
+            // photo the autosave can't restore.
+            'crop_x_damage_photo_before', 'crop_y_damage_photo_before',
+            'crop_x_damage_photo_after', 'crop_y_damage_photo_after'],
         showIndicator: true,
         confirmRestore: true,
         onRestore: (data) => {
@@ -169,6 +173,8 @@ document.addEventListener('DOMContentLoaded', function() {
         deleteBtn.addEventListener('click', function() {
             previewContainer.innerHTML = '';
             inputElement.value = '';
+            // Dropping the photo also drops any tap-to-crop tap on it.
+            if (window.PhotoTapCrop) window.PhotoTapCrop.clear(inputElement);
         });
 
         infoDiv.appendChild(nameSpan);
@@ -239,12 +245,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Show preview of compressed image
                 createPhotoPreview(compressedFile, previewContainer, inputElement);
+                offerTapCrop(inputElement, compressedFile);
             } catch (error) {
                 console.error('Compression error:', error);
                 // Fall back to original file
                 createPhotoPreview(file, previewContainer, inputElement);
+                offerTapCrop(inputElement, file);
             }
         };
+    }
+
+    // Let photo_tap_crop.js (if loaded) offer the "tap the break" modal for
+    // the photo that actually ended up in the input. This form bypasses
+    // image_compress.js's auto-wiring, so it dispatches the event itself.
+    function offerTapCrop(inputElement, file) {
+        let evt;
+        try {
+            evt = new CustomEvent('photocrop:offer', { detail: { file: file }, bubbles: true });
+        } catch (e) {
+            evt = document.createEvent('CustomEvent');
+            evt.initCustomEvent('photocrop:offer', true, false, { file: file });
+        }
+        inputElement.dispatchEvent(evt);
     }
 
     // Attach photo change handlers
@@ -316,6 +338,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                             // Create preview
                             createPhotoPreview(compressedFile, previewContainer, inputElement);
+                            offerTapCrop(inputElement, compressedFile);
                         } catch (error) {
                             console.error('Compression error:', error);
                             // Fall back to original
@@ -323,6 +346,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             dataTransfer.items.add(file);
                             inputElement.files = dataTransfer.files;
                             createPhotoPreview(file, previewContainer, inputElement);
+                            offerTapCrop(inputElement, file);
                         }
                     }
                 } else {
