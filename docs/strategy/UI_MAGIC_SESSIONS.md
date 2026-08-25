@@ -18,7 +18,7 @@ session with no memory of this work can pick exactly one up and finish it.
 | 2 | S8 · Retire the second accent everywhere else (FAB, black pills) | **DONE** 2026-08-10 |
 | 3 | S9 · Motion primitives: press feedback + enter/exit | **DONE** 2026-08-10 |
 | 3 | S10 · View Transitions for list → detail continuity | **DONE** 2026-08-11 |
-| 3 | S11 · Skeletons and optimistic status changes | **DONE** 2026-08-25 |
+| 3 | S11 · Skeletons and optimistic status changes | **DONE** 2026-08-25 (PR #210) |
 | 3 | S12 · Auth pages: one brand mention, full-height, no marketing nav | **DONE** 2026-08-25 (PR #209) |
 | 3 | S13 · Icon language: Font Awesome solid → line-weight SVG sprite | TODO |
 | 4 | S14 · Landing: real product imagery instead of the fake mock | TODO |
@@ -626,7 +626,7 @@ Branch `feat/ui-s11-skeletons`. Both lists now say something during the second t
 spend waiting on the server, and marking invoices paid shows the answer before the
 round trip finishes — then puts back, visibly, whatever the server refuses.
 
-**What changed** (PR #TBD, branch `feat/ui-s11-skeletons`)
+**What changed** (PR #210, branch `feat/ui-s11-skeletons`)
 
 | File | Change |
 |---|---|
