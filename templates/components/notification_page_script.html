@@ -1,0 +1,59 @@
+{% comment %}
+Behaviour for a notification history page. Identical for both portals except the
+endpoint prefix, so it lives here rather than as two copies that drift.
+Params: notify_base (e.g. "/tech/notifications" or "/app/notifications").
+{% endcomment %}
+<script>
+(function() {
+    const NOTIFY_BASE = '{{ notify_base }}';
+    const list = document.getElementById('notification-page-list');
+    const markAllBtn = document.getElementById('mark-all-read-btn');
+
+    function getCsrfToken() {
+        const formEl = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (formEl) return formEl.value;
+        const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
+        return match ? decodeURIComponent(match[1]) : null;
+    }
+
+    function post(url) {
+        return fetch(url, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrfToken(), 'Content-Type': 'application/json'},
+        }).then(r => {
+            if (!r.ok) throw new Error(`Server error: ${r.status}`);
+            return r.json();
+        });
+    }
+
+    if (list) {
+        // Delegated, like the bell: rows are shared markup and may be re-rendered.
+        list.addEventListener('click', function(e) {
+            const row = e.target.closest('.notification-row');
+            if (!row || row.dataset.read === '1') return;
+            const id = row.dataset.notificationId;
+            if (!id) return;
+            window.NotificationRow.markRead(row);
+            post(`${NOTIFY_BASE}/${id}/mark-read/`).catch(err => console.error(err));
+        });
+    }
+
+    if (markAllBtn) {
+        markAllBtn.addEventListener('click', function() {
+            post(`${NOTIFY_BASE}/mark-all-read/`)
+                .then(data => {
+                    if (data.success) {
+                        UI.flash('All notifications marked as read', 'success');
+                        location.reload();
+                    } else {
+                        UI.toast(`Error: ${data.error}`, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    UI.toast('Failed to mark notifications as read', 'error');
+                });
+        });
+    }
+})();
+</script>

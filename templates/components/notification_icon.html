@@ -1,0 +1,22 @@
+{% comment %}
+The 32px tinted icon tile for a notification row. Inline SVG on purpose: S13
+still owes this codebase a line-weight sprite, and adding to the 1,281 Font
+Awesome usages would be work for that session to undo.
+Params: icon (key from notifications_ui.CATEGORY_STYLES), tint (classes).
+{% endcomment %}
+<span class="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center {{ tint }}" aria-hidden="true">
+    <svg class="w-[17px] h-[17px]" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        {% if icon == 'wrench' %}
+            <path d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-2-2 8-8 1.7-1.7"/><path d="M10 10 4 4"/><path d="M7 7 3 11l4 4 4-4"/>
+        {% elif icon == 'clipboard' %}
+            <rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="M9 13h6"/><path d="M9 17h4"/>
+        {% elif icon == 'clock' %}
+            <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+        {% elif icon == 'gift' %}
+            <rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8"/><path d="M12 8v13"/><path d="M12 8S10.5 3 8 3a2.5 2.5 0 0 0 0 5h4Zm0 0s1.5-5 4-5a2.5 2.5 0 0 1 0 5h-4Z"/>
+        {% else %}
+            <circle cx="12" cy="12" r="9"/><path d="M12 16v-5"/><path d="M12 8h.01"/>
+        {% endif %}
+    </svg>
+</span>

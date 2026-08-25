@@ -7,6 +7,12 @@ module.exports = {
     './templates/**/*.html',
     './apps/**/templates/**/*.html',
     './static/js/**/*.js',
+    // The tone tables in ui.py / email_ui.py / notifications_ui.py hold Tailwind
+    // classes as Python strings — the single source of truth for status and
+    // category colour. Nothing in a template spells them out, so without this
+    // glob the purge takes them and a status pill renders shape-only. Tailwind's
+    // extractor is a plain-text regex; the .py extension is not a problem.
+    './core/templatetags/*.py',
   ],
   safelist: [
     // saas/pricing.html composes lg:grid-cols-{{ plans|length }} (1–4 plans)

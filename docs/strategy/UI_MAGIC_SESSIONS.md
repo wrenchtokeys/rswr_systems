@@ -26,8 +26,8 @@ session with no memory of this work can pick exactly one up and finish it.
 | 4 | S16 · Landing: rhythm, dark section, sharper promise | TODO |
 | — | S17 · Stop shipping the Tailwind source to production | TODO |
 | Out | Email + notification chassis, replacement lifecycle | **DONE** 2026-08-24 (PR #200) |
-| Out | Invoice email onto the chassis | **DONE** 2026-08-24 (PR #202, merged — check deploy, see below) |
-| Out | In-app surfaces: notification bell + notification history | TODO — **next** |
+| Out | Invoice email onto the chassis | **DONE** 2026-08-24 (PR #202, merged 12:15 CDT, deployed 22:48 CDT) |
+| Out | In-app surfaces: notification bell + notification history | **DONE** 2026-08-24 (PR __PRNUM__) |
 
 ---
 
@@ -692,7 +692,7 @@ and is the main security dividend of Phase 1 — don't leave it on the table.
 
 ---
 
-# Phase 3 — Outbound: email and notifications ✅ DONE (PRs #200 + #202)
+# Phase 3 — Outbound: email and notifications ✅ DONE (PRs #200 + #202 + __PRNUM__)
 
 The design canvas that drove this:
 https://claude.ai/code/artifact/e43f623b-2e7c-4ea1-959e-93d17dbd7b6d
@@ -820,27 +820,97 @@ everything else.
 
 Tests: `tests/test_invoice_email_chassis.py` (21).
 
+## The in-app surfaces (2026-08-24, PR __PRNUM__)
+
+The bell and the two notification-history pages, onto the same parts as the
+emails. The design canvas' `Bell.dc.html` / `History.dc.html` artboards are the
+spec; this followed them.
+
+**One row, three surfaces.** `templates/components/notification_row.html` is the
+row; `notification_list.html` groups it under day headings; `notification_icon.html`
+is the 32 px tinted tile; `notification_filters.html` is the segmented filter.
+`core/templatetags/notifications_ui.py` holds the one tone table — category →
+icon, tint, short label — plus the time filters. The canvas' line was that the
+history row is the dropdown's row with two extra columns, so moving between them
+feels like zooming rather than navigating; that only stays true if it is literally
+the same include, which it now is.
+
+**What stays split, and why.** The doc asked whether the two history pages should
+share a component. The *row*, *filters* and *pagination* now do. The page chrome
+does not: the URLs differ, and the two audiences differ (a customer has no
+technician preference screen). That is the same platform-vs-shop line the email
+work drew — share the parts, not the page.
+
+**Unread is one signal.** It was three at once in the bell (a tinted row, a "New"
+pill, a bold title) and four on the history page (plus a `border-left: 4px solid`
+stripe that read as an error state). Now it is a 6 px brand dot in a gutter that
+is always reserved, so a row does not reflow when the dot clears.
+
+### Five live bugs on the way
+
+| | |
+|---|---|
+| **The poll ate its own click handlers** | The 30-second poll did `listContainer.innerHTML = html`. The click-to-mark-read handlers were bound once at page load with `querySelectorAll('.notification-item').forEach`, so **after the first tick, clicking an unread notification silently stopped marking it read** — for the entire rest of the session. Handling is delegated to the list container now, so rows survive any re-render. |
+| **The poll interpolated notification text into innerHTML** | The same rewrite built rows from a JS template literal: `${notification.title}`, `${notification.message}`, and `${notification.action_url}` into an href — raw. Those strings carry customer names, vehicle descriptions and shop-authored copy. The endpoint now returns HTML rendered from the shared partial, so it arrives Django-escaped and there is no second copy of the row markup to keep in step. |
+| **Technician mark-all-read never invalidated its cache** | `mark_all_read` uses a queryset `.update()`, which fires no `post_save` — so CODE-234's invalidation signal never ran for it. The badge went to zero on click and **bounced back to the stale count on the next poll**, for up to the 120-second TTL. The customer portal's equivalent had always cleared its own key; the technician one never did. The key now has one owner, `_unread_cache_key()`. |
+| **The customer's notification history was Bootstrap** | `list-group` / `card-body` / `form-select` / `page-link` / `bg-light` / `alert-info` / `col-md-4` — on an app that has never shipped Bootstrap. Almost none of it resolves to a rule in `style.css` or `app.css`, so the page rendered as browser defaults: a bare select, a bulleted pagination list, and **no unread treatment at all**. Its technician twin was a proper Tailwind page the whole time. Rebuilt on the shared parts. |
+| **Tailwind was purging the tone tables** | `tailwind.config.js` scanned `templates/`, `apps/**/templates/` and `static/js/` — not `.py`. The colour tables in `core/templatetags/` are Python strings, so the purge could not see them. `bg-yellow-200` — the background of the **"Customer Requested" status pill**, the first status every job passes through — was genuinely absent from the built `app.css`. Added `./core/templatetags/*.py` to `content`. This one predates the notification work and affects `ui.py` app-wide. |
+
+### Smaller corrections
+
+- **"0 minutes ago"** is what `timesince` renders for anything under a minute —
+  i.e. on the notification you are most likely to be looking at. The bell now
+  uses `short_age` ("Just now", "9m", "1h", "3d"); the history page uses absolute
+  clock times under a day heading, because a record you search is not a feed.
+- **The history pages defaulted to unread-only.** The bell's footer says "View
+  all notifications" and then landed on a page filtered to unread, so a tech
+  looking for the assignment they read this morning found an empty page. Default
+  is now everything; unread is a segment. `?show_read=false` still works.
+- **The bell only has server context on two pages.** `get_notification_context()`
+  has exactly one caller, and the technician dashboard has its own — so on every
+  other page the bell shipped empty and stayed empty for a full 30 seconds. It now
+  renders a neutral placeholder (never "You're all caught up", which would be a
+  false statement) and polls once immediately. `bell_prefetched` marks the two
+  contexts that are real.
+- `aria-expanded` was never updated, and Escape did not close the panel. Both do now.
+- The poll skipped its update when the payload was empty, so a list that had just
+  been emptied stayed on screen. The endpoint always returns rendered HTML.
+
+### Traps
+
+- **An empty `href` is not "the current page".** `{% querystring %}` renders the
+  empty string when it drops every param, and an empty href resolves to the
+  current URL *including its query string* — so the "All" segment was a no-op from
+  every other segment. Caught in review of the first render, not by a test.
+  Falls back to `request.path`.
+- **Tailwind's content globs are the whole safelist question.** The existing
+  `safelist` entries in `tailwind.config.js` exist because a class appears only in
+  JS or only in an `@layer`. A class that appears only in a **`.py` tone table**
+  has the same problem and no entry — and unlike a missing `@layer` class, it fails
+  silently as a pill with no background rather than an obviously unstyled element.
+  `tests/test_notification_surfaces.py` now asserts every class in `ui.py`'s and
+  `notifications_ui.py`'s tables is present in the built `app.css`.
+- **`created_at` is `auto_now_add`**, so a test fixture cannot backdate it on
+  `create()`. Only a `queryset.update()` can — which is also why the day-grouping
+  and short-age tests need one.
+- **A held payload is a stale payload.** "Don't rewrite the list while the panel
+  is open" and "mark rows read optimistically" are each right and together they
+  bite: the held HTML was fetched *before* the click, so applying it on close put
+  the dots back on rows the reader had just cleared. Any local read-state change
+  has to drop the held payload (`invalidateHeldPayload()`) and let the next poll
+  re-sync. Found by driving the real bell in a browser, not by reading it — the
+  window is 30 seconds wide and only opens if you mark something read with the
+  panel open.
+
+Tests: `tests/test_notification_surfaces.py` (40).
+
 ## Still open
 
-- **The in-app surfaces** in the canvas (notification bell, notifications page)
-  are designed but NOT built. This is the next session, and with the invoice
-  email folded in it is the last thing standing between this phase and done.
-  Where to start, verified 2026-08-24:
-  - `templates/includes/notification_bell.html` — the whole bell, markup and
-    script in one file. An unread row is marked **three ways at once** (tinted
-    background, "New" pill, bold title), and the `setInterval` at `:226` rewrites
-    the list every 30s (`:242`), so the unread state the reader was looking at
-    disappears under them mid-glance. Decide what unread looks like *once*, and
-    make the poll reconcile rather than replace.
-  - `timesince` renders "0 minutes ago" for anything under a minute — it wants
-    "Just now".
-  - Two notification history pages, not one:
-    `templates/technician_portal/notification_history.html` and
-    `templates/customer_portal/notification_history.html`. They are separate
-    audiences on purpose (see the platform-vs-shop rule above); check whether
-    they should share a component before rewriting either.
-  - The design canvas that drove #200 covers these screens:
-    https://claude.ai/code/artifact/e43f623b-2e7c-4ea1-959e-93d17dbd7b6d
+- **The message copy sweep.** The canvas has a third in-app artboard,
+  `InAppCopy.dc.html`, that rewrites the notification *titles and messages*
+  themselves — the strings built in `signals.py` and the seeded templates, not the
+  chrome around them. Untouched here: it is a content pass over the notification
+  templates, not a UI one, and it wants Drake's eye on the wording.
 - **The invoice's plain-text half** is still built in Python
   (`_build_email_body`) rather than rendered from the same context as the HTML.
   Accepted, not forgotten: it is correct today and two bug-fix suites pin it.
@@ -851,3 +921,17 @@ Tests: `tests/test_invoice_email_chassis.py` (21).
 - **Emoji in staff-only surfaces**: `technician_portal/admin.py`,
   `billing/admin.py` and `process_billing.py` still carry them in admin action
   labels and command output. Same sweep, no customer impact.
+- **#202 shipped late on 2026-08-24, riding another branch's deploy.** For most
+  of that day this section read "merged and still not deployed" — true when
+  written (16:20 CDT: `eb status` reported `app-4668a-…`, a *pre-merge* commit
+  carrying none of #202/#203/#204). It stopped being true at 22:48 CDT, when the
+  #205 session deployed `68dc31e9` and swept all four in behind it. Re-verified
+  2026-08-25 08:30 CDT: `eb status rs-systems-production` reports
+  `app-68dc-260824_224726507237`, and `git merge-base --is-ancestor` confirms
+  `68dc31e9` contains #202, #203 and #204. The branded invoice is live.
+
+  The lesson is not about #202. **In a repo running parallel sessions, "merged
+  but not deployed" has a shelf life measured in hours** — someone else's
+  deploy ships your commits without telling you, and a deploy claim written into
+  a doc rots faster than anything else in it. Date-stamp it, and re-run
+  `eb status` before repeating it rather than reading it forward.

@@ -441,6 +441,7 @@ def technician_dashboard(request):
         'unread_notifications': unread_notifications,
         'unread_count': unread_count,
         'recent_notifications': recent_notifications,
+        'bell_prefetched': True,
         'batch_repairs_approved': batch_repairs_approved.values() if batch_repairs_approved else [],
         'individual_repairs_approved': individual_repairs_approved,
         'batch_repairs_in_progress': batch_repairs_in_progress.values() if batch_repairs_in_progress else [],

@@ -1,0 +1,60 @@
+{% load notifications_ui %}
+{% comment %}
+One notification row — shared by the bell dropdown and both history pages, so
+"what an unread notification looks like" is decided once.
+
+**Unread is one signal: the dot.** It used to be three at once (a tinted row, a
+"New" pill and a bold title) and the history page added a fourth (a 4px left
+stripe that reads as an error state). The dot sits in a gutter that is always
+reserved, so a row does not shift when it clears.
+
+A row marks itself read when clicked — there is no separate "Mark read" button.
+The old history page had one on every unread row, which put two competing targets
+in the same row and meant reading a notification and opening it were different
+gestures.
+
+Params:
+  notification (required)
+  variant      "bell" (compact age, one column) or "page" (category + clock)
+Usage: {% include "components/notification_row.html" with notification=n variant="page" %}
+{% endcomment %}
+<a href="{{ notification.action_url|default:'#' }}"
+   class="notification-row flex items-start gap-2.5 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 focus-visible:bg-gray-50 focus:outline-none transition-colors {% if variant == 'page' %}px-4 sm:px-6 py-3.5{% else %}pl-2.5 pr-4 py-2.5{% endif %}"
+   data-notification-id="{{ notification.id }}"
+   data-read="{{ notification.read|yesno:'1,0' }}"
+   {% if variant == 'bell' %}role="menuitem"{% endif %}>
+
+    {# Always-present gutter — the dot appears in it, nothing reflows when it goes. #}
+    <span class="w-1.5 shrink-0 self-stretch flex justify-center pt-3">
+        <span class="notification-dot w-1.5 h-1.5 rounded-full bg-brand-600 {% if notification.read %}opacity-0{% endif %}"></span>
+        <span class="notification-sr-state sr-only">{% if not notification.read %}Unread. {% endif %}</span>
+    </span>
+
+    {% include "components/notification_icon.html" with icon=notification.category|notification_icon tint=notification.category|notification_tint %}
+
+    <span class="flex-1 min-w-0 flex flex-col gap-0.5">
+        <span class="notification-title text-sm leading-snug {% if notification.read %}font-medium text-gray-700{% else %}font-semibold text-gray-900{% endif %}">
+            {{ notification.title }}
+        </span>
+        <span class="text-[12.5px] leading-relaxed text-gray-500 {% if variant == 'bell' %}line-clamp-2{% endif %}">
+            {{ notification.message }}
+        </span>
+    </span>
+
+    {% if variant == 'page' %}
+        <span class="shrink-0 flex items-center gap-3 pt-0.5">
+            {% if notification.category %}
+                <span class="hidden sm:inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold {{ notification.category|notification_tint }}">
+                    {{ notification.category|notification_category_label }}
+                </span>
+            {% endif %}
+            <span class="text-xs text-gray-400 tabular-nums whitespace-nowrap">
+                <time datetime="{{ notification.created_at|date:'c' }}">{{ notification.created_at|notification_clock }}</time>
+            </span>
+        </span>
+    {% else %}
+        <span class="shrink-0 text-xs text-gray-400 tabular-nums pt-0.5 whitespace-nowrap">
+            <time datetime="{{ notification.created_at|date:'c' }}">{{ notification.created_at|short_age }}</time>
+        </span>
+    {% endif %}
+</a>
