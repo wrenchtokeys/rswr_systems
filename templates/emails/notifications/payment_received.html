@@ -21,8 +21,14 @@ carry it; nothing else in the email does.
 {% include "emails/components/headline.html" with headline="Payment received — thank you." lede="This invoice is paid in full. Nothing else is owed." %}
 {% endif %}
 
+{% comment %}
+The amount paid is the one number this email exists to confirm, so it
+leads as the hero — in green, because it was collected. The rows below
+carry the bookkeeping.
+{% endcomment %}
+{% with paid=payment.amount|money %}{% if paid %}{% include "emails/components/amount.html" with caption="Amount paid" amount=paid money=1 %}{% endif %}{% endwith %}
+
 {% include "emails/components/rows_start.html" %}
-    {% with paid=payment.amount|money %}{% if paid %}{% include "emails/components/row.html" with label="Amount paid" value=paid strong=1 money=1 %}{% endif %}{% endwith %}
     {% if payment.get_payment_method_display %}{% include "emails/components/row.html" with label="Method" value=payment.get_payment_method_display %}{% endif %}
     {% if payment.payment_date %}{% include "emails/components/row.html" with label="Paid on" value=payment.payment_date|date:"F j, Y" %}{% endif %}
     {% if payment.reference_number %}{% include "emails/components/row.html" with label="Reference" value=payment.reference_number %}{% endif %}

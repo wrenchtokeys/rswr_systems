@@ -189,7 +189,7 @@ class BatchInvoiceSentBeforeEmailTests(TestCase):
     # ------------------------------------------------------------------
 
     def test_send_batch_email_returns_true_on_success(self):
-        """Successful send_mail call → _send_batch_invoice_email returns True."""
+        """Successful service send → _send_batch_invoice_email returns True."""
         from apps.billing.tasks import _send_batch_invoice_email
 
         invoice = Invoice.objects.create(
@@ -208,21 +208,25 @@ class BatchInvoiceSentBeforeEmailTests(TestCase):
             amount_paid=0,
         )
 
-        with patch('apps.billing.tasks.send_mail', return_value=1) as mock_mail:
+        with patch(
+            'apps.billing.services.invoice_email_service'
+            '.InvoiceEmailService'
+        ) as MockService:
+            MockService.return_value.send_invoice_email.return_value = (True, 'ok')
             result = _send_batch_invoice_email(invoice, self.config)
 
         self.assertTrue(result)
-        mock_mail.assert_called_once()
-        # Verify fail_silently=False (so exceptions propagate and we can catch them)
-        _, kwargs = mock_mail.call_args
-        self.assertFalse(kwargs.get('fail_silently', True))
+        MockService.return_value.send_invoice_email.assert_called_once()
+        # The existing record is what gets sent — never a repair lookback.
+        kwargs = MockService.return_value.send_invoice_email.call_args.kwargs
+        self.assertIs(kwargs['invoice'], invoice)
 
     # ------------------------------------------------------------------
     # 6. _send_batch_invoice_email returns False on send_mail exception
     # ------------------------------------------------------------------
 
     def test_send_batch_email_returns_false_on_exception(self):
-        """send_mail raising an exception → returns False (doesn't re-raise)."""
+        """The service blowing up → returns False (does not re-raise)."""
         from apps.billing.tasks import _send_batch_invoice_email
 
         invoice = Invoice.objects.create(
@@ -241,7 +245,11 @@ class BatchInvoiceSentBeforeEmailTests(TestCase):
             amount_paid=0,
         )
 
-        with patch('apps.billing.tasks.send_mail', side_effect=Exception('SMTP error')):
+        with patch(
+            'apps.billing.services.invoice_email_service'
+            '.InvoiceEmailService',
+            side_effect=Exception('SMTP error'),
+        ):
             result = _send_batch_invoice_email(invoice, self.config)
 
         self.assertFalse(result)

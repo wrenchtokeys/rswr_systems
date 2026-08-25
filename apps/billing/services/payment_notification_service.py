@@ -186,10 +186,10 @@ class PaymentNotificationService:
             return False
 
         try:
-            status_text = 'PAID IN FULL' if invoice.status == 'PAID' else f'${invoice.amount_due:.2f} remaining'
+            status_text = 'paid in full' if invoice.status == 'PAID' else f'${invoice.amount_due:,.2f} remaining'
 
             subject = (
-                f"Payment: ${payment.amount:.2f} from {customer.name} "
+                f"Payment: ${payment.amount:,.2f} from {customer.name} "
                 f"({status_text})"
             )
 
@@ -198,28 +198,26 @@ class PaymentNotificationService:
             detail_rows = [
                 ('Customer', customer.name),
                 ('Invoice', invoice.invoice_number),
-                ('Amount', f'${payment.amount:.2f}'),
+                ('Amount paid', f'${payment.amount:,.2f}', 'strong money'),
                 ('Method', payment.get_payment_method_display()),
-                ('Date', str(payment.payment_date)),
+                ('Date', payment.payment_date.strftime('%B %d, %Y')),
             ]
             if payment.reference_number:
                 detail_rows.append(('Reference', payment.reference_number))
             detail_rows.extend([
-                ('', ''),  # spacer
-                ('Invoice Total', f'${invoice.total:.2f}'),
-                ('Total Paid', f'${invoice.amount_paid:.2f}'),
-                ('Balance', f'${invoice.amount_due:.2f}'),
-                ('Status', invoice.get_status_display()),
+                ('Invoice total', f'${invoice.total:,.2f}'),
+                ('Total paid', f'${invoice.amount_paid:,.2f}'),
+                ('Balance', f'${invoice.amount_due:,.2f}',
+                 'strong money' if invoice.amount_due == 0 else 'strong'),
             ])
 
             from core.email_utils import send_branded_email
             send_branded_email(
                 subject=subject,
                 recipient_list=[owner_email],
-                headline=f'Payment Received — ${payment.amount:.2f}',
-                body_paragraphs=[
-                    f'{customer.name} just paid ${payment.amount:.2f} on invoice {invoice.invoice_number}.',
-                ],
+                headline=f'{customer.name} just paid ${payment.amount:,.2f}.',
+                lede=f'Applied to invoice {invoice.invoice_number}.',
+                body_paragraphs=[],
                 detail_rows=detail_rows,
                 tenant=tenant,
             )
@@ -290,9 +288,9 @@ class PaymentNotificationService:
         per_invoice_rows = []
         for p in payments:
             inv = p.invoice
-            status_note = 'Paid in full' if inv.status == 'PAID' else f'${inv.amount_due:.2f} remaining'
+            status_note = 'paid in full' if inv.status == 'PAID' else f'${inv.amount_due:,.2f} remaining'
             per_invoice_rows.append(
-                (f'Invoice {inv.invoice_number}', f'${p.amount:.2f} — {status_note}')
+                (f'Invoice {inv.invoice_number}', f'${p.amount:,.2f} — {status_note}')
             )
 
         result = {'customer_sent': False, 'owner_sent': False}
@@ -310,25 +308,25 @@ class PaymentNotificationService:
         if recipient:
             try:
                 detail_rows = [
-                    ('Amount Received', f'${total:.2f}'),
+                    ('Amount received', f'${total:,.2f}', 'strong money'),
                     ('Method', method_display),
-                    ('Date', str(first.payment_date)),
+                    ('Date', first.payment_date.strftime('%B %d, %Y')),
                 ]
                 if reference:
                     detail_rows.append(('Reference', reference))
-                detail_rows.append(('', ''))
                 detail_rows.extend(per_invoice_rows)
 
                 from_email, _ = shop_sender(shop_name=tenant.name if tenant else None)
                 shop_name = tenant.name if tenant else 'RS Systems'
                 send_branded_email(
-                    subject=f'Your receipt from {shop_name} — ${total:.2f} across {len(payments)} invoices',
+                    subject=f'Your receipt from {shop_name} — ${total:,.2f} across {len(payments)} invoices',
                     recipient_list=[recipient],
-                    headline=f'Payment Received — ${total:.2f}',
-                    body_paragraphs=[
-                        f'Thank you! We received your payment of ${total:.2f} '
-                        f'and applied it across {len(payments)} invoices as shown below.',
-                    ],
+                    headline='Payment received — thank you.',
+                    lede=(
+                        f'Your payment of ${total:,.2f} was applied across '
+                        f'{len(payments)} invoices as shown below.'
+                    ),
+                    body_paragraphs=[],
                     detail_rows=detail_rows,
                     tenant=tenant,
                     from_email=from_email,
@@ -354,23 +352,20 @@ class PaymentNotificationService:
             try:
                 detail_rows = [
                     ('Customer', customer.name),
-                    ('Amount', f'${total:.2f}'),
+                    ('Amount paid', f'${total:,.2f}', 'strong money'),
                     ('Method', method_display),
-                    ('Date', str(first.payment_date)),
+                    ('Date', first.payment_date.strftime('%B %d, %Y')),
                 ]
                 if reference:
                     detail_rows.append(('Reference', reference))
-                detail_rows.append(('', ''))
                 detail_rows.extend(per_invoice_rows)
 
                 send_branded_email(
-                    subject=f'Payment: ${total:.2f} from {customer.name} ({len(payments)} invoices)',
+                    subject=f'Payment: ${total:,.2f} from {customer.name} ({len(payments)} invoices)',
                     recipient_list=[owner_email],
-                    headline=f'Payment Received — ${total:.2f}',
-                    body_paragraphs=[
-                        f'{customer.name} paid ${total:.2f}, applied across '
-                        f'{len(payments)} invoices.',
-                    ],
+                    headline=f'{customer.name} just paid ${total:,.2f}.',
+                    lede=f'Applied across {len(payments)} invoices as shown below.',
+                    body_paragraphs=[],
                     detail_rows=detail_rows,
                     tenant=tenant,
                 )

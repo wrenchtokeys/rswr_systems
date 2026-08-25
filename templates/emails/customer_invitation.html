@@ -1,54 +1,30 @@
 {% extends "emails/base.html" %}
+{% comment %}
+Fleet-contact portal invitation. Context comes from
+invitation_service.send_invitation_email: recipient_name, inviter_name,
+customer_name, shop_name, invite_url, branding.
+
+This file used to open its own <tr><td> inside the chassis's content cell
+— pre-chassis markup wearing a chassis extend, with the dead #1e40af/
+#2563eb palette hardcoded where the shop's brand colour belongs. The raw
+invite URL stays as a quiet fallback line: the token link IS the
+invitation, and a stripped or broken button must not strand the invitee.
+{% endcomment %}
+
+{% block email_title %}You're invited{% endblock %}
+{% block header_meta %}Portal invitation{% endblock %}
+{% block preheader %}{{ inviter_name }} invited you to manage {{ customer_name }} online.{% endblock %}
 
 {% block content %}
-<tr>
-    <td style="padding: 40px 30px;">
-        <!-- Header -->
-        <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 700; color: #1f2937;">
-            You're Invited!
-        </h1>
-        
-        <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #4b5563;">
-            Hi {{ recipient_name }},
-        </p>
-        
-        <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #4b5563;">
-            <strong>{{ inviter_name }}</strong> has invited you to manage <strong>{{ customer_name }}</strong>'s
-            vehicle glass service on {{ shop_name }}.
-        </p>
+{% include "emails/components/headline.html" with headline="You're invited." %}
 
-        <!-- Benefits Box -->
-        <div style="background: #f0f9ff; border-radius: 8px; padding: 20px; margin: 25px 0;">
-            <p style="margin: 0 0 15px 0; font-size: 14px; font-weight: 600; color: #1e40af;">
-                With your portal access, you can:
-            </p>
-            <ul style="margin: 0; padding-left: 20px; color: #1e40af;">
-                <li style="margin-bottom: 8px;">View and approve service requests</li>
-                <li style="margin-bottom: 8px;">Track repair and replacement status in real-time</li>
-                <li style="margin-bottom: 8px;">Access invoices and payment history</li>
-                <li style="margin-bottom: 8px;">Submit new service requests</li>
-            </ul>
-        </div>
+<p style="margin:16px 0 0 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:25px; color:#374151;">Hi {{ recipient_name }} — {{ inviter_name }} invited you to manage {{ customer_name }}'s glass service in {{ shop_name }}'s customer portal.</p>
 
-        <!-- CTA Button -->
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="{{ invite_url }}" 
-               style="display: inline-block; padding: 14px 32px; background: #2563eb; color: #ffffff; 
-                      font-size: 16px; font-weight: 600; text-decoration: none; border-radius: 8px;">
-                Accept Invitation
-            </a>
-        </div>
+<p style="margin:16px 0 0 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:25px; color:#374151;">You'll be able to approve work, follow repairs and replacements as they happen, request service, and see every invoice in one place.</p>
 
-        <p style="margin: 20px 0 0 0; font-size: 14px; line-height: 1.6; color: #6b7280;">
-            This invitation will expire in 7 days. If you have any questions, please contact 
-            {{ shop_name }} directly.
-        </p>
+{% include "emails/components/button.html" with text="Accept invitation" url=invite_url color=branding.primary_color %}
 
-        <!-- Link fallback -->
-        <p style="margin: 20px 0 0 0; font-size: 12px; color: #9ca3af;">
-            If the button doesn't work, copy and paste this link into your browser:<br>
-            <a href="{{ invite_url }}" style="color: #2563eb; word-break: break-all;">{{ invite_url }}</a>
-        </p>
-    </td>
-</tr>
+{% include "emails/components/note.html" with text="This invitation expires in 7 days. Questions? Reply to this email to reach "|add:shop_name|add:" directly." %}
+
+<p style="margin:14px 0 0 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:19px; color:#9ca3af; word-break:break-all;">If the button doesn't work, paste this link into your browser:<br><a href="{{ invite_url }}" style="color:#9ca3af;">{{ invite_url }}</a></p>
 {% endblock %}

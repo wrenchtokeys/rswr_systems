@@ -17,17 +17,21 @@ halves of the mail. Strings arrive RAW: Django escapes them on render, so
 nothing in this path calls html.escape() any more (doing so would print
 `&amp;lt;`).
 
-`line_items` carries the vehicle in its label the way the plain-text half
-does ("Unit 4521 · Windshield Repair"), rather than the old three-column
-table — a label/value row is the chassis's own idiom, it survives Outlook,
-and it stacks on a phone instead of squeezing three columns.
+The order is the reader's, not the ledger's: the amount due and the pay
+button come FIRST, then the invoice facts, then the itemization. A fleet
+invoice can run twenty line items; the one number and the one action must
+not sit below them. The items themselves render through
+`components/receipt.html`, grouped under their unit or vehicle — the old
+flat label/value list printed "Unit 4527 · Windshield Repair" three times
+in a row and gave every $50 line the same bold ink as the total.
 
 The plain-text half is still built in Python (`_build_email_body`), which
 is deliberate: it is correct, and CODE-119/CODE-178 pin its behaviour.
 
 Context contract:
   headline, lede, preheader, customer_name, invoice_number,
-  invoice_date_display, payment_terms_display, line_items[{label,value}],
+  invoice_date_display, payment_terms_display,
+  item_groups[{header, items:[{label,value}]}], subtotal_display,
   discount_display, tax_label, tax_display, total_display, points_line,
   payment_link, pay_button_text, portal_url, note, body_paragraphs
 {% endcomment %}
@@ -48,35 +52,31 @@ shop's message was invisible.
 <p style="margin:16px 0 0 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:25px; color:#374151;">{{ paragraph }}</p>
 {% endfor %}
 
-{% include "emails/components/rows_start.html" %}
-    {% if customer_name %}{% include "emails/components/row.html" with label="Billed to" value=customer_name %}{% endif %}
-    {% include "emails/components/row.html" with label="Invoice" value=invoice_number %}
-    {% if invoice_date_display %}{% include "emails/components/row.html" with label="Date" value=invoice_date_display %}{% endif %}
-    {% if payment_terms_display %}{% include "emails/components/row.html" with label="Payment terms" value=payment_terms_display %}{% endif %}
-{% include "emails/components/rows_end.html" %}
-
-{% include "emails/components/rows_start.html" %}
-    {% for item in line_items %}
-    {% include "emails/components/row.html" with label=item.label value=item.value %}
-    {% endfor %}
-    {% if discount_display %}{% include "emails/components/row.html" with label="Discount" value=discount_display %}{% endif %}
-    {% if tax_display %}{% include "emails/components/row.html" with label=tax_label value=tax_display %}{% endif %}
-    {% include "emails/components/row.html" with label="Total due" value=total_display strong=1 %}
-{% include "emails/components/rows_end.html" %}
-
-{% if points_line %}
-<p style="margin:14px 0 0 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:21px; color:#6b7280;">{{ points_line }}</p>
-{% endif %}
+{% include "emails/components/amount.html" with caption="Amount due" amount=total_display detail=payment_terms_display %}
 
 {% comment %}
 Paying is the action; viewing is the alternative. When the shop can't take
 payment online there is only one thing to do, so it becomes the button.
+The amount hero directly above carries the figure, so the button doesn't
+repeat it.
 {% endcomment %}
 {% if payment_link %}
 {% include "emails/components/button.html" with text=pay_button_text url=payment_link color=branding.primary_color %}
 {% include "emails/components/link.html" with text="View invoice online" url=portal_url color=branding.primary_color %}
 {% else %}
 {% include "emails/components/button.html" with text="View invoice online" url=portal_url color=branding.primary_color %}
+{% endif %}
+
+{% include "emails/components/rows_start.html" %}
+    {% if customer_name %}{% include "emails/components/row.html" with label="Billed to" value=customer_name %}{% endif %}
+    {% include "emails/components/row.html" with label="Invoice" value=invoice_number %}
+    {% if invoice_date_display %}{% include "emails/components/row.html" with label="Date" value=invoice_date_display %}{% endif %}
+{% include "emails/components/rows_end.html" %}
+
+{% include "emails/components/receipt.html" with groups=item_groups subtotal_display=subtotal_display discount_display=discount_display tax_label=tax_label tax_display=tax_display total_display=total_display %}
+
+{% if points_line %}
+<p style="margin:14px 0 0 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:21px; color:#6b7280;">{{ points_line }}</p>
 {% endif %}
 
 {% include "emails/components/note.html" with text=note %}

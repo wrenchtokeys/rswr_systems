@@ -1,0 +1,68 @@
+{% comment %}
+The itemized half of an invoice or receipt email. NOT rows_start/row —
+those are for metadata, where the label is a category and the value is
+the substance. On a line item the substance is the description, so it
+gets the ink and the price sits beside it in regular weight; the only
+row allowed to shout is the total.
+
+    {% include "emails/components/receipt.html" with groups=item_groups subtotal_display=subtotal_display discount_display=discount_display tax_label=tax_label tax_display=tax_display total_display=total_display %}
+
+groups            [{header, items: [{label, value}]}] — items grouped under
+                  the unit or vehicle they belong to, so a unit with three
+                  breaks prints its name once, not three times. An empty
+                  header renders no eyebrow (free-form charge lines, jobs
+                  with no vehicle on record).
+subtotal_display  pass it only when a discount or tax row will render;
+                  with neither, a subtotal is the total repeated.
+total_display     required. The label is fixed: "Total due".
+
+The shape is a receipt's: one rule opens the block, the items run
+without per-row rules (nineteen hairlines is a spreadsheet, not a bill),
+a rule closes the items, the summary stays quiet, and the total sits
+alone between two rules with the largest figure on the page after the
+amount hero. Price cells are nowrap; long descriptions wrap under
+themselves and the eyebrow keeps them attached to their vehicle.
+{% endcomment %}
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:26px; border-top:1px solid #e8eaed;">
+{% for group in groups %}
+    {% if group.header %}
+    <tr>
+        <td colspan="2" style="padding:{% if forloop.first %}16px{% else %}18px{% endif %} 0 5px 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:11px; font-weight:600; line-height:16px; letter-spacing:0.6px; text-transform:uppercase; color:#9ca3af;">{{ group.header }}</td>
+    </tr>
+    {% endif %}
+    {% for item in group.items %}
+    <tr>
+        <td style="padding:{% if forloop.first and forloop.parentloop.first and not group.header %}16px{% else %}5px{% endif %} 0 5px 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; line-height:21px; color:#374151; vertical-align:top;">{{ item.label }}</td>
+        <td align="right" style="padding:{% if forloop.first and forloop.parentloop.first and not group.header %}16px{% else %}5px{% endif %} 0 5px 16px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; line-height:21px; color:#111827; text-align:right; vertical-align:top; white-space:nowrap;">{{ item.value }}</td>
+    </tr>
+    {% endfor %}
+{% endfor %}
+{% if subtotal_display or discount_display or tax_display %}
+    <tr><td colspan="2" style="padding-top:11px; border-bottom:1px solid #e8eaed; font-size:1px; line-height:1px;">&nbsp;</td></tr>
+    {% if subtotal_display %}
+    <tr>
+        <td style="padding:12px 0 5px 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:19px; color:#6b7280;">Subtotal</td>
+        <td align="right" style="padding:12px 0 5px 16px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; line-height:19px; color:#111827; text-align:right; white-space:nowrap;">{{ subtotal_display }}</td>
+    </tr>
+    {% endif %}
+    {% if discount_display %}
+    <tr>
+        <td style="padding:5px 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:19px; color:#6b7280;">Discount</td>
+        <td align="right" style="padding:5px 0 5px 16px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; line-height:19px; color:#111827; text-align:right; white-space:nowrap;">{{ discount_display }}</td>
+    </tr>
+    {% endif %}
+    {% if tax_display %}
+    <tr>
+        <td style="padding:5px 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:19px; color:#6b7280;">{{ tax_label }}</td>
+        <td align="right" style="padding:5px 0 5px 16px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; line-height:19px; color:#111827; text-align:right; white-space:nowrap;">{{ tax_display }}</td>
+    </tr>
+    {% endif %}
+    <tr><td colspan="2" style="padding-top:7px; font-size:1px; line-height:1px;">&nbsp;</td></tr>
+{% else %}
+    <tr><td colspan="2" style="padding-top:11px; font-size:1px; line-height:1px;">&nbsp;</td></tr>
+{% endif %}
+    <tr>
+        <td style="padding:13px 0; border-top:1px solid #e8eaed; border-bottom:1px solid #e8eaed; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; font-weight:600; line-height:24px; color:#111827;">Total due</td>
+        <td align="right" style="padding:13px 0 13px 16px; border-top:1px solid #e8eaed; border-bottom:1px solid #e8eaed; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:17px; font-weight:600; line-height:24px; letter-spacing:-0.3px; color:#111827; text-align:right; white-space:nowrap;">{{ total_display }}</td>
+    </tr>
+</table>
