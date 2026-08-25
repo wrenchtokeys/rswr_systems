@@ -159,11 +159,22 @@ class InvoiceEmailWearsTheShopBrandTests(TestCase):
 
 
 class InvoiceLineItemsTests(TestCase):
-    """A line item is a label/value row now, not a three-column table."""
+    """Line items render as a receipt: items grouped under their vehicle.
 
-    def test_fleet_line_carries_the_unit_noun(self):
-        html = _service()._build_html_email(_invoice_data())
-        self.assertIn('Unit 4471 · Windshield Repair', html)
+    The flat label/value list before this printed "Unit 4527 · Windshield
+    Repair" three times in a row for a unit with three breaks, and gave a
+    12-line fleet invoice nineteen identical bold hairline rows.
+    """
+
+    def test_fleet_items_group_under_the_unit_noun(self):
+        data = _invoice_data(line_items=[
+            _item('4471', 'Windshield Repair', 50.00),
+            _item('4471', 'Windshield Repair', 34.75),
+        ])
+        html = _service()._build_html_email(data)
+        # The unit heads the group once — not once per line.
+        self.assertEqual(html.count('Unit 4471'), 1)
+        self.assertEqual(html.count('Windshield Repair'), 2)
 
     def test_an_individual_is_named_by_their_vehicle(self):
         """CLAUDE.md's rule: the LABEL changes with who the customer is.
@@ -175,19 +186,32 @@ class InvoiceLineItemsTests(TestCase):
             line_items=[_item('2019 Ford F-150', 'Windshield Replacement', 420.00)],
         )
         html = _service()._build_html_email(data)
-        self.assertIn('2019 Ford F-150 · Windshield Replacement', html)
+        self.assertIn('2019 Ford F-150', html)
+        self.assertIn('Windshield Replacement', html)
         self.assertNotIn('Unit 2019 Ford F-150', html)
 
     def test_a_job_with_no_vehicle_prints_only_the_service(self):
+        """No group header at all — never a bare noun with no value."""
         data = _invoice_data(line_items=[_item('', 'Chip Repair', 40.00)])
         html = _service()._build_html_email(data)
         self.assertIn('Chip Repair', html)
-        self.assertNotIn('·', html.split('Chip Repair')[0][-40:])
+        self.assertNotIn('Unit ', html)
 
     def test_totals_appear(self):
         html = _service()._build_html_email(_invoice_data())
         self.assertIn('Total due', html)
         self.assertIn('$84.75', html)
+
+    def test_amounts_carry_thousands_separators(self):
+        """$1337.62 is a serial number; $1,337.62 is money."""
+        data = _invoice_data(
+            line_items=[_item('4471', 'Windshield Replacement', 1220.75)],
+            total=1337.62, tax_amount=116.87, tax_rate=9.5,
+        )
+        html = _service()._build_html_email(data)
+        self.assertIn('$1,337.62', html)
+        self.assertIn('$1,220.75', html)
+        self.assertNotIn('$1337.62', html)
 
     def test_tax_and_discount_rows_only_when_there_is_any(self):
         clean = _service()._build_html_email(_invoice_data())
@@ -203,6 +227,17 @@ class InvoiceLineItemsTests(TestCase):
         self.assertIn('Tax (8.5%)', html)
         self.assertIn('$6.19', html)
 
+    def test_a_subtotal_only_earns_its_row_when_something_separates_it(self):
+        """With no tax and no discount, a subtotal is the total repeated."""
+        clean = _service()._build_html_email(_invoice_data())
+        self.assertNotIn('Subtotal', clean)
+
+        taxed = _service()._build_html_email(_invoice_data(
+            tax_amount=6.19, tax_rate=8.5, total=90.94,
+        ))
+        self.assertIn('Subtotal', taxed)
+        self.assertIn('$84.75', taxed)  # the sum of the line items
+
     def test_a_missing_invoice_date_does_not_raise(self):
         """The old builder called .strftime() on it unguarded."""
         html = _service()._build_html_email(_invoice_data(invoice_date=None))
@@ -216,8 +251,11 @@ class InvoiceEmailActionsTests(TestCase):
         html = _service()._build_html_email(
             _invoice_data(), payment_link='https://rssystems.io/pay/42/tok/',
         )
-        self.assertIn('Pay invoice — $84.75', html)
+        self.assertIn('Pay invoice', html)
         self.assertIn('View invoice online', html)
+        # The amount hero above the button carries the figure.
+        self.assertIn('Amount due', html)
+        self.assertIn('$84.75', html)
 
     def test_viewing_is_the_button_when_it_cannot(self):
         """A shop with no Stripe Connect must not get a dead-end button."""

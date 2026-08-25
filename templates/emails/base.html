@@ -69,9 +69,14 @@ See docs/operations/SES_OPERATIONS.md before changing email content.
                already edge-to-edge there and 32 spends a tenth of the line. */
             .pad { padding-left: 24px !important; padding-right: 24px !important; }
             /* A row's value drops under its label instead of being squeezed
-               into a narrow column and wrapping mid-word. */
+               into a narrow column and wrapping mid-word. The label hands its
+               separator and bottom padding to the value below it — stacked,
+               each cell's own border drew a hairline BETWEEN a label and its
+               value — and the value gives up the 16px gap that separated the
+               two columns, which stacked becomes a stray indent. */
             .row-l, .row-v { display: block !important; width: 100% !important; text-align: left !important; }
-            .row-v { padding-top: 2px !important; }
+            .row-l { border-bottom: none !important; padding-bottom: 0 !important; }
+            .row-v { padding-top: 2px !important; padding-left: 0 !important; }
             .btn-a { display: block !important; text-align: center !important; }
         }
     </style>

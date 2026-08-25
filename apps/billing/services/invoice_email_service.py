@@ -261,7 +261,7 @@ class InvoiceEmailService:
 
         for item in invoice_data.line_items:
             vehicle = f"{unit_noun}{item.unit_number} - " if item.unit_number else ''
-            lines.append(f"  • {vehicle}{item.damage_type} - ${item.final_cost:.2f}")
+            lines.append(f"  • {vehicle}{item.damage_type} - ${item.final_cost:,.2f}")
             detail = description_detail(item.description, item.damage_type)
             if detail:
                 lines.append(f"    {detail[:100]}")
@@ -269,8 +269,8 @@ class InvoiceEmailService:
         lines.append("-" * 40)
 
         if invoice_data.total_discount > 0:
-            lines.append(f"Subtotal: ${invoice_data.subtotal:.2f}")
-            lines.append(f"Discounts: -${invoice_data.total_discount:.2f}")
+            lines.append(f"Subtotal: ${invoice_data.subtotal:,.2f}")
+            lines.append(f"Discounts: -${invoice_data.total_discount:,.2f}")
 
         if hasattr(invoice_data, 'tax_amount') and invoice_data.tax_amount > 0:
             has_breakdown = (
@@ -290,10 +290,10 @@ class InvoiceEmailService:
                 if getattr(invoice_data, 'special_tax_rate', 0) > 0:
                     lines.append(f"  Special Tax: {_fmt(invoice_data.special_tax_rate)}%")
             rate_display = f"{invoice_data.tax_rate:.3f}".rstrip('0').rstrip('.')
-            lines.append(f"Tax ({rate_display}%): ${invoice_data.tax_amount:.2f}")
+            lines.append(f"Tax ({rate_display}%): ${invoice_data.tax_amount:,.2f}")
 
         lines.extend([
-            f"Total: ${invoice_data.total:.2f}",
+            f"Total: ${invoice_data.total:,.2f}",
             "",
         ])
 
@@ -630,35 +630,50 @@ class InvoiceEmailService:
             _fb_base = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
             portal_url = f"{_fb_base}/app/invoices/"
 
-        # Line items as label/value rows. The vehicle rides in the label the
-        # way it does in the plain-text half — the old three-column table
-        # needed a column header to say what the first column meant, and
-        # squeezed three columns into a phone screen to do it.
+        # Line items grouped under the unit or vehicle they belong to, for
+        # components/receipt.html. The old flat list carried the vehicle in
+        # every row's label, so a unit with three breaks printed its name
+        # three times and a 12-line fleet invoice was a wall of duplicate
+        # prefixes. Grouping keys on the same column the flat labels used;
+        # the fleet-vs-individual noun rule (CLAUDE.md) lives in the group
+        # header now. Items with nothing on record share one headerless
+        # group — print nothing rather than a bare noun.
         unit_noun = 'Unit ' if _unit_column_label(invoice_data) == 'Unit #' else ''
-        line_items = []
+        item_groups = []
+        groups_by_header = {}
+        subtotal = 0
         for item in invoice_data.line_items:
-            damage_type = str(item.damage_type)
-            if item.unit_number:
-                label = f"{unit_noun}{item.unit_number} · {damage_type}"
-            else:
-                label = damage_type
-            line_items.append({
-                'label': label,
-                'value': f"${item.final_cost:.2f}",
+            unit = str(item.unit_number or '').strip()
+            header = f"{unit_noun}{unit}" if unit else ''
+            group = groups_by_header.get(header)
+            if group is None:
+                group = {'header': header, 'items': []}
+                groups_by_header[header] = group
+                item_groups.append(group)
+            group['items'].append({
+                'label': str(item.damage_type),
+                'value': f"${item.final_cost:,.2f}",
             })
+            subtotal += item.final_cost
 
         discount_display = ''
         if invoice_data.total_discount > 0:
-            discount_display = f"-${invoice_data.total_discount:.2f}"
+            discount_display = f"-${invoice_data.total_discount:,.2f}"
 
         tax_label = 'Tax'
         tax_display = ''
         if hasattr(invoice_data, 'tax_amount') and invoice_data.tax_amount > 0:
             rate_display = f"{invoice_data.tax_rate:.3f}".rstrip('0').rstrip('.')
             tax_label = f"Tax ({rate_display}%)"
-            tax_display = f"${invoice_data.tax_amount:.2f}"
+            tax_display = f"${invoice_data.tax_amount:,.2f}"
 
-        total_display = f"${invoice_data.total:.2f}"
+        # A subtotal only earns its row when something separates it from
+        # the total; with no discount and no tax it is the total repeated.
+        subtotal_display = ''
+        if discount_display or tax_display:
+            subtotal_display = f"${subtotal:,.2f}"
+
+        total_display = f"${invoice_data.total:,.2f}"
         payment_terms_display = str(invoice_data.payment_terms_display or '')
 
         # `strftime` on a missing date is how the old builder would have
@@ -687,14 +702,17 @@ class InvoiceEmailService:
             'invoice_number': str(invoice_data.invoice_number or ''),
             'invoice_date_display': invoice_date_display,
             'payment_terms_display': payment_terms_display,
-            'line_items': line_items,
+            'item_groups': item_groups,
+            'subtotal_display': subtotal_display,
             'discount_display': discount_display,
             'tax_label': tax_label,
             'tax_display': tax_display,
             'total_display': total_display,
             'points_line': points_line or '',
             'payment_link': payment_link or '',
-            'pay_button_text': f"Pay invoice — {total_display}",
+            # The amount hero above the button carries the figure; the
+            # button repeating it would print the total three times.
+            'pay_button_text': "Pay invoice",
             'portal_url': portal_url,
             'note': note,
         }

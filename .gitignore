@@ -105,3 +105,4 @@ coverage.xml
 *.code-workspace
 .claude/
 bin/tailwindcss
+email_previews/
