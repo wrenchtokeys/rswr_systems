@@ -19,7 +19,7 @@ session with no memory of this work can pick exactly one up and finish it.
 | 3 | S9 · Motion primitives: press feedback + enter/exit | **DONE** 2026-08-10 |
 | 3 | S10 · View Transitions for list → detail continuity | **DONE** 2026-08-11 |
 | 3 | S11 · Skeletons and optimistic status changes | TODO |
-| 3 | S12 · Auth pages: one brand mention, full-height, no marketing nav | TODO |
+| 3 | S12 · Auth pages: one brand mention, full-height, no marketing nav | **DONE** 2026-08-25 |
 | 3 | S13 · Icon language: Font Awesome solid → line-weight SVG sprite | TODO |
 | 4 | S14 · Landing: real product imagery instead of the fake mock | TODO |
 | 4 | S15 · Landing: trust bar rewrite | TODO |
@@ -127,6 +127,10 @@ Replaying only the failing modules takes ~7 min instead of another full hour.
 - **zsh does not word-split unquoted `$VAR`.** A `for f in $FILES` codemod loop runs once
   with every filename joined into one string, modifies nothing, and prints a log that
   looks like it worked. Run codemod loops under `bash -c` or `bash <<'EOF'`. (S8)
+- **Swapping a page's base template silently deletes whatever that base provided.**
+  `saas/base_public.html`'s footer was the only route to Terms and Privacy from the login
+  funnel, and its nav height was baked into every `min-h-[calc(100vh-4rem)]` below it.
+  Diff the *rendered* HTML before and after a base swap, not the template. (S12)
 - **A page can be full of `brand-*` classes and still leak RS blue.** Component CSS under
   `static/css/components/` and inline `<style>` blocks use raw hex, load *after* `app.css`,
   and win. Two files were overriding the shared `.btn-primary` this way (S7, S8). Grep for
@@ -613,11 +617,66 @@ Optimistic status transitions that roll back visibly on failure. One restrained 
 moment when an invoice is paid — confirmation, not confetti (R4 + the Part 4 guardrail:
 never animate money).
 
-## S12 · Auth pages: one brand mention, full-height, no marketing nav
+## S12 · Auth pages: one brand mention, full-height, no marketing nav — DONE
 
-`/login/` currently says "RS Systems" three times (marketing nav, brand panel, card
-heading) and the split panel stops mid-viewport leaving dead white space.
-Drop the marketing nav from auth pages, make the split full-height, say the brand once.
+`/login/` said "RS Systems" **seven** times, not the three this brief guessed at, and the
+split panel stopped mid-viewport leaving dead white space.
+Dropped the marketing nav from the auth pages, made the split full-height, said the brand once.
+
+**What changed** (branch `feat/ui-s12-auth-pages`)
+
+| File | Change |
+|---|---|
+| `templates/saas/login.html` | `saas/base_public.html` → `base_auth.html`; `min-h-[calc(100vh-4rem)]` → `min-h-screen`; card subcopy "Log in to your RS Systems account." → "Log in to continue."; hand-rolled footer → the shared include |
+| `templates/registration/password_reset_{form,done,confirm,complete}.html` | same base swap; `min-h-[calc(100vh-8rem)]` → `min-h-screen`; footer include `with wordmark=True` |
+| `templates/includes/auth_footer.html` | **new** — slim `Terms · Privacy` line, optional leading wordmark |
+| `tests/test_auth_page_shell.py` | **new** — 4 tests, the regression guard |
+
+**Notes**
+
+- **`base_auth.html` already existed and already did the job.** `signup.html`,
+  `customer_portal/register.html`, `registration/register_technician.html` and
+  `saas/email_confirmation_invalid.html` were all on it. Only login and the four
+  password-reset pages were still on the marketing shell. This session was mostly
+  *finding* that, not designing anything — the pattern to copy was `signup.html`.
+- **Count the brand from rendered HTML, not from the template.** The brief said three
+  mentions; the test found seven, because `base_public.html` contributes a nav wordmark
+  *and* a footer wordmark *and* a footer copyright, and login.html carried both a desktop
+  and an `lg:hidden` mobile `<h1>`. Only one of that last pair is ever painted, which is
+  why `/login/`'s budget in the test is 2 and everything else is 1. Strip
+  `<title>`/`<svg>` before counting or the invisible wordmarks inflate it.
+- **The nav was carrying Terms and Privacy.** Deleting the marketing shell from a page
+  silently deletes the legal links with it. `includes/auth_footer.html` exists to put
+  them back; that is the only thing `base_public.html` was legitimately providing here.
+- **Auth pages now get tenant branding.** `base_public.html` never emitted
+  `{% tenant_brand_css %}`; `base_auth.html` does. `/login/` is unaffected (no tenant
+  resolved → the tag renders nothing → RS blue), but a shop-scoped login now themes to
+  the shop, which is what that tag was written for.
+- **The `-4rem`/`-8rem` in the min-height was load-bearing.** It was subtracting nav and
+  footer. Swapping the base without also swapping the height leaves the exact dead strip
+  the session was opened to remove. Grep `min-h-\[calc\(100vh-` after any base change.
+- **Prove a template test fails first.** `git stash push -q <templates>`, run, `stash pop`
+  — seven seconds, and it is the difference between a guard and a green no-op. Ours
+  reported `7 not less than or equal to 2` on the old markup, which is also where the
+  real mention count came from.
+- **Verified:** all four password-reset URLs plus `/login/` render 200; screenshots at
+  1440×900 confirm full-height split, no nav, no site footer; `collectstatic` passes
+  under the production manifest storage (194 copied / 550 post-processed); no third-party
+  asset hosts in the rendered HTML; `tests.test_auth_page_shell` (4) green and
+  `test_primary_contact` + `test_e2e_today` + `test_step5_nav` + `test_url_routing` +
+  `test_auth_permissions` + `test_view_transitions` (110) green.
+
+**Left for later, deliberately**
+
+- `saas/invite_accept.html`, `saas/shop_join.html` and
+  `customer_portal/invitation_accept.html` are standalone `<!DOCTYPE>` documents with
+  their own `<head>`, not extenders of any base. They already have no marketing nav, so
+  S12's brief does not reach them — but they duplicate `head_assets.html`'s job and
+  should be folded into `base_auth.html` in a cleanup of their own.
+- `base_public.html` still hardcodes `bg-blue-600` in its nav and footer rather than
+  `brand-*`. That is correct for the *platform* marketing surface (S3 note: the platform
+  login stays blue), so it was left alone — but it is a raw hex-adjacent literal sitting
+  where a token belongs, and worth revisiting with S14–S16.
 
 ## S13 · Icon language: Font Awesome solid → line-weight SVG sprite
 

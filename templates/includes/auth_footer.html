@@ -1,0 +1,14 @@
+{% comment %}
+Slim legal footer for auth pages (S12).
+
+`base_auth.html` deliberately has no marketing nav and no site footer, so
+Terms/Privacy would otherwise be unreachable from the login/reset funnel.
+Include `with wordmark=True` on pages that carry no other visible brand
+mention — the rule is the brand is said exactly once per auth page.
+{% endcomment %}
+<p class="text-center text-xs text-gray-400 mt-6">
+    {% if wordmark %}&copy; {% now "Y" %} RS Systems<span class="mx-2 text-gray-300">·</span>{% endif %}
+    <a href="{% url 'terms_of_service' %}" class="hover:text-gray-600 transition-colors">Terms of Service</a>
+    <span class="mx-2 text-gray-300">·</span>
+    <a href="{% url 'privacy_policy' %}" class="hover:text-gray-600 transition-colors">Privacy Policy</a>
+</p>
