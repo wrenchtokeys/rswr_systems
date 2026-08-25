@@ -27,7 +27,7 @@ session with no memory of this work can pick exactly one up and finish it.
 | — | S17 · Stop shipping the Tailwind source to production | TODO |
 | Out | Email + notification chassis, replacement lifecycle | **DONE** 2026-08-24 (PR #200) |
 | Out | Invoice email onto the chassis | **DONE** 2026-08-24 (PR #202, merged 12:15 CDT, deployed 22:48 CDT) |
-| Out | In-app surfaces: notification bell + notification history | **DONE** 2026-08-24 (PR __PRNUM__) |
+| Out | In-app surfaces: notification bell + notification history | **DONE** 2026-08-25 (PR #206) |
 
 ---
 
@@ -692,7 +692,7 @@ and is the main security dividend of Phase 1 — don't leave it on the table.
 
 ---
 
-# Phase 3 — Outbound: email and notifications ✅ DONE (PRs #200 + #202 + __PRNUM__)
+# Phase 3 — Outbound: email and notifications ✅ DONE (PRs #200 + #202 + #206)
 
 The design canvas that drove this:
 https://claude.ai/code/artifact/e43f623b-2e7c-4ea1-959e-93d17dbd7b6d
@@ -820,7 +820,7 @@ everything else.
 
 Tests: `tests/test_invoice_email_chassis.py` (21).
 
-## The in-app surfaces (2026-08-24, PR __PRNUM__)
+## The in-app surfaces (built 2026-08-24, shipped 2026-08-25, PR #206)
 
 The bell and the two notification-history pages, onto the same parts as the
 emails. The design canvas' `Bell.dc.html` / `History.dc.html` artboards are the
@@ -890,6 +890,12 @@ is always reserved, so a row does not reflow when the dot clears.
   silently as a pill with no background rather than an obviously unstyled element.
   `tests/test_notification_surfaces.py` now asserts every class in `ui.py`'s and
   `notifications_ui.py`'s tables is present in the built `app.css`.
+- **Do not write a PR number you have not been given.** This section was first
+  drafted claiming PR #205. The PR did not exist yet — 205 was the *next* number,
+  and by the time the work was picked up again a parallel session had opened and
+  merged an unrelated SMS fix as #205. A doc that names the wrong PR sends the
+  next reader to somebody else's diff. Open the PR, then stamp the number `gh`
+  hands back.
 - **`created_at` is `auto_now_add`**, so a test fixture cannot backdate it on
   `create()`. Only a `queryset.update()` can — which is also why the day-grouping
   and short-age tests need one.
