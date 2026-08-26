@@ -27,8 +27,11 @@ without re-running the exploration that produced this doc.
 | P1 · Capture | Tap-to-crop on upload (job form + old repair form) | M | DONE (2026-08-25, branch `feat/photoml-p1-tap-to-crop`) |
 | P2 · Coverage | Detail-page crop/re-crop + retry queue + multi-break & customer-portal wiring | M | DONE (2026-08-25, branch `feat/photoml-p2-crop-coverage`) |
 | P3 · Assist | Auto-suggest crops (local saliency detector; no photo leaves the server) | M | DONE (2026-08-25, branch `feat/photoml-p3-auto-suggest`) |
-| P4a · Both classes | Crops on replacements + dataset export + class/accuracy report | M | DONE (2026-08-26, branch `feat/photoml-p4a-both-classes-export`) |
-| P4b · Payoff | Repairability classifier | L | BLOCKED on data — see P4b |
+| P4a · Both classes | Crops on replacements + dataset export + class/accuracy report | M | DONE (2026-08-26, PR #218 → **re-landed as PR #219**, see the merge-race trap) |
+| P3.1 · Validate | Run the suggester against the 77 real windshield photos we now have | S | TODO — **unblocked as of 2026-08-26** |
+| P4a.1 · Backfill | Mark the break on the 77 completed repairs that already carry a photo | S | TODO |
+| P5 · Negative class | Record the jobs we turn away — the only source of "not repairable" | M | TODO — **this is the actual gate on P4b** |
+| P4b · Payoff | Repairability classifier | L | BLOCKED on data — see P4b and §The pause |
 
 **Suggested sequence:** P1 → P2 → P3 → P4a → P4b. P2 first because coverage compounds
 (every uncovered surface is training data lost forever — you can't retro-tap a
@@ -37,7 +40,36 @@ built any time after a few hundred crops exist and is a good way to smoke-test
 the metadata before committing to a model. P3 before the P4 classifier because
 auto-suggest raises the capture rate that P4 feeds on.
 
-**Where we are (2026-08-26, after P4a):** P1 merged as PR #211, P2 as PR #215.
+**Where we are (2026-08-26, evening — the pause begins):** P1 = #211, P2 = #215,
+P3 = #217, all merged. **P4a is not on `main`** despite #218 reading MERGED —
+it was stacked on P3's branch and the two merges landed ten seconds apart in
+the wrong order, so P4a's commits went into a branch that had already been
+consumed. Re-landed as **PR #219**; see the merge-race trap. Prod is
+nonetheless *running* P4a (`app-7d571-…`, deployed from the branch directly).
+
+**The arc is now code-complete up to the classifier, and the classifier is
+gated on a business fact rather than on engineering.** A production census run
+this evening (read-only, both tenants, soft-deleted rows included) says:
+
+| | count |
+|---|---|
+| Repairs, all time | 131 (126 completed) |
+| Completed repairs carrying a photo | **77** |
+| Of those, marked with a crop | **1** |
+| **Replacements, all time, all tenants, including soft-deleted** | **0** |
+| Repairs completed per month | ~9–24, call it 14 |
+| Replacements per month | **0** |
+
+So the positive class has 77 examples already banked and grows ~9/month. The
+negative class has **none, has never had any, and has no backlog to mine** —
+this database has never held a single `Replacement` row. Tenant 1 (Rockstar
+Windshield Repair) is a repair shop; tenant 15 (The Glass Guy), which does do
+replacements, has no jobs in the app at all.
+
+**That is why P5 exists.** Waiting will not fix a rate of zero. Read §The
+pause before doing anything else in this arc.
+
+**Where we were (2026-08-26, after P4a):** P1 merged as PR #211, P2 as PR #215.
 P3 is PR #217, still open. **P4a stacks on P3's branch** — it needs P3's
 provenance columns and its migration number, and `main` is still at P2, so
 #217 must merge first. P4a fixed the structural blocker P3 discovered (crops
@@ -146,6 +178,24 @@ into the modal's marker and into the same columns. Returning None is normal
 and frequent; `MAX_SPREAD` is the decline threshold and is a starting guess
 meant to be tuned from real corrections, not from more test images. Killable
 with `PHOTO_SUGGEST_ENABLED=false`.
+
+**Where a crop is visible — and where it deliberately is not.** The crop is a
+**second file saved beside the original; the original is never modified,
+replaced or re-pointed.** That is the core promise of the whole arc (it is what
+makes every crop regenerable from stored percentages). The consequence, which
+looks like a bug the first time you meet it: **no customer-facing surface shows
+a crop, and none ever has.** The invoice page, the invoice email, the customer
+portal's repair/replacement/batch detail pages all render
+`damage_photo_before.url` — the untouched original, full frame. Only the two
+technician detail pages reference `photo_crops`/`cropped_image`
+(`repair_detail.html`, `saas/replacement_detail.html`, via
+`partials/photo_crop_control.html`). Likewise **nothing anywhere renders a
+label**: labels do not exist as stored data at all, they are derived at export
+time by `services/photo_dataset.py`. So "I marked the break but the photo on
+the invoice is uncropped and unlabeled" is the system working as designed.
+Whether a customer *should* see the close-up of the damage they are being
+billed for is an open product question and a decent idea — it is not a defect
+report, and it is nobody's current session.
 
 **The photo fields.** On the abstract `GlassService` base
 (`apps/technician_portal/models.py:517-544`), so `Repair` AND `Replacement`
@@ -294,6 +344,27 @@ Postgres recipe when local auth fails: scratch cluster via
   non-windshield replacement is not evidence that anything was unrepairable.
   Labeling it as a negative would have taught the model that a shattered door
   window is what unrepairable windshield damage looks like.
+- **A stacked PR can merge green and land nowhere** (2026-08-26). #218 was
+  based on P3's branch, correctly — it needed P3's columns and migration
+  number. #217 merged that branch into `main` at `18:30:31Z`; #218 merged P4a
+  *into the same branch* at `18:30:41Z`, ten seconds later. Both PRs report
+  MERGED. `main` has P3 and none of P4a, and the tip carrying P4a is a commit
+  no branch consumes. **Merging a stack bottom-up is a race, and GitHub's
+  "Merged" badge is not evidence your code is on `main`.** After any stacked
+  merge, verify with `git log origin/main..origin/<branch>` — empty or it did
+  not land. Better: don't stack. The house rule (one session, one branch off
+  `main`) exists for this, and P4a broke it for a real reason and still paid
+  for it.
+- **A pipeline can be code-complete and still collect nothing** (2026-08-26).
+  P4a made the negative class *possible*; the census afterwards found the
+  production database has never contained a single `Replacement` row. Every
+  test passed, every surface worked, and the collection rate for half the
+  dataset was zero and always had been. **Count the rows in production before
+  declaring a data pipeline done** — `--stats-only` on a seeded dev database
+  proves the code runs, not that anything is arriving.
+- **`Repair` has no `created_at`** (2026-08-26) — the date field is
+  `service_date`. A rate query written from habit raises `FieldError` listing
+  every field on the model, which is at least a fast way to find that out.
 - **`MEDIA_ROOT` is a real directory that survives between runs** (P3): dev
   and test share `media/`, and it accumulates crop files. Any test that
   counts or names files there must diff against what was already present.
@@ -617,13 +688,132 @@ own plan from P3: keep marking breaks during normal work, and re-run
 `export_photo_dataset --stats-only` every so often. When the minority class
 clears a few hundred rows, P4b has something to train on.
 
-# P4b · Payoff: the repairability classifier — BLOCKED on data
+# P3.1 · Validate the suggester against real photos — TODO (newly unblocked)
+
+| Field | Value |
+|---|---|
+| **Goal** | Answer the question P3 could not: is the saliency suggester any good on photographs of actual windshields? |
+| **Size** | S |
+| **Depends on** | P3. **Unblocked 2026-08-26** — production holds 77 completed repairs carrying a real damage photo. Until now the only evidence was synthetic fixtures the author also designed. |
+| **Why it matters** | P3 ships `PHOTO_SUGGEST_ENABLED=false` on the strength of one synthetic benchmark where the detector lost to "guess the centre of the photo" on cluttered glass. That is either a correct kill or an unfair one, and nobody knows which. A suggester that works raises the capture rate everything downstream feeds on; one that doesn't should be deleted, not left dark. |
+| **How** | Pull the 77 originals (they are on S3 under `media/repair_photos/`; do NOT mutate them). Run `suggest_point` over each. There are no ground-truth marks yet — so either run this *after* P4a.1 and measure against the human taps it produces, or have a human tap first and treat P3.1 as the scoring pass. **Keep "guess the centre" in the table as the baseline; that is the lesson P3 paid for.** |
+| **Acceptance criteria** | A table of median/worst error for detector vs centre-guess over real photos, plus the decline rate (how often it correctly returns None). A recommendation to tune `MAX_SPREAD`, keep the kill switch off, or remove the suggester. |
+| **Out of scope** | Building a better detector. This session measures; a rebuild is its own session and probably wants P4b's data anyway. |
+| **Note** | `test_clutter_defeats_the_suggester` is designed to fail once the suggester is fixed. If this session improves it, that test is the one to update — deliberately, with the new numbers in the message. |
+
+**Notes**
+
+# P4a.1 · Backfill the 77 — TODO
+
+| Field | Value |
+|---|---|
+| **Goal** | Every completed repair that already carries a photo gets its break marked. 77 photos, 1 marked. |
+| **Size** | S |
+| **Depends on** | P2's detail-page endpoint, which already does this one photo at a time. |
+| **Why it matters** | 77 labeled positives are sitting in production requiring no new field work, no waiting and no business change. It is the largest single increment available to this arc and the only one not gated on something outside the code. |
+| **Considerations** | P2 deliberately left "a bulk backfill UI for hundreds of old photos" out of scope, *"do it only if the shop actually wants to label history."* The census makes the case that it does. Think about what the cheapest possible burn-down looks like: probably one page, one photo at a time, tap and auto-advance — not a new modal, not a queue model. The existing `save_photo_crop` endpoint is the whole backend. |
+| **Order it by value** | An unmarked photo on a completed repair is worth more than one on a cancelled job; a `damage_photo_before` is worth more than a `damage_photo_after` (which labels `not_applicable` anyway — do not spend human taps on after-photos). |
+| **Acceptance criteria** | A human can mark the whole backlog in one sitting without navigating job by job. `export_photo_dataset --stats-only` reports the new count. Originals untouched — assert it. |
+| **Out of scope** | Marking anything the machine suggested (the suggester is off, and unconfirmed rows are excluded from export by design). |
+
+**Notes**
+
+# P5 · Record the jobs we turn away — TODO · **the gate on P4b**
+
+| Field | Value |
+|---|---|
+| **Goal** | When a technician looks at damage and decides it cannot be repaired, the app can record that — with the photo — in about fifteen seconds, on site. |
+| **Size** | M |
+| **Depends on** | P1–P4a (the crop plumbing already exists and already accepts a job that is not a repair). |
+| **Why it matters** | **This is the only negative-class source that this business actually generates.** The census found zero replacements, ever. But a repair shop turns away unrepairable damage constantly — that is a normal week — and the moment it happens is the moment an expert has looked at real damage and rendered exactly the verdict the classifier is meant to learn. Today that verdict is spoken aloud and never written down. Every one is a training example destroyed at the point of creation. |
+| **The insight, stated plainly** | The arc assumed the negative class would arrive as completed windshield *replacements*. That assumed the shop does replacements. It does not. The negative class it really produces is **declined work**, and nothing in the product can express it. |
+| **Considerations** | Do not model this as a `Replacement` — the shop did not replace anything and inventing a phantom replacement row would poison invoicing, counts and revenue. It is closer to a *declined assessment*: photo, reason, timestamp, vehicle, and nothing financial. Check first whether an existing shape fits (a `Repair` with a terminal declined status? a lightweight new model?) before adding one. `services/photo_dataset.py` is the single place a new label rule goes, and its `label_source` convention means a training run can drop the rule if it turns out to be noisy. |
+| **The reason field is the real prize** | "Crack too long", "in the driver's sight line", "already spidered", "edge crack", "prior bad repair" — those are the classes a genuinely useful model would predict, and a tech will pick from a five-item list where they would never type a sentence. Get the list from Drake; do not invent it. |
+| **Considerations, product side** | This has value beyond ML and should be pitched on that: a shop that records what it turned away can see how much work it is walking away from, and can hand the customer something (a referral, a quote for replacement) instead of nothing. That is what makes it worth a tech's fifteen seconds — an ML dataset never is. |
+| **Acceptance criteria** | A declined assessment can be recorded from the field in one screen; it carries a photo; that photo can be tapped like any other; `photo_dataset.py` labels it `not_repairable` with its own `label_source`; `export_photo_dataset` shows two classes for the first time. |
+| **Out of scope** | Quoting the replacement. Referral routing. Anything that makes the flow longer than the walk back to the van. |
+| **Decisions needed from Drake** | The reason list. Whether this is worth building for its own sake (it should be pitched that way). Whether The Glass Guy is going to be recording replacement jobs, which would open the second source. |
+
+**Notes**
+
+# §The pause · what we are waiting for, and why waiting alone won't end it
+
+*(census taken 2026-08-26 against production, read-only, both tenants,
+soft-deleted rows included)*
+
+**The short answer to "how much longer until we pause and collect data": we are
+already there.** P4a was the last thing worth building without data, and
+everything after it needs rows that do not exist. But the shape of the wait is
+not what the arc assumed.
+
+### What is actually banked
+
+| | count | rate |
+|---|---|---|
+| Positive class — completed repairs with a photo | **77** banked | ~9/month |
+| ...of those actually marked with a crop | **1** | — |
+| Negative class — windshield replacements with a photo | **0** | **0/month** |
+
+The positive side is healthy: 77 examples are sitting in production right now,
+already photographed, needing only a human to tap where the break is. That is
+an afternoon of work, not a wait — see **P4a.1**.
+
+The negative side is not thin. It is **empty, and structurally so**. There has
+never been a `Replacement` row in this database. Tenant 1 (Rockstar Windshield
+Repair) is a repair shop and does not do replacements; tenant 15 (The Glass
+Guy) does, and has no jobs in the app at all.
+
+### Why "collect data for a few months" is the wrong plan
+
+P4a's Notes end by recommending exactly that: keep marking breaks during
+normal work and re-run `--stats-only` every so often. That advice is right for
+the positive class and **useless for the negative one**, because normal work
+at this shop produces zero replacements and always has. Three months of
+patience multiplies zero by three.
+
+The mistake is the same species as the one P4a itself caught, one level up.
+P4a found that the *schema* could only express one class. The census finds
+that the *business* only generates one class. Fixing the schema was necessary
+and did not move the count.
+
+### The three ways out, in order of cost
+
+1. **Record the jobs we turn away (P5).** Every repair shop looks at damage it
+   cannot repair — a crack past the length limit, damage in the driver's sight
+   line, a chip that has already spidered — and says so out loud, on site,
+   with the customer's windshield in front of them. That judgement is the
+   single most valuable label in this entire arc, and today the app has no
+   way to write it down. The tech says "that's a replacement, I can't help
+   you," and walks away, and nothing is recorded. **This is the cheapest
+   negative-class source that exists and it is already happening every week.**
+2. **Get The Glass Guy onto the app for replacement work.** A business
+   question, not an engineering one, and the reason P4a bothered to make
+   replacement crops possible at all. Worth asking Drake where that stands.
+3. **Import an outside corpus.** Note the asymmetry with P3's standing
+   decision: Drake rejected sending *our customers' photos out*. Bringing
+   someone else's photos *in* is a different question and has not been asked.
+   Do not assume the answer either way.
+
+### What to do during the pause
+
+- **P4a.1** — burn down the 77. Highest value per minute available anywhere in
+  this arc, and it is pure positive class, which is only half useful until P5
+  exists. Do it anyway; it is perishable in the sense that nobody remembers a
+  2025 windshield.
+- **P3.1** — the suggester has never once been run on a real windshield photo,
+  which P3 flagged as the first thing to fix. **There are now 77 of them.**
+  This is the cheapest honest test in the arc and it is newly possible.
+- **P5** — the real gate.
+- Re-run `export_photo_dataset --stats-only` after each, and believe the
+  balance line over any narrative, this one included.
+
+# P4b · Payoff: the repairability classifier — BLOCKED on P5
 
 | Field | Value |
 |---|---|
 | **Goal** | Train and evaluate a repairable-vs-not classifier on the exported bundle. |
 | **Size** | L |
-| **Depends on** | P4a's export, and **data** — realistically a few hundred rows in the minority class. `export_photo_dataset --stats-only` is the check; it prints the balance and refuses to flatter it. |
+| **Depends on** | P4a's export, and **P5** — not merely "data", and not merely time. The minority class stands at **0** and accrues at **0/month**; see §The pause. `export_photo_dataset --stats-only` is the check; it prints the balance and refuses to flatter it. |
 | **Why it matters** | The whole point of the arc. |
 | **Verified current state** | The export exists, is anonymised, tenant-scoped and reproducible from metadata. Labels come from `services/photo_dataset.py`. Label strength is recorded (`confirmed_by_human`) and unconfirmed suggestions are excluded by default. |
 | **Considerations** | Class imbalance is the live risk, not model choice: techs photograph what they already know is repairable, and windshield replacements are rarer than repairs. Read the balance before writing a line of training code. Rows carrying both a `suggested_*` point and a human-confirmed mark are the training pairs for a *learned* detector, and their correction distances are also the honest answer to whether P3's saliency suggester is worth keeping at all. Train outside this codebase; the app's job is the export and, later, serving a verdict. |
@@ -641,3 +831,4 @@ clears a few hundred rows, P4b has something to train on.
 | 2026-08-25 | P2 executed: detail-page crop/re-crop endpoint + UI, multi-break per-break taps, `retry_photo_crops`, shared `PhotoCropModal`. Customer-portal tapping decided against. |
 | 2026-08-25 | P3 executed: local saliency suggester, suggest endpoint, pre-placed marker, `suggest_photo_crops` sweep, provenance columns. **Hosted vision model rejected — photos stay on our infrastructure.** |
 | 2026-08-26 | P4a executed: crops hang off replacements too (the negative class was structurally uncollectable), `export_photo_dataset`, label rules in `services/photo_dataset.py`. P4 split into P4a (done) and P4b (blocked on data, correctly). |
+| 2026-08-26 | **Census + pause.** Discovered P4a never reached `main` (stacked-merge race, #218 merged into an already-consumed branch; re-landed as #219). Production census: 77 banked positives, **0 replacements ever**. P4b re-gated from "blocked on data" to **blocked on P5**. Added P3.1 (suggester now testable on real photos), P4a.1 (backfill the 77), P5 (record declined work — the only negative-class source this business generates). |
