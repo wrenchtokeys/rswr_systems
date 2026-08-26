@@ -1,20 +1,40 @@
-# Photo ML Sessions — tap-to-crop toward a repairability classifier
+# Photo ML Sessions — tap-to-crop: a better photo for the customer, and a training set
 
 **Created:** 2026-08-25
 **Author:** Claude (planning session with Drake)
 **Status:** living document — update statuses and Notes as sessions complete
 **Companions:** none required; this arc is self-contained. The wider product queues live in `IMPROVEMENT_SESSIONS.md` and `FIELD_OPS_SESSIONS.md`.
 
-**What this arc is for (the durable purpose statement):** every damage photo a
-technician taps gets a close-up crop of the break saved next to the untouched
-original, labeled before/after by which field it came from. Those crops, joined
-to the repair's eventual outcome, are the training set for a future
-**"repairable vs not" classifier** — Drake's explicit long-term goal. Nothing in
-P1–P2 does any ML; they exist to make the dataset accumulate as a side effect of
-normal field work, with enough metadata (percent coordinates on EXIF-upright
-originals) that the dataset can be regenerated at any time. Do not delete or
-"clean up" `RepairPhotoCrop` rows or `repair_photos/crops/` files thinking they
-are derived caches — they are the product of human labeling work.
+**What this arc is for (the durable purpose statement — REVISED 2026-08-26):**
+every damage photo a technician taps gets a **close-up of the break** derived
+next to the untouched original. That close-up has **two** jobs, and for four
+sessions this document only admitted to one of them:
+
+1. **It is something the customer should see.** A close-up of the actual
+   damage on the invoice is proof of work, and on a replacement it is the
+   answer to "why couldn't you just repair it?" — plus insurance-claim
+   evidence. **This is the job that pays the technician back for tapping, and
+   it is not built yet (P6).**
+2. **It is training data** for a future **"repairable vs not" classifier** —
+   Drake's long-term goal, and the only thing P1–P4a were built for.
+
+**The order matters and was wrong.** Written training-first, the arc gave a
+tech nothing in return for a tap: the crop appears on one internal page and
+feeds a model that does not exist. The result, measured in production on
+2026-08-26, is a marking rate of **1 photo out of 77**. Purpose 1 is what makes
+purpose 2 accumulate; a capture pipeline whose only payoff is a future model
+does not capture. See **P6** and §The pause.
+
+**The two purposes do not compete**, and that is worth understanding before
+touching anything: the stored asset is the **percent coordinates**, not the
+JPEG. Any crop — tight for training, generous for a customer — renders from the
+same tap. One tap serves both forever.
+
+Nothing in P1–P4a does any ML; they exist to make the dataset accumulate as a
+side effect of normal field work, with enough metadata (percent coordinates on
+EXIF-upright originals) that the dataset can be regenerated at any time. Do not
+delete or "clean up" `RepairPhotoCrop` rows or `repair_photos/crops/` files
+thinking they are derived caches — they are the product of human labeling work.
 
 Each session is self-contained — a fresh Claude session with no memory should be
 able to execute exactly one session using only §0 and that session's table,
@@ -28,48 +48,66 @@ without re-running the exploration that produced this doc.
 | P2 · Coverage | Detail-page crop/re-crop + retry queue + multi-break & customer-portal wiring | M | DONE (2026-08-25, branch `feat/photoml-p2-crop-coverage`) |
 | P3 · Assist | Auto-suggest crops (local saliency detector; no photo leaves the server) | M | DONE (2026-08-25, branch `feat/photoml-p3-auto-suggest`) |
 | P4a · Both classes | Crops on replacements + dataset export + class/accuracy report | M | DONE (2026-08-26, PR #218 → **re-landed as PR #219**, see the merge-race trap) |
+| **P6 · Show the close-up** | **Put the marked point on surfaces customers already see — and fix three bugs there** | **M** | **TODO — DO THIS NEXT** |
 | P3.1 · Validate | Run the suggester against the 77 real windshield photos we now have | S | TODO — **unblocked as of 2026-08-26** |
 | P4a.1 · Backfill | Mark the break on the 77 completed repairs that already carry a photo | S | TODO |
 | P5 · Negative class | Record the jobs we turn away — the only source of "not repairable" | M | TODO — **this is the actual gate on P4b** |
-| P4b · Payoff | Repairability classifier | L | BLOCKED on data — see P4b and §The pause |
+| P4b · Payoff | Repairability classifier | L | BLOCKED on **P5** — see P4b and §The pause |
 
-**Suggested sequence:** P1 → P2 → P3 → P4a → P4b. P2 first because coverage compounds
-(every uncovered surface is training data lost forever — you can't retro-tap a
-photo whose break location nobody remembers). P4's *export step only* can be
-built any time after a few hundred crops exist and is a good way to smoke-test
-the metadata before committing to a model. P3 before the P4 classifier because
-auto-suggest raises the capture rate that P4 feeds on.
+**Suggested sequence, as revised 2026-08-26:**
+P1 → P2 → P3 → P4a → **P6 → P4a.1 → P5** → P4b, with P3.1 droppable in
+anywhere.
 
-**Where we are (2026-08-26, evening — the pause begins):** P1 = #211, P2 = #215,
-P3 = #217, all merged. **P4a is not on `main`** despite #218 reading MERGED —
-it was stacked on P3's branch and the two merges landed ten seconds apart in
-the wrong order, so P4a's commits went into a branch that had already been
-consumed. Re-landed as **PR #219**; see the merge-race trap. Prod is
-nonetheless *running* P4a (`app-7d571-…`, deployed from the branch directly).
+The original sequence (P1 → P2 → P3 → P4a → P4b) assumed the only thing
+standing between here and a classifier was volume. Two findings changed it:
+the negative class accrues at **zero** per month (§The pause), and the positive
+class accrues barely faster because tapping pays nobody back (1 of 77). **P6
+before P4a.1** because backfilling 77 photos is worth an afternoon once each
+one visibly improves a real invoice, and is charity before that. **P5 before
+P4b** because P5 is the only negative-class source this business generates.
 
-**The arc is now code-complete up to the classifier, and the classifier is
-gated on a business fact rather than on engineering.** A production census run
-this evening (read-only, both tenants, soft-deleted rows included) says:
+**Where we are (2026-08-26, end of day — reframed, and one PR pending):**
 
-| | count |
-|---|---|
-| Repairs, all time | 131 (126 completed) |
-| Completed repairs carrying a photo | **77** |
-| Of those, marked with a crop | **1** |
-| **Replacements, all time, all tenants, including soft-deleted** | **0** |
-| Repairs completed per month | ~9–24, call it 14 |
-| Replacements per month | **0** |
+**Step 0 for the next session: merge PR #219.** P4a's commits are *not* on
+`main`, even though #218 reads MERGED — it was stacked on P3's branch and the
+two merges landed ten seconds apart in the wrong order (see the merge-race
+trap). #219 re-targets the same commits at `main` and carries the doc updates.
+Production is nonetheless *running* P4a (`app-7d571-…`, deployed off the branch
+directly), so prod behaviour is ahead of `main`. **Verify before building on
+it:** `git log origin/main..origin/feat/photoml-p4a-both-classes-export` should
+be empty once #219 lands.
 
-So the positive class has 77 examples already banked and grows ~9/month. The
-negative class has **none, has never had any, and has no backlog to mine** —
-this database has never held a single `Replacement` row. Tenant 1 (Rockstar
-Windshield Repair) is a repair shop; tenant 15 (The Glass Guy), which does do
-replacements, has no jobs in the app at all.
+**The arc was reframed today, by Drake, and the reframe is the important
+part.** Asked what a shop actually gets out of tapping, the honest answer was:
+nothing. Drake's response was that he had understood the close-up to be *a
+better photo for the customer*, with training as the by-product — the reverse
+of how P1–P4a were built. He is right about the direction and the production
+numbers prove it: **1 of 77 eligible photos has ever been marked.** The revised
+purpose statement at the top of this document is the durable version. **P6
+exists to fix it and is the next session.**
 
-**That is why P5 exists.** Waiting will not fix a rate of zero. Read §The
-pause before doing anything else in this arc.
+Two corrections that came out of the same conversation, both now in §0:
 
-**Where we were (2026-08-26, after P4a):** P1 merged as PR #211, P2 as PR #215.
+- The mechanics are the other way round from the intuition. The **crop** is
+  the derived, training-shaped artifact; the **original** is what is preserved
+  *and what every customer already sees*. But the stored asset is the percent
+  coordinates, so both uses render from one tap and never compete.
+- **The invoice already crops these photos — blindly.**
+  `public_invoice_view.html:51` renders them `height: 120px; object-fit:
+  cover`, i.e. a centre-crop of the frame. That is precisely the "guess the
+  centre" baseline P3 benchmarked at ~21% median error from the actual break.
+  A human-marked point exists and the page ignores it.
+
+**Collection and preservation, audited today:** preservation is sound —
+`save_crop_for` never assigns to an original photo field (verified by grep),
+`audit_repair_photos` enumerates crops so `--delete` cannot eat them
+(`:94-97`), and P4a proved crops regenerate byte-identically from the stored
+box. **Collection is not** — 1 of 77, for the reason above.
+
+**The classifier is still gated on P5,** not on time; see §The pause for the
+census.
+
+**Where we were (2026-08-26, after P4a):****Where we were (2026-08-26, after P4a):** P1 merged as PR #211, P2 as PR #215.
 P3 is PR #217, still open. **P4a stacks on P3's branch** — it needs P3's
 provenance columns and its migration number, and `main` is still at P2, so
 #217 must merge first. P4a fixed the structural blocker P3 discovered (crops
@@ -179,23 +217,43 @@ and frequent; `MAX_SPREAD` is the decline threshold and is a starting guess
 meant to be tuned from real corrections, not from more test images. Killable
 with `PHOTO_SUGGEST_ENABLED=false`.
 
-**Where a crop is visible — and where it deliberately is not.** The crop is a
-**second file saved beside the original; the original is never modified,
-replaced or re-pointed.** That is the core promise of the whole arc (it is what
-makes every crop regenerable from stored percentages). The consequence, which
-looks like a bug the first time you meet it: **no customer-facing surface shows
-a crop, and none ever has.** The invoice page, the invoice email, the customer
-portal's repair/replacement/batch detail pages all render
-`damage_photo_before.url` — the untouched original, full frame. Only the two
-technician detail pages reference `photo_crops`/`cropped_image`
-(`repair_detail.html`, `saas/replacement_detail.html`, via
-`partials/photo_crop_control.html`). Likewise **nothing anywhere renders a
-label**: labels do not exist as stored data at all, they are derived at export
-time by `services/photo_dataset.py`. So "I marked the break but the photo on
-the invoice is uncropped and unlabeled" is the system working as designed.
-Whether a customer *should* see the close-up of the damage they are being
-billed for is an open product question and a decent idea — it is not a defect
-report, and it is nobody's current session.
+**Where a crop is visible — and where it is not (verified 2026-08-26).** The
+crop is a **second file derived beside the original; the original is never
+modified, replaced or re-pointed** — `save_crop_for` contains no assignment to
+`damage_photo_before` / `damage_photo_after` / `customer_submitted_photo`. That
+is the core promise of the arc and it is what makes every crop regenerable from
+stored percentages.
+
+The consequence, which looks exactly like a bug the first time you meet it:
+**no customer-facing surface has ever shown a crop, and none shows a label.**
+
+| Surface | What it renders today |
+|---|---|
+| Public invoice page (`rs_systems/views.py:657-678` → `templates/billing/public_invoice_view.html:180-189`) | The **original**, CSS centre-cropped to a 120px tile (`:51`). **Repair line items only** — `exclude(repair_id__isnull=True)` at `:659` means a replacement invoice shows no photos at all. |
+| Invoice email | No photos by design (multi-MB payloads get invoices quarantined at corporate gateways) — it links to the page above. |
+| Customer portal repair / replacement / batch detail | The original, full frame (`damage_photo_before.url`). |
+| Technician repair detail + `saas/replacement_detail.html` | **The only two places** referencing `photo_crops` / `cropped_image`, via `partials/photo_crop_control.html`. |
+
+**And no label is stored anywhere at all** — labels do not exist as a column;
+they are derived at export time by `services/photo_dataset.py`. So "I marked
+the break but the invoice photo is uncropped and unlabeled" is the system
+working as designed, not a defect. **P6 is the session that changes it.**
+
+**Three live bugs on that invoice photo path**, all in the same ~20 lines and
+all P6's to fix:
+1. The tile is a **blind centre-crop** while a human-marked point sits unused.
+2. **Replacements contribute no photos** (`:659`), so the invoices where a
+   close-up matters most — the expensive ones — have none.
+3. The caption is `Unit {{ photo.unit }}` fed from the raw
+   `repair.unit_number` (`:672`). That is the documented individual-vs-fleet
+   trap in CLAUDE.md: an individual has a blank `unit_number`, so their
+   invoice caption reads "Unit  — Before". Must go through
+   `get_vehicle_identifier()` / `vehicle_column_label`.
+
+**Insurance lives on the shared base.** `insurance_claim`, `insurance_company`,
+`claim_number`, `deductible` are on `GlassService`, so **Replacement has them
+too** — a documented close-up of the damage is claim evidence, which is part of
+why cropping a replacement is worth a tech's time independent of any model.
 
 **The photo fields.** On the abstract `GlassService` base
 (`apps/technician_portal/models.py:517-544`), so `Repair` AND `Replacement`
@@ -344,6 +402,22 @@ Postgres recipe when local auth fails: scratch cluster via
   non-windshield replacement is not evidence that anything was unrepairable.
   Labeling it as a negative would have taught the model that a shattered door
   window is what unrepairable windshield damage looks like.
+- **A capture pipeline with no user-visible payoff does not capture**
+  (2026-08-26). P1–P4a built four sessions of tap-to-crop whose entire visible
+  output was a thumbnail on an internal page, in exchange for a model that
+  does not exist yet. Production marking rate: **1 photo out of 77**. The code
+  was never the problem and no further capture surface would have helped.
+  **If you are asking a human for fifteen seconds, find what those fifteen
+  seconds give *them* before you optimise the mechanism.** P5's table already
+  says this about declined work; it applies with equal force to the four
+  sessions that came before it, and nobody noticed until Drake asked what a
+  shop gets out of cropping.
+- **Do not zoom the *after* photo of a repair** (2026-08-26, product
+  judgement). A resin repair leaves a visible blemish — that is normal and
+  expected. A tight close-up magnifies the scar and shows the customer the
+  flaw instead of the fix. Before → close-up. After → full frame. This is
+  also consistent with the dataset, which labels after-photos
+  `not_applicable`.
 - **A stacked PR can merge green and land nowhere** (2026-08-26). #218 was
   based on P3's branch, correctly — it needed P3's columns and migration
   number. #217 merged that branch into `main` at `18:30:31Z`; #218 merged P4a
@@ -688,6 +762,25 @@ own plan from P3: keep marking breaks during normal work, and re-run
 `export_photo_dataset --stats-only` every so often. When the minority class
 clears a few hundred rows, P4b has something to train on.
 
+# P6 · Show the close-up — TODO · **DO THIS NEXT**
+
+| Field | Value |
+|---|---|
+| **Goal** | The break a technician marked becomes visible to the customer on the surfaces that already show photos, and the three bugs on that path get fixed. A tap starts paying for itself the day it happens. |
+| **Size** | M |
+| **Depends on** | P1–P4a (all the data exists already). **PR #219 must be on `main` first** — see the merge-race trap. Nothing else. No new model, no migration expected. |
+| **Why it matters** | This is the missing half of the arc's purpose (see the revised statement at the top). Four sessions built capture with no payoff for the person capturing, and production says 1 of 77 photos has ever been marked. Every later session in this document — the backfill, P5, and ultimately the classifier — is rate-limited by whether techs mark breaks, and they will not until doing so does something. **Treat the capture rate as the acceptance metric, not the pixels.** |
+| **Verified current state (2026-08-26)** | `rs_systems/views.py:657-678` builds the `photos` list for the public invoice page; `templates/billing/public_invoice_view.html:180-189` renders it, with the tile CSS at `:51`. Only these two files matter for the main change. The crop itself is `crop.cropped_image`; the point is `crop.center_x_pct` / `center_y_pct`; read the job with `crop.service` / `crop.service_kind`, never the raw FKs. |
+| **The three bugs to fix here** | **(1)** The tile is `height: 120px; object-fit: cover` — a blind centre-crop, i.e. P3's "guess the centre" baseline, ~21% off the real break. **(2)** `:659` does `exclude(repair_id__isnull=True)`, so replacement line items contribute **no photos at all** — the expensive invoices, where a close-up matters most, have none. **(3)** `:672` passes raw `repair.unit_number` into a `Unit {{ photo.unit }}` caption (`:189`); an individual's is blank, so the caption reads "Unit  — Before". That is the documented CLAUDE.md individual-vs-fleet trap — route it through `get_vehicle_identifier()` / `vehicle_column_label`. |
+| **DECISION NEEDED FROM DRAKE (ask before building)** | Two ways to show the mark, and it was left open deliberately: **(a)** render the stored `cropped_image` as the tile — a true close-up, tightest on the damage; **(b)** keep the full original and *position* it on the marked point (`object-position: <x>% <y>%`), so the customer still sees their whole windshield with the damage centred, and the click-through is unchanged. **(b) is the safer default** — it changes no asset, degrades gracefully to today's behaviour when no crop exists, and cannot surprise anyone with a 300px square. Recommend (b) unless he wants the harder close-up. |
+| **Do not zoom the after photo** | A resin repair leaves a visible blemish; magnifying it shows the customer the scar rather than the fix. Before and customer-submitted → close-up. After → full frame. See the trap. |
+| **Consider, don't assume** | The customer portal detail pages (`customer_portal/repair_detail.html`, `replacement_detail.html`, `batch_detail.html`) show the same originals and could get the same treatment — but the invoice is where the money and the dispute are, so do that first and see whether it is worth spreading. The invoice **PDF** is a separate renderer; check before promising it. |
+| **Acceptance criteria** | An invoice for a job with a marked break shows the damage centred, not the middle of the frame. A replacement invoice shows its photos. No caption reads "Unit " with nothing after it. A job with **no** crop renders exactly as it does today (this must degrade to current behaviour, not to a broken tile). Nothing writes to an original. |
+| **Out of scope** | Backfilling the 77 (P4a.1 — but note P6 is what makes that worth doing). Recording declined work (P5). Any model. |
+| **Watch for** | The invoice page is public and tokened — it is served to people who are not logged in, so anything added there must not leak another tenant's media or require auth. Crops live under `media/repair_photos/crops/` with unsigned public URLs in prod, same as the originals already on that page, so this changes no exposure — but verify rather than assume. |
+
+**Notes**
+
 # P3.1 · Validate the suggester against real photos — TODO (newly unblocked)
 
 | Field | Value |
@@ -710,7 +803,7 @@ clears a few hundred rows, P4b has something to train on.
 | **Goal** | Every completed repair that already carries a photo gets its break marked. 77 photos, 1 marked. |
 | **Size** | S |
 | **Depends on** | P2's detail-page endpoint, which already does this one photo at a time. |
-| **Why it matters** | 77 labeled positives are sitting in production requiring no new field work, no waiting and no business change. It is the largest single increment available to this arc and the only one not gated on something outside the code. |
+| **Why it matters** | 77 labeled positives are sitting in production requiring no new field work, no waiting and no business change. It is the largest single increment available to this arc and the only one not gated on something outside the code. **Do P6 first** — after it, marking one of these 77 visibly improves a real customer's invoice, and the backfill is an afternoon with a product result. Before it, the backfill is charity for a model that does not exist. |
 | **Considerations** | P2 deliberately left "a bulk backfill UI for hundreds of old photos" out of scope, *"do it only if the shop actually wants to label history."* The census makes the case that it does. Think about what the cheapest possible burn-down looks like: probably one page, one photo at a time, tap and auto-advance — not a new modal, not a queue model. The existing `save_photo_crop` endpoint is the whole backend. |
 | **Order it by value** | An unmarked photo on a completed repair is worth more than one on a cancelled job; a `damage_photo_before` is worth more than a `damage_photo_after` (which labels `not_applicable` anyway — do not spend human taps on after-photos). |
 | **Acceptance criteria** | A human can mark the whole backlog in one sitting without navigating job by job. `export_photo_dataset --stats-only` reports the new count. Originals untouched — assert it. |
@@ -796,10 +889,14 @@ and did not move the count.
 
 ### What to do during the pause
 
-- **P4a.1** — burn down the 77. Highest value per minute available anywhere in
-  this arc, and it is pure positive class, which is only half useful until P5
-  exists. Do it anyway; it is perishable in the sense that nobody remembers a
-  2025 windshield.
+- **P6 first.** Nothing else in this list is worth much while a tap pays the
+  technician back with nothing — the capture rate is 1 of 77 and that is the
+  binding constraint on every remaining session, this one included.
+- **P4a.1** — burn down the 77, *after* P6, when each mark visibly improves a
+  real invoice. Highest value per minute available in this arc once it has a
+  product result attached. It is pure positive class, which is only half
+  useful until P5 exists — do it anyway; it is perishable in the sense that
+  nobody remembers where the break was on a 2025 windshield.
 - **P3.1** — the suggester has never once been run on a real windshield photo,
   which P3 flagged as the first thing to fix. **There are now 77 of them.**
   This is the cheapest honest test in the arc and it is newly possible.
@@ -832,3 +929,4 @@ and did not move the count.
 | 2026-08-25 | P3 executed: local saliency suggester, suggest endpoint, pre-placed marker, `suggest_photo_crops` sweep, provenance columns. **Hosted vision model rejected — photos stay on our infrastructure.** |
 | 2026-08-26 | P4a executed: crops hang off replacements too (the negative class was structurally uncollectable), `export_photo_dataset`, label rules in `services/photo_dataset.py`. P4 split into P4a (done) and P4b (blocked on data, correctly). |
 | 2026-08-26 | **Census + pause.** Discovered P4a never reached `main` (stacked-merge race, #218 merged into an already-consumed branch; re-landed as #219). Production census: 77 banked positives, **0 replacements ever**. P4b re-gated from "blocked on data" to **blocked on P5**. Added P3.1 (suggester now testable on real photos), P4a.1 (backfill the 77), P5 (record declined work — the only negative-class source this business generates). |
+| 2026-08-26 | **Reframed by Drake.** Asked what a shop gets from cropping: nothing, today. The arc was built training-first and the capture rate proves the cost — **1 of 77**. Purpose statement rewritten around the customer-visible close-up as the *first* purpose and the training set as the second, with the note that percent coordinates serve both from one tap. **P6 added and sequenced next**, carrying three live bugs on the invoice photo path (blind centre-crop, replacements excluded, `Unit ` caption for individuals). Preservation audited and sound; collection is not. |
