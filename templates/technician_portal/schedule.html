@@ -33,6 +33,18 @@
             </div>
             <div class="flex items-center gap-2">
                 {% comment %}
+                S10: the whole point of the session. A customer calls and the
+                job goes on a day from here — no trip through Jobs → New Job →
+                the ticket → back to the schedule. Managers only, same gate as
+                the rail's Book control, because this books a time.
+                {% endcomment %}
+                {% if can_book %}
+                <button type="button" data-modal-open="quick-job-modal"
+                        class="inline-flex items-center gap-1.5 min-h-11 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors shadow-sm press">
+                    <i class="fas fa-plus text-xs"></i>Add job
+                </button>
+                {% endif %}
+                {% comment %}
                 Prev / today / next are plain GET links; the date input jumps
                 anywhere. 44px targets — this gets used from a truck.
                 {% endcomment %}
@@ -209,9 +221,24 @@
                 <p class="text-sm text-gray-500 mt-1">
                     {{ unscheduled_count }} unscheduled job{{ unscheduled_count|pluralize }} could use a time.
                 </p>
-                <a href="{% url 'job_list' %}" class="inline-flex items-center min-h-11 mt-4 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
-                    View unscheduled jobs
-                </a>
+                {% endif %}
+                {% comment %}
+                S10: an empty day is exactly when a shop is most likely to be
+                putting work on one. Before this the only thing on offer here
+                was a trip to the job list.
+                {% endcomment %}
+                {% if can_book %}
+                <button type="button" data-modal-open="quick-job-modal"
+                        class="inline-flex items-center gap-1.5 min-h-11 mt-4 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors shadow-sm press">
+                    <i class="fas fa-plus text-xs"></i>Add a job
+                </button>
+                {% endif %}
+                {% if unscheduled_count %}
+                <div class="mt-3">
+                    <a href="{% url 'job_list' %}" class="text-sm font-medium text-brand-600 hover:text-brand-800">
+                        View unscheduled jobs
+                    </a>
+                </div>
                 {% endif %}
             </div>
         </div>
@@ -219,10 +246,24 @@
 
     </div>
 </div>
+
+{% comment %}
+Outside the page container on purpose: .modal-overlay is position:fixed, and
+nesting a fixed overlay inside a scrolled or transformed ancestor is how it
+ends up clipped.
+{% endcomment %}
+{% if can_book %}
+{% include "technician_portal/includes/quick_job_modal.html" %}
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
 <script src="{% static 'js/field_dispatch.js' %}" defer></script>
+{% if can_book %}
+{% comment %}S10 quick-add. Managers only, same as the rail's Book control;
+the endpoint re-checks authorization regardless.{% endcomment %}
+<script src="{% static 'js/schedule_quick_add.js' %}" defer></script>
+{% endif %}
 {% if can_book %}
 {% comment %}
 S4 book-from-the-rail, plus S5's who. Managers only, same as the swap; each

@@ -38,12 +38,25 @@ from apps.technician_portal.services.schedule_conflicts import (
     annotate_conflicts, technician_load,
 )
 from apps.technician_portal.services import working_hours
+from apps.technician_portal.services.quick_job import (
+    QuickJobError, allowed_service_types, create_job,
+)
 
 # What belongs on a day sheet: work that is a go, plus what already got done
 # that day (a schedule with its finished jobs missing looks un-run, not run).
-# REQUESTED stays off the sheet — the shop hasn't accepted it yet; for
-# managers it shows in the triage rail instead.
-DAY_STATUSES = ('PENDING', 'APPROVED', 'IN_PROGRESS', 'COMPLETED')
+#
+# REQUESTED is here as of S10, and the reason is worth keeping. S3 excluded it
+# ("the shop hasn't accepted it yet") and put it in the triage rail instead —
+# but the rail selects on `scheduled_for__isnull=True`, while
+# `confirm_appointment` happily books a REQUESTED job (it is in
+# BOOKABLE_STATUSES). So booking one out of the rail dropped it from the rail
+# *and* never added it to the day: the job vanished from both lists. S3's
+# rationale still holds for *unscheduled* requests, which the rail's own
+# filter keeps there. The refined rule: a REQUESTED job with a booked time
+# belongs on the sheet, marked, because somebody in the shop deliberately put
+# it there. Booking does NOT promote it to APPROVED — that would bypass
+# resolve_initial_shop_status and the approve/deny flow.
+DAY_STATUSES = ('REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS', 'COMPLETED')
 ACTIVE_STATUSES = ('PENDING', 'APPROVED', 'IN_PROGRESS')
 TRIAGE_STATUSES = ('REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS')
 
@@ -400,3 +413,179 @@ def dispatch_job(request):
                             status=exc.status)
 
     return JsonResponse({'ok': True, 'message': result['message']})
+
+
+def _row_context(request, tenant, technician, sees_whole_shop, day):
+    """The context keys `includes/schedule_row.html` needs, matching the day
+    view exactly so a row inserted by JS is the same row a reload renders."""
+    roster = list(Technician.objects.filter(
+        tenant=tenant, is_active=True).select_related('user')) if tenant else []
+    for tech in roster:
+        tech.hours_today = working_hours.describe_day(tech.working_hours, day)
+        tech.off_today = working_hours.is_off_on(tech.working_hours, day)
+    return {
+        'day': day,
+        'can_swap': sees_whole_shop,
+        'can_book': sees_whole_shop,
+        'can_assign': _can_assign(request, tenant, technician, sees_whole_shop),
+        'roster': roster,
+        'preferred_windows': PREFERRED_WINDOW_CHOICES,
+        'booking_default_date': day.isoformat(),
+    }
+
+
+@technician_required
+@require_POST
+def quick_job(request):
+    """Create a job and book it in one submit (fieldops S10).
+
+    The motion this exists for: a customer calls, and the shop puts them on
+    tomorrow without leaving the schedule. Before this, that took Jobs → New
+    Job → save → land on the job ticket → navigate to Schedule → find it in
+    the rail → set date/window/tech → Book.
+
+    Same shape as the three write endpoints above — JSON for every outcome
+    including refusals, authorization checked in-body rather than with
+    @manager_required (which redirects to HTML and queues a stray
+    messages.warning), and the caller must check ``response.ok`` and the
+    content type, because SubscriptionEnforcementMiddleware redirects POSTs
+    from a read-only tenant instead of answering JSON.
+
+    Two writes, one transaction, and they are deliberately different in kind:
+
+    * **Creating the job goes through ``save()``** — pricing, TaxService and
+      ``resolve_initial_shop_status`` (auto-approve) all live there, so a job
+      built any other way diverges on money and on status. The no-``save()``
+      house rule governs moving a *time*, not creating a job.
+    * **The time is written by S4's ``confirm_appointment``**, so there stays
+      exactly one answer to "how does a time get onto a job", and
+      ``scheduled_window_end`` gets set like every other booked job.
+
+    A booking failure rolls the job back rather than leaving an unscheduled
+    orphan behind: the shop asked for a job *on a day*, and half of that is
+    not a useful outcome.
+    """
+    from django.db import transaction
+    from django.template.loader import render_to_string
+    from apps.technician_portal.forms import QuickJobForm
+    from apps.tenants.services.usage_service import limit_message_for
+
+    tenant = getattr(request, 'tenant', None)
+    technician, sees_whole_shop = _resolve_viewer(request, tenant)
+    if not tenant:
+        return JsonResponse({'ok': False, 'error': 'No shop selected.'},
+                            status=403)
+    # Same gate as book_appointment: this control books a time, and plain
+    # techs cannot even see REQUESTED work (CODE-081).
+    if not sees_whole_shop:
+        return JsonResponse(
+            {'ok': False, 'error': 'Only managers can add jobs to the schedule.'},
+            status=403,
+        )
+
+    try:
+        payload = json.loads(request.body or b'{}')
+    except (ValueError, UnicodeDecodeError):
+        payload = None
+    if not isinstance(payload, dict):
+        return JsonResponse(
+            {'ok': False, 'error': 'Reload the schedule and try again.'},
+            status=400,
+        )
+
+    # Validation reuses QuickJobForm rather than re-deriving its rules: it
+    # tenant-scopes the customer and technician querysets in __init__, owns
+    # the "existing customer XOR new individual" rule, and refuses a
+    # replacement with no price. `scheduled_for` is deliberately NOT sent
+    # through it — the modal's date/window go around the form into
+    # confirm_appointment, which is what sets a window end too.
+    form = QuickJobForm(
+        {k: v for k, v in payload.items() if k != 'scheduled_for'},
+        tenant=tenant, allowed_types=allowed_service_types(tenant),
+    )
+    if not form.is_valid():
+        first = next(iter(form.errors.values()))[0]
+        return JsonResponse(
+            {'ok': False, 'error': first, 'errors': form.errors},
+            status=400,
+        )
+
+    try:
+        with transaction.atomic():
+            service = create_job(
+                tenant=tenant, actor_user=request.user,
+                data=form.cleaned_data,
+                # One motion, one message. The booking notification below
+                # names the job, the tech and the time; an assignment notice
+                # fired a millisecond earlier would say strictly less about
+                # the same event.
+                notify_assignment=False,
+            )
+            key = ('repair' if form.cleaned_data['service_type'] == 'repair'
+                   else 'replacement')
+            _k, _pk, day, window, start_time, end_time, _expected = (
+                parse_booking_request({
+                    'type': key,
+                    'id': service.pk,
+                    'date': payload.get('date'),
+                    'window': payload.get('window'),
+                    'start_time': payload.get('start_time'),
+                    'end_time': payload.get('end_time'),
+                    'expected': None,
+                }))
+            booking = perform_booking(
+                tenant=tenant, service_type=key, pk=service.pk, day=day,
+                window=window, start_time=start_time, end_time=end_time,
+                expected=None, actor_user=request.user,
+            )
+    except QuickJobError as exc:
+        error = (limit_message_for(request.user, tenant, exc.message)
+                 if exc.status == 403 else exc.message)
+        return JsonResponse(
+            {'ok': False, 'error': error,
+             'needs_confirmation': bool(exc.suggestions),
+             'suggestions': exc.suggestions},
+            status=exc.status,
+        )
+    except BookingError as exc:
+        return JsonResponse({'ok': False, 'error': exc.message},
+                            status=exc.status)
+
+    service.refresh_from_db()
+    service.service_type = key
+
+    # The day currently on screen, so the caller knows whether the new row
+    # belongs on it. Booking onto another day is a normal thing to do from
+    # here (the customer asked for Friday), and silently inserting a Friday
+    # row into Tuesday's list would be a lie.
+    try:
+        on_screen_day = datetime.strptime(
+            payload.get('on_screen_date') or '', '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        on_screen_day = None
+
+    row_html = ''
+    if on_screen_day == day:
+        annotate_conflicts([service])
+        row_html = render_to_string(
+            'technician_portal/includes/schedule_row.html',
+            {'job': service,
+             **_row_context(request, tenant, technician, sees_whole_shop, day)},
+            request=request,
+        )
+
+    return JsonResponse({
+        'ok': True,
+        'message': booking['message'],
+        'job': {
+            'key': f'{key}-{service.pk}',
+            'url': service.get_absolute_url() if hasattr(service, 'get_absolute_url') else '',
+            'technician_id': service.technician_id,
+            'scheduled_for': service.scheduled_for.isoformat() if service.scheduled_for else None,
+        },
+        'day': {
+            'date': day.isoformat(),
+            'on_screen': on_screen_day == day,
+            'row_html': row_html,
+        },
+    })

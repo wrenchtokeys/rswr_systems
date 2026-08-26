@@ -19,7 +19,7 @@ from .dashboard import register_technician, technician_dashboard
 
 # Day / agenda view (S3) and the dispatch board's writes (S4/S5/S7)
 from .schedule import (
-    book_appointment, day_schedule, dispatch_job, swap_appointments,
+    book_appointment, day_schedule, dispatch_job, quick_job, swap_appointments,
 )
 
 # Global search

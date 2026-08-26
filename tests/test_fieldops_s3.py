@@ -154,14 +154,35 @@ class TechnicianDayViewTests(DayScheduleBase):
         self.assertContains(response, 'DONE-1')
         self.assertEqual(response.context['done_count'], 1)
 
-    def test_requested_jobs_never_on_the_sheet(self):
-        # A customer request holds a provisional tech and even a wished-for
-        # time; until the shop accepts it, it is not a booked visit.
+    def test_unscheduled_requested_jobs_are_not_on_the_sheet(self):
+        # A customer request holds a provisional tech; until somebody gives it
+        # a time it is not a visit, and it belongs in triage rather than on a
+        # day. This is S3's original rule and it still holds — note the job
+        # has NO scheduled_for.
+        self.make_repair(
+            self.tech, status='REQUESTED', scheduled=None, unit_number='REQ-1')
+        response = self.client.get(self.url)
+        self.assertNotContains(response, 'REQ-1')
+
+    def test_requested_job_with_a_booked_time_IS_on_the_sheet(self):
+        # Changed by S10, deliberately. This test used to assert the opposite,
+        # with a fixture identical to this one — and that assertion was the
+        # bug: the day sheet excluded REQUESTED while the triage rail selects
+        # on `scheduled_for IS NULL`, so a REQUESTED job that had been given a
+        # time appeared in NEITHER list. It was invisible.
+        #
+        # A REQUESTED job cannot acquire a `scheduled_for` by accident. The
+        # customer's wish lives in preferred_date/preferred_window and the
+        # portal never writes scheduled_for (S4, customer_portal/views.py).
+        # The only way this state exists is that somebody in the shop booked
+        # it — so it belongs on the sheet, marked, which the status badge
+        # already does. Booking still does not promote it to APPROVED.
         self.make_repair(
             self.tech, status='REQUESTED', scheduled=local_day_at(11),
             unit_number='REQ-1')
         response = self.client.get(self.url)
-        self.assertNotContains(response, 'REQ-1')
+        self.assertContains(response, 'REQ-1')
+        self.assertContains(response, 'Customer Requested')
 
     def test_empty_state_counts_unscheduled_jobs(self):
         self.make_repair(self.tech, scheduled=None, unit_number='NOSLOT-1')

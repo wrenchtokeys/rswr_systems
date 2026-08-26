@@ -19,6 +19,8 @@ urlpatterns = [
     path('schedule/swap/', views.swap_appointments, name='schedule_swap'),
     path('schedule/book/', views.book_appointment, name='schedule_book'),
     path('schedule/dispatch/', views.dispatch_job, name='schedule_dispatch'),
+    # + create a job and book it in one submit, from the schedule (S10)
+    path('schedule/quick-job/', views.quick_job, name='schedule_quick_job'),
     
     # Unified jobs surface (repairs + replacements)
     path('jobs/', views.job_list, name='job_list'),
