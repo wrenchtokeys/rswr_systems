@@ -630,6 +630,70 @@ def _resolve_public_invoice(invoice_id, token, request=None, record_view=True):
     return invoice
 
 
+from apps.technician_portal.services.photo_crops import focus_positions_for
+
+
+def _public_invoice_photos(invoice):
+    """Photo tiles for the public invoice page — repairs AND replacements.
+
+    Replacements used to be excluded outright, which took the photos off
+    exactly the invoices where a close-up of the damage matters most: the
+    expensive ones, and the ones a customer asks "why couldn't you just
+    repair it?" about.
+
+    Captions go through `get_vehicle_label()` because an individual has no
+    unit number — the raw column printed "Unit  — Before" on every retail
+    invoice (the individual-vs-fleet trap in CLAUDE.md).
+
+    `focus` reframes the tile on the break a technician marked; it is ''
+    for anything unmarked, and the template then renders exactly as it
+    always has. The file served is the original in every case.
+    """
+    photos = []
+    try:
+        items = (
+            invoice.line_items
+            .filter(models.Q(repair_id__isnull=False)
+                    | models.Q(replacement_id__isnull=False))
+            .select_related('repair', 'replacement')
+            .prefetch_related('repair__photo_crops', 'replacement__photo_crops')
+        )
+        seen = set()
+        for item in items:
+            job = item.repair or item.replacement
+            if job is None:
+                continue
+            key = ('repair' if item.repair_id else 'replacement', job.pk)
+            if key in seen:  # a job billed on two lines is still one job
+                continue
+            seen.add(key)
+
+            focus_positions = focus_positions_for(job)
+            vehicle = job.get_vehicle_label()
+            for source_field, label in (
+                ('damage_photo_before', 'Before'),
+                ('damage_photo_after', 'After'),
+                ('customer_submitted_photo', 'Customer submitted'),
+            ):
+                field = getattr(job, source_field, None)
+                if not field:
+                    continue
+                try:
+                    url = field.url
+                except Exception:
+                    continue
+                photos.append({
+                    'url': url,
+                    'label': label,
+                    'caption': f'{vehicle} — {label}' if vehicle else label,
+                    'focus': focus_positions.get(source_field, ''),
+                })
+    except Exception as e:
+        logger.warning(
+            f"Could not load photos for public invoice {invoice.pk}: {e}")
+    return photos
+
+
 def public_view_invoice(request, invoice_id, token):
     """
     Public invoice VIEW page — no login required.
@@ -652,31 +716,9 @@ def public_view_invoice(request, invoice_id, token):
         and bool(tenant and tenant.can_accept_payments)
     )
 
-    # Repair photos live here, not as email attachments — multi-MB photo
+    # Photos of the work live here, not as email attachments — multi-MB photo
     # payloads get invoice emails quarantined at corporate mail gateways.
-    photos = []
-    try:
-        repair_items = invoice.line_items.exclude(repair_id__isnull=True).select_related('repair')
-        for item in repair_items:
-            repair = item.repair
-            if not repair:
-                continue
-            for field, label in (
-                (repair.damage_photo_before, 'Before'),
-                (repair.damage_photo_after, 'After'),
-                (repair.customer_submitted_photo, 'Customer submitted'),
-            ):
-                if field:
-                    try:
-                        photos.append({
-                            'unit': repair.unit_number,
-                            'label': label,
-                            'url': field.url,
-                        })
-                    except Exception:
-                        continue
-    except Exception as e:
-        logger.warning(f"Could not load photos for public invoice {invoice_id}: {e}")
+    photos = _public_invoice_photos(invoice)
 
     # First-party SMS opt-in (toll-free registration requires consent from
     # the customer's own screen, not shop attestation). Offered to every
