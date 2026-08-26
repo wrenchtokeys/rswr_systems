@@ -849,7 +849,7 @@ Dropped the marketing nav from the auth pages, made the split full-height, said 
   login stays blue), so it was left alone — but it is a raw hex-adjacent literal sitting
   where a token belongs, and worth revisiting with S14–S16.
 
-## S13 · Icon language: Font Awesome solid → line-weight SVG — **tag DONE (PR #TBD), migration open**
+## S13 · Icon language: Font Awesome solid → line-weight SVG — **tag DONE (PR #223), migration open**
 
 1,281 FA **solid** usages when this session was written. **Re-counted 2026-08-25 20:50 CDT:
 1,303** (`grep -rho 'fas fa-' --include='*.html' templates apps | wc -l`), plus 14 `far`.
@@ -874,7 +874,7 @@ the last `<i class="fa` is gone. S1 already removed the *CDN* risk, so there is 
 here — this is purely aesthetic, which is exactly why it must not be rushed into a
 1,281-site find-and-replace.
 
-### S13a — the tag, shipped 2026-08-26 (PR #TBD)
+### S13a — the tag, shipped 2026-08-26 (PR #223)
 
 `{% icon 'name' %}` in `core/templatetags/ui.py`, geometry in `core/icons.py`
 (70 icons, ~40 aliases), `.icon` in `input.css`, `tests/test_icon_tag.py` (21 tests).
@@ -1323,7 +1323,7 @@ Consequences worth acting on rather than just noting:
 
 | # | Session | Size | Why it is still here |
 |---|---|---|---|
-| S13 | Icon migration | M | **The tag shipped 2026-08-26 (S13a).** What is left is the sweep of ~1,300 `<i class="fas">` and then deleting the vendored FA files — mechanical, no longer a race |
+| S13 | Icon migration | M | **The tag shipped 2026-08-26 (S13a, PR #223).** What is left is the sweep of ~1,300 `<i class="fas">` and then deleting the vendored FA files — mechanical, no longer a race |
 | S14 | Landing: real product imagery | M | Blocked on nothing, and its brief needed a correction this pass — the mock's drift changed shape on its own. See S14 |
 | S15 | Landing: trust bar rewrite | S | Copy, not code. Wants Drake's eye, like the `InAppCopy` sweep below |
 | S16 | Landing: rhythm + kill `[data-reveal]` | M | The fade-deletion half is small and strictly an improvement; it does not need the redesign half |
@@ -1331,7 +1331,7 @@ Consequences worth acting on rather than just noting:
 
 **If you want the cheapest real win:** S17, or the `[data-reveal]` deletion split out of
 S16. ~~If you want the one that stops getting more expensive: the `{% icon %}` tag.~~ —
-taken 2026-08-26, see S13a. Phase 4 is the only chunk that is genuinely a project rather
+taken 2026-08-26, see S13a / PR #223. Phase 4 is the only chunk that is genuinely a project rather
 than a session.
 
 ## Re-dating the Still-open list
@@ -1345,7 +1345,7 @@ worked example this section's first half depends on.
 
 ---
 
-# Where this stands — 2026-08-26, S13a
+# Where this stands — 2026-08-26, S13a (PR #223)
 
 Everything Phase 3 had open on 2026-08-25 is now merged: **#206** (14:09), **#209** (19:11),
 **#210** (22:19) and the state pass **#216** (2026-08-26 18:30). This arc had nothing open
