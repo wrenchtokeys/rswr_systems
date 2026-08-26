@@ -7,7 +7,10 @@ nothing), prompt (the modal heading, e.g. "Tap the break").
 
 A photo can arrive here without a tap — the prompt was skipped, the customer
 sent it, or it predates tap-to-crop — so every photo gets the offer, and one
-that already has a close-up gets to correct it.
+that already has a close-up gets to correct it. An unmarked photo also gets
+a suggested mark when the modal opens (P3); a crop the machine placed and
+nobody has confirmed says so, because it is a weaker label than a tap and
+the tech should get the chance to disagree.
 {% endcomment %}
 <div class="mt-2 flex items-center justify-center gap-2">
     {% if crop and crop.cropped_image %}
@@ -24,10 +27,17 @@ that already has a close-up gets to correct it.
             data-crop-src="{{ photo_url }}"
             data-crop-title="{{ prompt }}"
             {% if crop %}data-crop-at-x="{{ crop.center_x_pct|stringformat:'.2f' }}"
-            data-crop-at-y="{{ crop.center_y_pct|stringformat:'.2f' }}"{% endif %}>
-        <i class="fas fa-crosshairs mr-1"></i>{% if crop %}Move the mark{% else %}Mark the break{% endif %}
+            data-crop-at-y="{{ crop.center_y_pct|stringformat:'.2f' }}"{% endif %}
+            {% if crop and crop.suggested_by %}data-crop-suggested-x="{{ crop.suggested_x_pct|stringformat:'.2f' }}"
+            data-crop-suggested-y="{{ crop.suggested_y_pct|stringformat:'.2f' }}"
+            data-crop-suggested-by="{{ crop.suggested_by }}"
+            data-crop-suggested-score="{{ crop.suggestion_score|stringformat:'.3f' }}"{% endif %}>
+        <i class="fas fa-crosshairs mr-1"></i>{% if not crop %}Mark the break{% elif crop.confirmed_by_human %}Move the mark{% else %}Check the mark{% endif %}
     </button>
 </div>
+{% if crop and not crop.confirmed_by_human %}
+<p class="text-xs text-gray-500 mt-1" data-crop-unconfirmed="{{ field }}">We guessed this one — check it.</p>
+{% endif %}
 {% if crop and not crop.cropped_image %}
 <p class="text-xs text-amber-600 mt-1" data-crop-pending="{{ field }}">Close-up still processing.</p>
 {% endif %}

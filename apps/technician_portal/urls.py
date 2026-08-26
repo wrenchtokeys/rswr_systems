@@ -35,6 +35,7 @@ urlpatterns = [
     path('repairs/<int:repair_id>/reassign-to-self/', views.reassign_to_self, name='reassign_to_self'),
     path('repairs/<int:repair_id>/apply-reward/', views.apply_reward_to_repair, name='apply_reward_to_repair'),
     path('repairs/<int:repair_id>/photo-crop/', views.save_photo_crop, name='save_photo_crop'),
+    path('repairs/<int:repair_id>/photo-crop/suggest/', views.suggest_photo_crop, name='suggest_photo_crop'),
     path('repairs/create/', views.create_repair, name='create_repair'),
     path('repairs/create-multi-break/', views.create_multi_break_repair, name='create_multi_break_repair'),
     path('repairs/<int:repair_id>/convert-to-batch/', views.convert_to_batch, name='convert_to_batch'),

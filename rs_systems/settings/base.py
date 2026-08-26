@@ -205,6 +205,20 @@ ADMINS = [
 MANAGERS = ADMINS
 
 # =========================================
+# PHOTO CROP SUGGESTIONS (tap-to-crop P3)
+# =========================================
+
+# Pre-place the "tap the break" marker using the local suggester in
+# apps/technician_portal/services/photo_suggest.py. Defaults ON because it
+# runs entirely on this server — no API key, no per-photo cost, and no photo
+# ever leaves our infrastructure (that was the explicit decision; a hosted
+# vision model was rejected). Set to 'false' to fall back to the plain
+# empty modal, which is the pre-P3 behaviour and always usable.
+PHOTO_SUGGEST_ENABLED = (
+    os.environ.get('PHOTO_SUGGEST_ENABLED', 'True').lower() == 'true'
+)
+
+# =========================================
 # SMS CONFIGURATION (AWS End User Messaging)
 # =========================================
 

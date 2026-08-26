@@ -132,6 +132,7 @@ Test files live in `tests/` (top-level), not `apps/*/tests.py`. Some app-level t
 python manage.py audit_repair_photos         # Dry run — show orphaned S3 photos
 python manage.py audit_repair_photos --delete # Delete orphaned photos
 python manage.py retry_photo_crops           # Finish tap-to-crop close-ups whose original wouldn't open
+python manage.py suggest_photo_crops --dry-run  # Guess the break in photos nobody marked (local; originals untouched)
 python manage.py security_audit              # Security checks
 python manage.py setup_simplified_rewards    # Seed 4 default reward options
 python manage.py audit_remediation_data      # Read-only data-drift audit (A1/A2/A3/C2)
@@ -437,6 +438,13 @@ STRIPE_API_VERSION=2026-07-29.dahlia
 PAST_DUE_GRACE_DAYS=14      # full-access days before a past_due shop goes read-only
 TRIAL_GRACE_DAYS=14         # read-only days an expired trial gets
 PLATFORM_ALERT_EMAIL=...    # Stripe disputes + failed-webhook digest (platform, not tenant)
+
+# Tap-to-crop break suggestions (apps/technician_portal/services/photo_suggest.py).
+# Local, pure-Pillow saliency — no API key, no cost, and NO PHOTO LEAVES THE
+# SERVER. That is a product decision, not an implementation detail: a hosted
+# vision model was considered for this and rejected because these are real
+# customers' photos. Set false to fall back to the plain "tap the break" modal.
+PHOTO_SUGGEST_ENABLED=true
 
 # Credential encryption at rest (common/encryption.py — tenant supplier credentials,
 # e.g. Mygrant). Fernet key, deliberately separate from SECRET_KEY. REQUIRED in
