@@ -405,8 +405,13 @@ class RepairForm(forms.ModelForm):
         help_text="Only required for admin users. Regular technicians will be automatically assigned."
     )
     # Expose service_date as repair_date for backward compatibility in templates/views
+    # data-default-now: this one is required and means "when the work happened",
+    # so an empty box should read as now. The attribute is on the field, not on
+    # CustomDateTimeInput, because the same widget class also renders
+    # scheduled_for below -- an optional booking time that must stay blank when
+    # nobody has scheduled anything. See templates/base_app.html.
     repair_date = forms.DateTimeField(
-        widget=CustomDateTimeInput()
+        widget=CustomDateTimeInput(attrs={'data-default-now': '1'})
     )
     damage_type = forms.ChoiceField(
         choices=[],  # Will be set in __init__
