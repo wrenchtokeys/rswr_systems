@@ -131,6 +131,7 @@ Test files live in `tests/` (top-level), not `apps/*/tests.py`. Some app-level t
 ```bash
 python manage.py audit_repair_photos         # Dry run — show orphaned S3 photos
 python manage.py audit_repair_photos --delete # Delete orphaned photos
+python manage.py retry_photo_crops           # Finish tap-to-crop close-ups whose original wouldn't open
 python manage.py security_audit              # Security checks
 python manage.py setup_simplified_rewards    # Seed 4 default reward options
 python manage.py audit_remediation_data      # Read-only data-drift audit (A1/A2/A3/C2)

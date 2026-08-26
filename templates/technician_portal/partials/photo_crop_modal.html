@@ -1,8 +1,12 @@
 {% comment %}
-Tap-to-crop modal. Opened by static/js/photo_tap_crop.js after a damage
-photo is picked (repairs only): the tech taps the break, the tap lands in
-hidden crop_x_/crop_y_ inputs, and the server crops around it on save.
-Skippable — closing without confirming just uploads the photo as always.
+Tap-to-crop modal. Driven by static/js/photo_crop_modal.js, which every
+capture surface calls: photo_tap_crop.js (job + repair upload forms),
+multi_break.js (one tap per break) and photo_crop_detail.js (crop or
+re-crop from the repair detail page). The tech taps the break; the server
+crops a square around the tap and saves it beside the untouched original.
+Always skippable — closing without confirming changes nothing.
+
+Whichever script uses it must load photo_crop_modal.js first.
 {% endcomment %}
 <div id="photoCropModal" class="modal-overlay hidden" data-modal data-modal-overlay>
     <div class="modal-panel max-w-lg">

@@ -600,6 +600,7 @@
                                      decoding="async">
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Click to view full size</p>
+                            {% include "technician_portal/partials/photo_crop_control.html" with field="customer_submitted_photo" photo_url=repair.customer_submitted_photo.url crop=photo_crops.customer_submitted_photo prompt="Tap the break" %}
                         </div>
                     </div>
                     {% endif %}
@@ -622,6 +623,7 @@
                                      decoding="async">
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Click to view full size</p>
+                            {% include "technician_portal/partials/photo_crop_control.html" with field="damage_photo_before" photo_url=repair.damage_photo_before.url crop=photo_crops.damage_photo_before prompt="Tap the break" %}
                         </div>
                     </div>
                     {% endif %}
@@ -644,6 +646,7 @@
                                      decoding="async">
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Click to view full size</p>
+                            {% include "technician_portal/partials/photo_crop_control.html" with field="damage_photo_after" photo_url=repair.damage_photo_after.url crop=photo_crops.damage_photo_after prompt="Tap the repaired spot" %}
                         </div>
                     </div>
                     {% endif %}
@@ -773,6 +776,16 @@
         </div>
     </div>
 </div>
+
+{% if repair.customer_submitted_photo or repair.damage_photo_before or repair.damage_photo_after %}
+{% comment %}
+Tap-to-crop from the detail page (static/js/photo_crop_detail.js). The
+endpoint and a CSRF token live here rather than in a form — the tap POSTs
+on its own and nothing else on the page submits with it.
+{% endcomment %}
+<div id="photoCropEndpoint" class="hidden" data-endpoint="{% url 'save_photo_crop' repair.id %}">{% csrf_token %}</div>
+{% include 'technician_portal/partials/photo_crop_modal.html' %}
+{% endif %}
 
 <!-- Image Modal -->
 <div id="imageModal" class="modal-overlay hidden" data-modal data-modal-overlay>
@@ -930,4 +943,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 {% block extra_js %}
 <script src="{% static 'js/field_dispatch.js' %}" defer></script>
+<script src="{% static 'js/photo_crop_modal.js' %}" defer></script>
+<script src="{% static 'js/photo_crop_detail.js' %}" defer></script>
 {% endblock %}

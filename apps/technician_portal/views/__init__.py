@@ -53,6 +53,7 @@ from .repairs import (
     create_warranty_claim,
     admin_reassign_repair,
     portal_bulk_reassign,
+    save_photo_crop,
 )
 
 # Multi-break batch operations
