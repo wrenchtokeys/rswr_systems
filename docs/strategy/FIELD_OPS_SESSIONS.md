@@ -23,7 +23,7 @@ This file is the **work queue** for making field operations real: a technician f
 | S — Where and when | S6 · Routing / ETA / lot-walking | — | BACKLOG (deliberately deferred) |
 | S — Where and when | S7 · Drag to swap two appointments | M | DONE (2026-08-17, **PR #192**) |
 | S — Where and when | S8 · Technician working hours | M | DONE + DEPLOYED (2026-08-24, **PR #201**, live 2026-08-24 22:47) — built in two halves, see Notes |
-| S — Where and when | S9 · "Leave it blank" means unscheduled | S | TODO |
+| S — Where and when | S9 · "Leave it blank" means unscheduled | S | **BUILT 2026-08-25** (branch `fix/fieldops-s9-blank-means-unscheduled`) — shipped as an opt-in attribute, not the deletion the spec called for; see Notes |
 | S — Where and when | S10 · Quick-add a job from the schedule | M | TODO |
 | S — Where and when | S11 · The move primitive + inline time/date edit | M | TODO |
 | S — Where and when | S12 · The ordered day list + drag to move | L | TODO |
@@ -1539,7 +1539,7 @@ creation and scheduling on one screen, and rebuild the day view as an ordered
 list where both gestures show their work. **Swap is kept and improved, not
 retired** — Drake's call, 2026-08-25.
 
-## S9 · "Leave it blank" means unscheduled — TODO
+## S9 · "Leave it blank" means unscheduled — BUILT 2026-08-25
 
 | Field | Value |
 |---|---|
@@ -1552,8 +1552,64 @@ retired** — Drake's call, 2026-08-25.
 | **Why it is safe** | Both fields that actually want a `now` default already set it themselves — `static/js/multi_break.js:31-34` unconditionally, and `static/js/repair_form.js:56-70`, which `forms.py:542` documents as exactly this. Ordering is what hides it today: `base_app`'s inline `DOMContentLoaded` handler is registered before `{% block extra_js %}`'s deferred scripts, so it fires first and those scripts find a non-empty value and skip. Remove it and they do the job they were already written to do. The customer-portal copy is dead code today (no customer-portal template renders a `datetime-local`) — delete it anyway, because leaving it is how the bug comes back through another door. |
 | **Intentional behaviour change** | Jobs created through `QuickJobForm` and replacements through `ReplacementForm` now come out **unscheduled** unless someone types a time. That is what both labels promise, and it is precisely the state S12's Unscheduled drawer exists to surface. Say so in the PR body — it will look like a regression to anyone who reads only the diff. |
 | **Tests** | New `tests/test_fieldops_s9.py`: POST `job_create` with `scheduled_for` empty → `service.scheduled_for is None`; same through the replacement form; a posted value still round-trips. Assert the prefill string is **absent** from both base templates (a render-level guard, the way `tests/test_view_transitions.py` guards its inline block) so it cannot be pasted back. Manual: load the multi-break form and the repair edit form and confirm both `repair_date` fields still land on now. |
-| **Deliberately not done** | Gating the prefill behind an opt-in `data-default-now` attribute. It needs the same audit, adds an attribute nobody will remember, and leaves dead code in place for a default that no field turns out to want. |
-| **Notes** | *(fill in when done)* |
+| **Deliberately not done** | ~~Gating the prefill behind an opt-in `data-default-now` attribute.~~ **This is what shipped** — the spec's reasoning was wrong on two counts it could only have found by reading flatpickr. See Notes. |
+
+**Notes** *(2026-08-25)*
+
+- **The spec said "delete the prefill outright"; that would have broken the
+  repair form.** Two findings, both cheap to re-derive and expensive to miss:
+  1. **`RepairForm` renders `repair_date` AND `scheduled_for` through the same
+     `CustomDateTimeInput` class** (`forms.py:409` and `:458`). One is required
+     and wants *now*; the other is an optional booking time that must stay
+     blank. They sit on the same page. So the opt-in has to live on the
+     **field**, not on the widget class — putting `data-default-now` in
+     `CustomDateTimeInput.__init__` would have defaulted the very field this
+     session exists to leave alone.
+  2. **Order is load-bearing.** `flatpickr` is initialised with
+     `altInput: true`, which hides the real input behind a formatted one. The
+     prefill therefore has to run *before* init, or the value lands on the
+     hidden field and the visible box still reads empty. The spec's plan was to
+     let `static/js/repair_form.js` (which fills `repair_date` only when empty)
+     do the job instead — but that runs *after* `base_app`'s inline
+     `DOMContentLoaded` handler, so the form would have submitted the right data
+     while showing the user an empty box. `multi_break.js` would have survived
+     only because it happens to sync through `_flatpickr.setDate()`.
+- **`defaultDate` was the second half of the bug, and nothing had noticed.**
+  The call passed `defaultDate: input.value || new Date()`. flatpickr resolves
+  `w.config.defaultDate || w.input.value` — **config wins** — and then writes
+  the resolved date into the field. So guarding the prefill alone would have
+  left the picker re-filling every "blank" input anyway. It is removed rather
+  than guarded, because flatpickr already falls back to the input's own value:
+  the option was pure redundancy the whole time. `tests/test_fieldops_s9.py`
+  asserts it stays gone.
+- **The whole bug was client-side, which is why S1's tests never caught it.**
+  `test_no_schedule_behaves_as_before` (S1) posts an empty `scheduled_for` and
+  asserts NULL — and passed throughout, because the server was always right.
+  Nothing rendered the page and looked at it. The new tests are therefore
+  render- and source-level on purpose: they assert the guard exists, that the
+  prefill precedes the flatpickr call, and which fields carry the attribute.
+- **Verified in a browser, not only in tests** — the point being that this bug
+  was invisible to the test suite by construction. Against a seeded tenant on
+  `/tech/repairs/create/`: `repair_date` shows "August 25, 2026 - 7:19 PM" in
+  the visible box while `scheduled_for` is blank in both the real input and the
+  visible box, on one page, from one widget class. Also walked Drake's actual
+  motion on `/tech/jobs/new/` (uncheck "Job is already done" → the revealed
+  field is empty under the label that promises exactly that).
+- **Merge order:** this session's branch was cut from `main`, so it does not
+  contain the S9 block it is documented in. **Merge the docs PR first**, or
+  these Notes and the code land in the wrong order — the same
+  branch-cut-before-its-dependency trap S8 hit and this document already warns
+  about.
+- Suite: 351 tests green (S9's 11 plus `test_fieldops_s1/s3/s4/s5/s7/s8`,
+  `test_job_form_parity`, `test_unified_job_create`, `test_quick_job_invoice`,
+  `test_mobile_touch_targets`, `test_view_transitions`, smoke set). No new
+  Tailwind classes — `app.css` rebuilds byte-identical. No migration.
+- **Watch for in S10–S12:** any dynamically inserted `datetime-local` will now
+  get flatpickr but **no** default, which is correct — and is also why S11
+  specifies `type="time"` / `type="date"` for the inline editor instead: a node
+  inserted after `DOMContentLoaded` never gets a picker at all, because this
+  block runs exactly once.
+
 
 ## S10 · Quick-add a job from the schedule — TODO
 
