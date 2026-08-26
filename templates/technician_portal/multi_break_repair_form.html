@@ -32,6 +32,12 @@
         opacity: 0;
         translate: 0 4px;
     }
+    /* The break dialog predates the shared modal skeleton and sits at
+       z-index 1000; the tap-to-crop modal (.modal-overlay, z-50) opens on
+       top of it and has to say so. */
+    #photoCropModal {
+        z-index: 1100;
+    }
     .break-card {
         transition: all 0.2s;
     }
@@ -511,7 +517,10 @@
     </div>
 </div>
 
+{% include 'technician_portal/partials/photo_crop_modal.html' %}
+
 <script src="{% static 'js/image_compress.js' %}"></script>
 <script src="{% static 'js/viscosity_suggestion.js' %}"></script>
+<script src="{% static 'js/photo_crop_modal.js' %}"></script>
 <script src="{% static 'js/multi_break.js' %}?v=20251118-final"></script>
 {% endblock %}

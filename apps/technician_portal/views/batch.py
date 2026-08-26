@@ -19,6 +19,7 @@ from apps.technician_portal.decorators import technician_required, is_tenant_adm
 from common.auth import get_user_role
 from apps.tenants.services.usage_service import UsageService, limit_message_for
 from apps.technician_portal.services.batch_pricing_service import calculate_batch_pricing
+from apps.technician_portal.services.photo_crops import process_tap_coordinates
 from common.utils import convert_heic_to_jpeg
 
 logger = logging.getLogger(__name__)
@@ -486,6 +487,13 @@ def create_multi_break_repair(request):
                     try:
                         repair.save()
                         created_repairs.append(repair)
+                        # Tap-to-crop: one tap per break's photo, posted
+                        # namespaced under the break's index. Fails open —
+                        # never let a close-up cost the tech the batch.
+                        process_tap_coordinates(
+                            repair, request.POST, technician=technician,
+                            key_prefix=f'breaks[{i}][', key_suffix=']',
+                        )
                         logger.info(f"[MULTI-BREAK] Created repair {repair.id} - Break {i+1}/{breaks_count} in batch {batch_id}, cost=${repair.cost}")
                     except Exception as save_error:
                         error_msg = f"Failed to save Break {i+1}: {str(save_error)}"

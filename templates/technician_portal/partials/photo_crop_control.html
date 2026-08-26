@@ -1,0 +1,33 @@
+{% comment %}
+The "mark the break" control that sits under a photo on the repair detail
+page. Driven by static/js/photo_crop_detail.js.
+
+Params: field (the model field name), photo_url, crop (a RepairPhotoCrop or
+nothing), prompt (the modal heading, e.g. "Tap the break").
+
+A photo can arrive here without a tap — the prompt was skipped, the customer
+sent it, or it predates tap-to-crop — so every photo gets the offer, and one
+that already has a close-up gets to correct it.
+{% endcomment %}
+<div class="mt-2 flex items-center justify-center gap-2">
+    {% if crop and crop.cropped_image %}
+    {% comment %}A re-tap rewrites the crop at the same filename, so the URL
+    carries the row's revision or the browser shows the old close-up.{% endcomment %}
+    <img src="{{ crop.cropped_image.url }}?v={{ crop.updated_at|date:'U' }}" alt="Saved close-up of the break"
+         class="h-10 w-10 rounded object-cover border border-gray-200 shrink-0"
+         loading="lazy" decoding="async"
+         data-crop-thumb="{{ field }}">
+    {% endif %}
+    <button type="button"
+            class="btn-ghost btn-sm text-brand-700"
+            data-crop-field="{{ field }}"
+            data-crop-src="{{ photo_url }}"
+            data-crop-title="{{ prompt }}"
+            {% if crop %}data-crop-at-x="{{ crop.center_x_pct|stringformat:'.2f' }}"
+            data-crop-at-y="{{ crop.center_y_pct|stringformat:'.2f' }}"{% endif %}>
+        <i class="fas fa-crosshairs mr-1"></i>{% if crop %}Move the mark{% else %}Mark the break{% endif %}
+    </button>
+</div>
+{% if crop and not crop.cropped_image %}
+<p class="text-xs text-amber-600 mt-1" data-crop-pending="{{ field }}">Close-up still processing.</p>
+{% endif %}

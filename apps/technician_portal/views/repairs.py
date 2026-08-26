@@ -236,9 +236,15 @@ def repair_detail(request, repair_id):
             tenant=tenant, is_active=True
         ).select_related('user').order_by('user__first_name')
 
+    # Tap-to-crop close-ups, keyed by photo field so the template can show
+    # each photo's crop (or offer to make one) next to it. See
+    # docs/strategy/PHOTO_ML_SESSIONS.md.
+    photo_crops = {c.source_field: c for c in repair.photo_crops.all()}
+
     return render(request, 'technician_portal/repair_detail.html', {
         'repair': repair,
         'TIME_ZONE': timezone.get_current_timezone_name(),
+        'photo_crops': photo_crops,
         'is_admin': user_is_admin,
         'can_update_status': can_update_status,
         'can_assign_repair': can_assign_repair,
@@ -1933,4 +1939,77 @@ def portal_bulk_reassign(request):
     return render(request, 'technician_portal/portal_bulk_reassign.html', {
         'repairs': repairs,
         'available_technicians': available_technicians,
+    })
+
+
+@technician_required
+def save_photo_crop(request, repair_id):
+    """Record a tap on a photo that is already on the repair.
+
+    The upload forms post their taps as hidden fields alongside the photo;
+    this is the detail-page counterpart, for photos that arrived without a
+    tap (a skipped prompt, a customer-submitted photo, anything from before
+    tap-to-crop existed) and for correcting one that landed off the break.
+    Latest tap wins — see save_crop_for.
+    """
+    from apps.technician_portal.services.photo_crops import (
+        SOURCE_FIELDS, save_crop_for,
+    )
+
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST required'}, status=405)
+
+    tenant = getattr(request, 'tenant', None)
+    qs = Repair.objects.filter(tenant=tenant) if tenant else Repair.objects.none()
+    repair = get_object_or_404(qs, id=repair_id)
+
+    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
+    technician = (
+        Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if tenant else None
+    )
+    if not can_view_repair(repair, technician, user_is_admin):
+        return JsonResponse(
+            {'success': False, 'error': "You don't have permission to edit this repair."},
+            status=403,
+        )
+
+    source_field = request.POST.get('source_field', '')
+    if source_field not in SOURCE_FIELDS:
+        return JsonResponse({'success': False, 'error': 'Unknown photo.'}, status=400)
+    if not getattr(repair, source_field, None):
+        return JsonResponse(
+            {'success': False, 'error': 'That photo is no longer on this repair.'},
+            status=400,
+        )
+
+    try:
+        center_x_pct = min(max(float(request.POST.get('center_x_pct')), 0.0), 100.0)
+        center_y_pct = min(max(float(request.POST.get('center_y_pct')), 0.0), 100.0)
+    except (TypeError, ValueError):
+        return JsonResponse({'success': False, 'error': 'Bad coordinates.'}, status=400)
+
+    try:
+        crop = save_crop_for(
+            repair, source_field, center_x_pct, center_y_pct,
+            technician=technician,
+        )
+    except Exception:
+        logger.exception(
+            "Detail-page crop failed for repair %s %s", repair.pk, source_field,
+        )
+        crop = None
+
+    if crop is None:
+        return JsonResponse(
+            {'success': False, 'error': "Couldn't save that close-up. Try again."},
+            status=500,
+        )
+
+    # A tap on an unreadable original still counts: the row is on record and
+    # retry_photo_crops will produce the image once the file is readable.
+    return JsonResponse({
+        'success': True,
+        'cropped': bool(crop.cropped_image),
+        'crop_url': crop.cropped_image.url if crop.cropped_image else '',
     })

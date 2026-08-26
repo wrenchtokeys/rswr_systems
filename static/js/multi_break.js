@@ -15,6 +15,33 @@ let breaks = [];
 let editingIndex = null;
 let photoBeforeChanged = false;
 let photoAfterChanged = false;
+// Tap-to-crop: where the tech marked the break on each photo, percent of
+// the photo's natural size. One modal serves every break, so this holds only
+// the break currently open; it moves onto breakData on save and comes back
+// out on edit. See docs/strategy/PHOTO_ML_SESSIONS.md.
+let pendingCrop = { damage_photo_before: null, damage_photo_after: null };
+
+const CROP_PROMPTS = {
+    damage_photo_before: 'Tap the break',
+    damage_photo_after: 'Tap the repaired spot'
+};
+
+// Object URLs for the crop modal, revoked when the next photo replaces them.
+let cropObjectUrl = null;
+
+function offerCropTap(file, cropField) {
+    pendingCrop[cropField] = null;
+    if (!window.PhotoCropModal || !PhotoCropModal.available()) return;
+    if (cropObjectUrl) URL.revokeObjectURL(cropObjectUrl);
+    cropObjectUrl = URL.createObjectURL(file);
+    PhotoCropModal.open({
+        src: cropObjectUrl,
+        title: CROP_PROMPTS[cropField],
+        onConfirm: (xPct, yPct) => {
+            pendingCrop[cropField] = { x: xPct, y: yPct };
+        }
+    });
+}
 
 // Initialize datetime field with current time
 document.addEventListener('DOMContentLoaded', function() {
@@ -191,6 +218,7 @@ function clearModal() {
     document.getElementById('preview_after').innerHTML = '';
     photoBeforeChanged = false;
     photoAfterChanged = false;
+    pendingCrop = { damage_photo_before: null, damage_photo_after: null };
 
     // Clear manager override fields if they exist
     const costOverride = document.getElementById('modal_cost_override');
@@ -272,6 +300,9 @@ document.getElementById('saveBreakBtn').addEventListener('click', () => {
         finalPhotoBefore = photoBefore || null;
         finalPhotoAfter = photoAfter || null;
     }
+    // A tap belongs to the photo it was made on: no photo, no tap.
+    const finalCropBefore = finalPhotoBefore ? pendingCrop.damage_photo_before : null;
+    const finalCropAfter = finalPhotoAfter ? pendingCrop.damage_photo_after : null;
 
     // Get damage location
     const locXInput = document.getElementById('modal_damage_location_x');
@@ -291,7 +322,9 @@ document.getElementById('saveBreakBtn').addEventListener('click', () => {
         cost_override: costOverride,
         override_reason: overrideReason,
         damage_location_x: damageLocationX || null,
-        damage_location_y: damageLocationY || null
+        damage_location_y: damageLocationY || null,
+        crop_before: finalCropBefore,
+        crop_after: finalCropAfter
     };
 
     // Add or update
@@ -315,7 +348,7 @@ document.getElementById('saveBreakBtn').addEventListener('click', () => {
 });
 
 // Photo Preview Handlers with Compression
-async function handlePhotoSelect(inputElement, previewElement) {
+async function handlePhotoSelect(inputElement, previewElement, cropField) {
     const file = inputElement.files[0];
 
     if (!file) {
@@ -356,6 +389,10 @@ async function handlePhotoSelect(inputElement, previewElement) {
         // Replace the input file with compressed version
         ImageCompressor.replaceInputFile(inputElement, compressedFile);
 
+        // Ask for the break's location now, while the tech is looking at the
+        // photo they just took.
+        offerCropTap(compressedFile, cropField);
+
         // Show preview
         const reader = new FileReader();
         reader.onload = (event) => {
@@ -369,6 +406,7 @@ async function handlePhotoSelect(inputElement, previewElement) {
         reader.readAsDataURL(compressedFile);
     } catch (error) {
         console.error('Compression error:', error);
+        offerCropTap(file, cropField);
         // Fall back to original file preview
         const reader = new FileReader();
         reader.onload = (event) => {
@@ -380,12 +418,12 @@ async function handlePhotoSelect(inputElement, previewElement) {
 
 document.getElementById('modal_photo_before').addEventListener('change', (e) => {
     photoBeforeChanged = true;
-    handlePhotoSelect(e.target, document.getElementById('preview_before'));
+    handlePhotoSelect(e.target, document.getElementById('preview_before'), 'damage_photo_before');
 });
 
 document.getElementById('modal_photo_after').addEventListener('change', (e) => {
     photoAfterChanged = true;
-    handlePhotoSelect(e.target, document.getElementById('preview_after'));
+    handlePhotoSelect(e.target, document.getElementById('preview_after'), 'damage_photo_after');
 });
 
 // Edit Break Function
@@ -393,6 +431,10 @@ window.editBreak = function(index) {
     editingIndex = index;
     clearModal();  // Reset file inputs and change flags before populating
     const breakData = breaks[index];
+    // clearModal() above wiped the pending taps; put this break's back so a
+    // re-save that doesn't touch the photos keeps the marks.
+    pendingCrop.damage_photo_before = breakData.crop_before || null;
+    pendingCrop.damage_photo_after = breakData.crop_after || null;
 
     document.getElementById('modal_damage_type').value = breakData.damage_type;
     document.getElementById('modal_drilled_before_repair').checked = breakData.drilled_before_repair || false;
@@ -648,9 +690,17 @@ function submitForm() {
 
         if (breakData.photo_before) {
             formData.append(`breaks[${index}][photo_before]`, breakData.photo_before);
+            if (breakData.crop_before) {
+                formData.append(`breaks[${index}][crop_x_damage_photo_before]`, breakData.crop_before.x.toFixed(2));
+                formData.append(`breaks[${index}][crop_y_damage_photo_before]`, breakData.crop_before.y.toFixed(2));
+            }
         }
         if (breakData.photo_after) {
             formData.append(`breaks[${index}][photo_after]`, breakData.photo_after);
+            if (breakData.crop_after) {
+                formData.append(`breaks[${index}][crop_x_damage_photo_after]`, breakData.crop_after.x.toFixed(2));
+                formData.append(`breaks[${index}][crop_y_damage_photo_after]`, breakData.crop_after.y.toFixed(2));
+            }
         }
     });
 
@@ -748,7 +798,8 @@ function saveToLocalStorage() {
         repair_date: document.getElementById('repair_date').value,
         // Persist every field the break modal collects. File objects can't be
         // serialized, so photos are dropped and the tech is told to re-shoot —
-        // everything else survives.
+        // everything else survives. Tap-to-crop marks go with the photos:
+        // a tap restored without the photo it was made on is an orphan.
         breaks: breaks.map(b => ({
             id: b.id,
             damage_type: b.damage_type,

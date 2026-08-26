@@ -34,15 +34,20 @@ SOURCE_FIELDS = (
 )
 
 
-def process_tap_coordinates(repair, post_data, technician=None):
+def process_tap_coordinates(repair, post_data, technician=None,
+                            key_prefix='', key_suffix=''):
     """Create crops for whichever crop_x_/crop_y_ pairs are in the POST.
 
     Deliberately touches Pillow only when a tap was actually made, so photo
     uploads without a tap never open the image server-side.
+
+    ``key_prefix``/``key_suffix`` wrap the field names for forms that
+    namespace their inputs — the multi-break form posts one set per break as
+    ``breaks[0][crop_x_damage_photo_before]``.
     """
     for source_field in SOURCE_FIELDS:
-        raw_x = post_data.get(f'crop_x_{source_field}', '')
-        raw_y = post_data.get(f'crop_y_{source_field}', '')
+        raw_x = post_data.get(f'{key_prefix}crop_x_{source_field}{key_suffix}', '')
+        raw_y = post_data.get(f'{key_prefix}crop_y_{source_field}{key_suffix}', '')
         if raw_x == '' or raw_y == '':
             continue
         try:
@@ -135,6 +140,22 @@ def save_crop_for(repair, source_field, center_x_pct, center_y_pct,
     else:
         crop.save(update_fields=['cropped_image'])
     return crop
+
+
+def retry_crop(crop):
+    """Re-run a crop that only ever recorded the tap (no derived image).
+
+    The original may have been unreadable when the tap was saved (a truncated
+    upload, an S3 write still in flight) and be perfectly fine now. The tap is
+    stored as a percentage, so it still means the same point on the photo.
+    Returns True when the retry produced an image.
+    """
+    refreshed = save_crop_for(
+        crop.repair, crop.source_field,
+        crop.center_x_pct, crop.center_y_pct,
+        technician=crop.created_by,
+    )
+    return bool(refreshed and refreshed.cropped_image)
 
 
 def delete_crops_for(repair, source_field):

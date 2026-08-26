@@ -25,7 +25,7 @@ without re-running the exploration that produced this doc.
 | Phase | Session | Size | Status |
 |---|---|---|---|
 | P1 · Capture | Tap-to-crop on upload (job form + old repair form) | M | DONE (2026-08-25, branch `feat/photoml-p1-tap-to-crop`) |
-| P2 · Coverage | Detail-page crop/re-crop + retry queue + multi-break & customer-portal wiring | M | TODO |
+| P2 · Coverage | Detail-page crop/re-crop + retry queue + multi-break & customer-portal wiring | M | DONE (2026-08-25, branch `feat/photoml-p2-crop-coverage`) |
 | P3 · Assist | Auto-suggest crops (Claude vision first; trained detector when data suffices) | M | TODO |
 | P4 · Payoff | Dataset export + repairability classifier | L | TODO |
 
@@ -36,10 +36,13 @@ built any time after a few hundred crops exist and is a good way to smoke-test
 the metadata before committing to a model. P3 before the P4 classifier because
 auto-suggest raises the capture rate that P4 feeds on.
 
-**Where we are (2026-08-25, after P1):** P1 built and tested on branch
-`feat/photoml-p1-tap-to-crop` (13 new tests green; the 5 failures in adjacent
-modules reproduce exactly on `main`). Not yet merged/deployed at the time of
-writing — check the PR list.
+**Where we are (2026-08-25, after P2):** P1 merged as PR #211. P2 built on
+`feat/photoml-p2-crop-coverage` (24 new tests, 37 green with P1's; the one
+adjacent failure reproduces identically on `main`) and verified in a real
+browser end to end. Not yet merged/deployed at the time of writing — check the
+PR list. **Every capture surface now has tap-to-crop except the customer
+portal, which by decision never asks a customer to tap** (see P2's Notes).
+Next up is P3, or P4's export step on its own to smoke-test the metadata.
 
 **Sizes:** S ≈ half a day · M ≈ 1–2 days · L ≈ 3–5 days.
 
@@ -81,13 +84,17 @@ pixels) is what makes the crop regenerable from the original no matter how the
 photo was displayed.
 
 **The crop service.** `apps/technician_portal/services/photo_crops.py`:
-`process_tap_coordinates(repair, post_data, technician=None)` reads
-`crop_x_<field>`/`crop_y_<field>` POST pairs and only touches Pillow when a
-pair is present — that is what keeps the wider test suite (which uploads
-`b"fake image content"` photos) green. `save_crop_for()` does the actual crop:
-square box, side = `CROP_FRACTION` (0.35) of the shorter dimension with a
+`process_tap_coordinates(repair, post_data, technician=None, key_prefix='',
+key_suffix='')` reads `crop_x_<field>`/`crop_y_<field>` POST pairs and only
+touches Pillow when a pair is present — that is what keeps the wider test suite
+(which uploads `b"fake image content"` photos) green. The prefix/suffix wrap
+the names for forms that namespace their inputs (multi-break posts
+`breaks[0][crop_x_damage_photo_before]`). `save_crop_for()` does the actual
+crop: square box, side = `CROP_FRACTION` (0.35) of the shorter dimension with a
 `MIN_CROP_PX` (300) floor, clamped by *shifting* into bounds, JPEG q90.
-Everything fails open — a crop must never block saving a job in the field.
+Everything fails open — a crop must never block saving a job in the field, and
+a tap on an unreadable original is still recorded (null box) for
+`retry_crop(crop)` / `manage.py retry_photo_crops` to finish later.
 `delete_crops_for(repair, source_field)` removes crop + file when a source
 photo is deleted.
 
@@ -101,17 +108,25 @@ both have them; P1 crops repairs only.
 |---|---|---|---|---|
 | Unified job form `/tech/jobs/new/` | `views/jobs.py::job_create` | yes (P1) | `image_compress.js` auto-wire | **P1** |
 | Old repair form create/update | `views/repairs.py` | yes | `repair_form.js` (manual) | **P1** |
-| Multi-break | `views/batch.py` | yes | `multi_break.js` | P2 (Files live in a JS array, posted as bespoke FormData — needs per-break coord plumbing) |
-| Customer portal request | `customer_portal/views.py` (~:1800) | yes | none | P2 |
+| Multi-break | `views/batch.py` | yes | `multi_break.js` | **P2** (one tap per break, posted as `breaks[i][crop_x_<field>]`) |
+| Customer portal request | `customer_portal/views.py` (~:1800) | yes | none | never — by decision, customers are not asked to tap; the shop marks their photo from the detail page |
+| Repair detail page | `views/repairs.py::save_photo_crop` | n/a | n/a | **P2** (crop or re-crop any photo already on the job) |
 
-**The client JS contract.** `input[data-tap-crop="<field>"]` marks a
-crop-eligible file input. After compression finishes, `image_compress.js` and
-`repair_form.js` dispatch a bubbling `photocrop:offer` CustomEvent
-(`detail: {file}`) on the input; `static/js/photo_tap_crop.js` (ES5 IIFE, house
-style, loaded after the compressor) listens on `document`, opens
+**The client JS contract.** The modal itself belongs to
+`static/js/photo_crop_modal.js` (ES5 IIFE, house style), which owns
 `#photoCropModal` (partial:
 `templates/technician_portal/partials/photo_crop_modal.html`, standard `ui.js`
-modal contract), and on Confirm writes the hidden inputs
+modal contract) and exposes `PhotoCropModal.open({src, title, hint,
+confirmLabel, at, onConfirm(xPct, yPct), onSkip})`. **It must load before any
+driver.** Three drivers use it: `photo_tap_crop.js` (upload forms),
+`photo_crop_detail.js` (repair detail page — POSTs to `save_photo_crop`) and
+`multi_break.js` (keeps the tap in its `breaks[]` state).
+
+On the upload forms, `input[data-tap-crop="<field>"]` marks a crop-eligible
+file input. After compression finishes, `image_compress.js` and
+`repair_form.js` dispatch a bubbling `photocrop:offer` CustomEvent
+(`detail: {file}`) on the input; `photo_tap_crop.js` listens on `document`,
+opens the modal, and on Confirm writes the hidden inputs
 `crop_x_<field>`/`crop_y_<field>` that live inside each form. Skip/Escape/
 overlay close = coords stay empty = server does nothing. The photo "Remove"
 buttons clear coords via `window.PhotoTapCrop.clear(input)` (programmatic
@@ -166,6 +181,15 @@ Postgres recipe when local auth fails: scratch cluster via
   rebuild was needed.
 - **10MB request cap** (nginx + Django): photos are client-compressed before
   posting; don't add anything that re-inflates the payload.
+- **`image_compress.js` has no `?v=` cache-buster** (P2): the dev server sets
+  no `max-age`, so Chrome heuristically caches it for hours and can run a copy
+  from before your change while the file on disk is right. A tap-to-crop bug
+  that makes no sense is this until proven otherwise — hard-reload
+  (`fetch(src, {cache:'reload'})` then `location.reload()`) before debugging.
+- **A re-tap reuses the crop's filename** (P2): `save_crop_for` deletes the old
+  file first, so the same name is free again and the browser serves the stale
+  close-up. Any surface showing a crop must version the URL — the detail page
+  uses `?v={{ crop.updated_at|date:'U' }}`, the JS uses a timestamp.
 
 ---
 
@@ -197,7 +221,7 @@ Postgres recipe when local auth fails: scratch cluster via
 - P2 should reuse `save_crop_for` untouched: it already handles
   `customer_submitted_photo` and records taps on unreadable images for retry.
 
-# P2 · Coverage: detail-page crop/re-crop, retry queue, remaining surfaces — TODO
+# P2 · Coverage: detail-page crop/re-crop, retry queue, remaining surfaces — DONE (2026-08-25)
 
 | Field | Value |
 |---|---|
@@ -207,11 +231,51 @@ Postgres recipe when local auth fails: scratch cluster via
 | **Why it matters** | P1 only captures at upload time on two of four surfaces. Multi-break is the power-user path (several breaks per windshield = several labeled examples per job), and old photos + skipped taps are recoverable labeling work. |
 | **Verified current state** | See §0 upload-surfaces map. Detail page: `templates/technician_portal/repair_detail.html` photo section ~:564-666 with `openImageModal()` lightbox ~:794 — natural home for a "Mark the break" action. Multi-break: per-break File objects in `multi_break.js` `breaks[]`, posted as `breaks[i][photo_before]` FormData (`views/batch.py` ~:397-463); per-break coords need matching `breaks[i][crop_x_before]` keys. Customer portal: `customer_portal/views.py` ~:1800 writes `customer_submitted_photo` directly. |
 | **Considerations** | Detail-page tap needs a small POST endpoint (tenant-scoped, technician-gated) calling `save_crop_for` — the P1 hidden-input transport doesn't apply there. Retry = iterate rows with `cropped_image=''`/null dims and call `save_crop_for` with the stored coords. Customer-portal UX must stay optional and dead simple — customers are not techs. |
-| **Decisions needed** | Whether customers are asked to tap at all, or only techs (recommend: techs only at first; customer photos get cropped by the shop from the detail page). |
+| **Decision taken** | Techs only. Customers are never asked to tap; their photos are marked by the shop from the detail page (which handles `customer_submitted_photo` like any other). The customer-portal request flow is unchanged. |
 | **Acceptance criteria** | Every crop-eligible photo on the detail page can be tapped/re-tapped; multi-break taps produce one crop per break's photo; a failed crop retries successfully once the image is readable. |
 | **Out of scope** | Auto-suggest (P3). Bulk backfill UI for hundreds of old photos — do it only if the shop actually wants to label history. |
 
 **Notes**
+*(session run 2026-08-25, branch `feat/photoml-p2-crop-coverage`)*
+- **The modal is now a shared module.** `static/js/photo_crop_modal.js` owns
+  `#photoCropModal` and exposes `PhotoCropModal.open({src, title, hint, at,
+  onConfirm(xPct,yPct), onSkip})`; three thin drivers sit on top —
+  `photo_tap_crop.js` (upload forms, writes hidden inputs),
+  `photo_crop_detail.js` (detail page, POSTs on its own) and `multi_break.js`
+  (keeps the tap in its `breaks[]` JS state). **Load `photo_crop_modal.js`
+  before any of them.** P1's `photo_tap_crop.js` was rewritten onto this and
+  its behaviour re-verified in a browser — its public contract
+  (`data-tap-crop`, `photocrop:offer`, `PhotoTapCrop.clear`) is unchanged.
+- **Detail page**: `POST /tech/repairs/<id>/photo-crop/` (`save_photo_crop`,
+  name `save_photo_crop`), tenant-scoped and gated by the existing
+  `can_view_repair` helper. Every photo on the page gets a "Mark the break"
+  button via `partials/photo_crop_control.html`; one that already has a crop
+  shows the thumbnail and reads "Move the mark", and re-opening pre-places the
+  previous mark (`at:`) so a correction is a nudge, not a fresh hunt.
+- **Multi-break**: coords ride in the bespoke FormData as
+  `breaks[i][crop_x_<field>]`, read back by the new `key_prefix`/`key_suffix`
+  arguments on `process_tap_coordinates` — no second parser. The break dialog
+  predates the shared modal skeleton and sits at `z-index: 1000`, so that page
+  raises `#photoCropModal` to 1100 in its own `extra_css`. The localStorage
+  draft deliberately does NOT persist taps: it can't persist Files either, and
+  a tap restored without its photo is an orphan.
+- **Retry**: `manage.py retry_photo_crops [--dry-run] [--tenant N] [--limit N]`
+  re-runs `save_crop_for` from the stored percentages for any row with no
+  derived image. Not wired into EB cron — it is a manual sweep, and cron in
+  this app has four documented ways to fail silently (see CLAUDE.md).
+- Traps hit this session, both now in the list above: a stale browser cache of
+  `image_compress.js` (no `?v=`) made a working upload path look broken for
+  half an hour, and the crop filename is reused on a re-tap, so the detail
+  page versions the thumbnail URL by `updated_at`.
+- Tests: `tests/test_photo_crop_coverage.py`, 24 tests. Baseline note:
+  `test_code105_repair_detail_unscoped_technician` fails identically on `main`
+  (a Manager badge assertion) — not this work. The multi-break form's
+  `damage_type` options post display strings (`Chip`, not `CHIP`) — the same
+  choices drift P1 saw.
+- P3 should suggest from the detail page rather than the upload modal: the
+  endpoint, the pre-placed marker (`at:`) and the re-crop UI are already there,
+  so a suggestion is just a marker the tech confirms — and it costs the tech
+  nothing while they are still in the field.
 
 # P3 · Assist: auto-suggest crops — TODO
 
@@ -250,3 +314,4 @@ Postgres recipe when local auth fails: scratch cluster via
 | Date | Change |
 |---|---|
 | 2026-08-25 | Created with P1 executed in the same session; P2–P4 sketched from verified code state. |
+| 2026-08-25 | P2 executed: detail-page crop/re-crop endpoint + UI, multi-break per-break taps, `retry_photo_crops`, shared `PhotoCropModal`. Customer-portal tapping decided against. |
