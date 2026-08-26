@@ -238,6 +238,14 @@ Postgres recipe when local auth fails: scratch cluster via
 - **A suggestion is asynchronous but the modal is not** (P3): open first, mark
   later, and gate the late arrival on a session token — otherwise a slow
   answer for photo A drops a marker on photo B.
+- **`MEDIA_ROOT` is a real directory that survives between runs** (P3): dev
+  and test share `media/`, and it accumulates crop files. Any test that
+  counts or names files there must diff against what was already present.
+  P1's `test_retap_replaces_the_previous_crop` asserted a re-tap gets a
+  *different* filename and passed only because a stale file from an earlier
+  run was squatting on the base name — on a clean `media/` it failed, on
+  `main` as well as on the P3 branch. It now asserts the real invariant
+  (one file survives, the box moved) and says nothing about the name.
 
 ---
 
@@ -399,6 +407,17 @@ Postgres recipe when local auth fails: scratch cluster via
   its own `Technician`. And the shared working tree switched branches under
   this session mid-run (the documented collision) — the recovery is to back
   the work up outside the repo first, then move.
+- **Rode along**: fixed P1's `test_retap_replaces_the_previous_crop`, which
+  was passing for the wrong reason (see the new `MEDIA_ROOT` trap above). It
+  fails on `main` too on a clean media directory — found by running the full
+  suite, not the crop suite, because a full run uses repair ids no previous
+  run had written files for.
+- **Full-suite baseline for this branch**: 4445 tests, 92 failures, against
+  `main`'s 4406 / 95 on the same machine and cluster. **Zero new failures**;
+  the three that differ fail on `main` and pass here (order-dependent
+  customer-register flakes). Both runs were done in parallel worktrees with
+  separate DB names — expect ~75 min wall-clock each under that contention,
+  not the usual ~7.
 - **For P4**: `confirmed_by_human=True` rows are the strong labels;
   `False` rows are machine guesses nobody has looked at and should be weighted
   down or excluded — training on them would teach the next model to imitate
