@@ -19,16 +19,24 @@
     'use strict';
 
     var modal, img, marker, title, hint, confirmBtn;
-    var pending = null;      // {x, y} percent, set by a tap
+    var pending = null;      // {x, y} percent, wherever the marker sits
+    var tapped = false;      // ...and whether a finger put it there
     var onConfirm = null;
     var ready = false;
     var defaultConfirmLabel = 'Save close-up';
+    // Bumped on every open(). A suggestion that arrives after the tech has
+    // moved on to another photo carries a stale id and is dropped, which is
+    // why suggest() takes one — see photo_crop_detail.js.
+    var session = 0;
+    var lateSuggestion = null;   // arrived before the image finished loading
 
     var DEFAULT_HINT = "Tap the damage so we can save a close-up with this job. " +
                        "Skip if you're in a hurry.";
 
     function resetMarker() {
         pending = null;
+        tapped = false;
+        lateSuggestion = null;
         if (marker) marker.classList.add('hidden');
         if (confirmBtn) confirmBtn.disabled = true;
     }
@@ -38,6 +46,7 @@
         if (!rect.width || !rect.height) return;
         var xPct = Math.min(Math.max((e.clientX - rect.left) / rect.width * 100, 0), 100);
         var yPct = Math.min(Math.max((e.clientY - rect.top) / rect.height * 100, 0), 100);
+        tapped = true;
         showMarkerAt(xPct, yPct);
     }
 
@@ -98,10 +107,14 @@
          *   hint          sub-line; omitted falls back to the default
          *   confirmLabel  button text; omitted keeps the template's
          *   at            {x, y} percent to pre-place the marker (re-crop)
+         *
+         * Returns a session token for suggest()/setHint(), or false if the
+         * modal isn't on this page.
          */
         open: function (opts) {
             if (!ready || !opts || !opts.src) return false;
             resetMarker();
+            session += 1;
             onConfirm = opts.onConfirm || null;
             title.textContent = opts.title || 'Tap the break';
             if (hint) hint.textContent = opts.hint || DEFAULT_HINT;
@@ -115,6 +128,11 @@
                 // that" is a nudge, not a fresh hunt for the break.
                 if (opts.at && typeof opts.at.x === 'number') {
                     showMarkerAt(opts.at.x, opts.at.y);
+                } else if (lateSuggestion) {
+                    // The suggestion beat the image here. Marker positions
+                    // are read off the rendered <img>, so it had to wait.
+                    showMarkerAt(lateSuggestion.x, lateSuggestion.y);
+                    lateSuggestion = null;
                 }
             };
             img.onerror = function () {
@@ -122,6 +140,31 @@
                 if (opts.onSkip) opts.onSkip();
             };
             img.src = opts.src;
+            return session;
+        },
+
+        /**
+         * Pre-place the marker on a machine-suggested point.
+         *
+         * Never overrides the technician: if they have already tapped, or
+         * the modal has moved on to a different photo, this does nothing and
+         * returns false. The tech is always free to tap over the suggestion.
+         */
+        suggest: function (token, xPct, yPct) {
+            if (!ready || token !== session || tapped) return false;
+            if (typeof xPct !== 'number' || typeof yPct !== 'number') return false;
+            if (!img.complete || !img.offsetWidth) {
+                lateSuggestion = { x: xPct, y: yPct };
+                return true;
+            }
+            showMarkerAt(xPct, yPct);
+            return true;
+        },
+
+        /** Replace the sub-line, if this is still the same open modal. */
+        setHint: function (token, text) {
+            if (!ready || token !== session || !hint) return false;
+            hint.textContent = text;
             return true;
         }
     };

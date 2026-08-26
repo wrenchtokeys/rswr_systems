@@ -14,6 +14,7 @@ from io import BytesIO
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
+from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -43,6 +44,21 @@ def real_jpeg(width=800, height=600, name='photo.jpg', exif_orientation=None):
 
 def fake_photo(name='fake.jpg'):
     return SimpleUploadedFile(name, b'fake image content', content_type='image/jpeg')
+
+
+def crop_files(storage, repair_pk, field='damage_photo_before'):
+    """Crop files on disk for one repair's photo.
+
+    MEDIA_ROOT is a real directory that survives between dev runs, so a test
+    that counts files here must diff against what was already present rather
+    than assume it starts empty.
+    """
+    prefix = f'repair{repair_pk}_{field}'
+    try:
+        names = storage.listdir('repair_photos/crops')[1]
+    except (FileNotFoundError, OSError):
+        return set()
+    return {name for name in names if name.startswith(prefix)}
 
 
 class TapCropTestCase(TestCase):
@@ -215,15 +231,35 @@ class CropServiceTests(TapCropTestCase):
 
     def test_retap_replaces_the_previous_crop(self):
         repair = self.make_repair(real_jpeg())
+        storage = default_storage
+        pre_existing = crop_files(storage, repair.pk)
+
         first = save_crop_for(repair, 'damage_photo_before', 20.0, 20.0)
-        first_name = first.cropped_image.name
-        first_storage = first.cropped_image.storage
+        first_box = (first.crop_left, first.crop_top)
         second = save_crop_for(repair, 'damage_photo_before', 80.0, 80.0)
+
         self.assertEqual(repair.photo_crops.count(), 1)
         self.assertEqual(first.pk, second.pk)
         self.assertEqual(second.center_x_pct, 80.0)
-        self.assertNotEqual(second.cropped_image.name, first_name)
-        self.assertFalse(first_storage.exists(first_name))
+        # The stored image is re-derived around the NEW tap.
+        self.assertNotEqual((second.crop_left, second.crop_top), first_box)
+        self.assertTrue(storage.exists(second.cropped_image.name))
+
+        # Exactly one file survives for this photo — the old one is deleted,
+        # not orphaned.
+        #
+        # Two things make this fiddlier than it looks. MEDIA_ROOT is a real
+        # directory that persists between dev runs, so the listing has to be
+        # diffed against what was already there. And nothing may be asserted
+        # about the filename: save_crop_for deletes the old file before
+        # writing, which frees the same name for the new crop, so the two
+        # names usually match. (That is exactly why every surface showing a
+        # crop cache-busts its URL — see partials/photo_crop_control.html.
+        # An earlier version of this test asserted the names DIFFER, which
+        # only held when a stale file from a previous run happened to be
+        # squatting on the base name; on a clean MEDIA_ROOT it failed, on
+        # main as well as here.)
+        self.assertEqual(len(crop_files(storage, repair.pk) - pre_existing), 1)
 
     def test_missing_photo_is_a_noop(self):
         repair = Repair.objects.create(

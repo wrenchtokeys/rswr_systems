@@ -783,7 +783,9 @@ Tap-to-crop from the detail page (static/js/photo_crop_detail.js). The
 endpoint and a CSRF token live here rather than in a form — the tap POSTs
 on its own and nothing else on the page submits with it.
 {% endcomment %}
-<div id="photoCropEndpoint" class="hidden" data-endpoint="{% url 'save_photo_crop' repair.id %}">{% csrf_token %}</div>
+<div id="photoCropEndpoint" class="hidden"
+     data-endpoint="{% url 'save_photo_crop' repair.id %}"
+     data-suggest-endpoint="{% url 'suggest_photo_crop' repair.id %}">{% csrf_token %}</div>
 {% include 'technician_portal/partials/photo_crop_modal.html' %}
 {% endif %}
 

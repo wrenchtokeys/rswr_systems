@@ -54,6 +54,7 @@ from .repairs import (
     admin_reassign_repair,
     portal_bulk_reassign,
     save_photo_crop,
+    suggest_photo_crop,
 )
 
 # Multi-break batch operations

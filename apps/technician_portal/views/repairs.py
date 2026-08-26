@@ -1942,22 +1942,20 @@ def portal_bulk_reassign(request):
     })
 
 
-@technician_required
-def save_photo_crop(request, repair_id):
-    """Record a tap on a photo that is already on the repair.
+def _resolve_crop_target(request, repair_id):
+    """Shared front half of the two photo-crop endpoints.
 
-    The upload forms post their taps as hidden fields alongside the photo;
-    this is the detail-page counterpart, for photos that arrived without a
-    tap (a skipped prompt, a customer-submitted photo, anything from before
-    tap-to-crop existed) and for correcting one that landed off the break.
-    Latest tap wins — see save_crop_for.
+    Returns ``(repair, technician, source_field, None)`` on success, or
+    ``(None, None, None, JsonResponse)`` with the reason. Both endpoints
+    answer for the same object under the same permission, so they must not
+    drift apart — a suggestion endpoint that is laxer than the save endpoint
+    would leak one shop's photos to another.
     """
-    from apps.technician_portal.services.photo_crops import (
-        SOURCE_FIELDS, save_crop_for,
-    )
+    from apps.technician_portal.services.photo_crops import SOURCE_FIELDS
 
     if request.method != 'POST':
-        return JsonResponse({'success': False, 'error': 'POST required'}, status=405)
+        return None, None, None, JsonResponse(
+            {'success': False, 'error': 'POST required'}, status=405)
 
     tenant = getattr(request, 'tenant', None)
     qs = Repair.objects.filter(tenant=tenant) if tenant else Repair.objects.none()
@@ -1969,19 +1967,76 @@ def save_photo_crop(request, repair_id):
         if tenant else None
     )
     if not can_view_repair(repair, technician, user_is_admin):
-        return JsonResponse(
-            {'success': False, 'error': "You don't have permission to edit this repair."},
+        return None, None, None, JsonResponse(
+            {'success': False,
+             'error': "You don't have permission to edit this repair."},
             status=403,
         )
 
     source_field = request.POST.get('source_field', '')
     if source_field not in SOURCE_FIELDS:
-        return JsonResponse({'success': False, 'error': 'Unknown photo.'}, status=400)
+        return None, None, None, JsonResponse(
+            {'success': False, 'error': 'Unknown photo.'}, status=400)
     if not getattr(repair, source_field, None):
-        return JsonResponse(
+        return None, None, None, JsonResponse(
             {'success': False, 'error': 'That photo is no longer on this repair.'},
             status=400,
         )
+    return repair, technician, source_field, None
+
+
+@technician_required
+def suggest_photo_crop(request, repair_id):
+    """Guess where the break is, so the modal opens on a marker.
+
+    Runs entirely on this server (apps/technician_portal/services/
+    photo_suggest.py) — no photo is sent anywhere. Answering "no idea" is a
+    normal, frequent, successful outcome: the technician then gets the plain
+    modal and taps, exactly as before P3.
+    """
+    from apps.technician_portal.services.photo_suggest import suggest_for
+
+    repair, _technician, source_field, error = _resolve_crop_target(
+        request, repair_id)
+    if error is not None:
+        return error
+
+    suggestion = suggest_for(repair, source_field)
+    if suggestion is None:
+        return JsonResponse({'success': True, 'found': False})
+    return JsonResponse({
+        'success': True,
+        'found': True,
+        'x_pct': round(suggestion.x_pct, 2),
+        'y_pct': round(suggestion.y_pct, 2),
+        'score': round(suggestion.score, 3),
+        'engine': suggestion.engine,
+    })
+
+
+@technician_required
+def save_photo_crop(request, repair_id):
+    """Record a tap on a photo that is already on the repair.
+
+    The upload forms post their taps as hidden fields alongside the photo;
+    this is the detail-page counterpart, for photos that arrived without a
+    tap (a skipped prompt, a customer-submitted photo, anything from before
+    tap-to-crop existed) and for correcting one that landed off the break.
+    Latest tap wins — see save_crop_for.
+
+    When the modal showed a suggestion, the client posts it back alongside
+    the tap so the row keeps both. A technician who nudges the marker two
+    percent is telling us the suggester was right; one who moves it across
+    the photo is telling us it was wrong. That is the only honest way to
+    find out.
+    """
+    from apps.technician_portal.services.photo_crops import save_crop_for
+    from apps.technician_portal.services.photo_suggest import Suggestion
+
+    repair, technician, source_field, error = _resolve_crop_target(
+        request, repair_id)
+    if error is not None:
+        return error
 
     try:
         center_x_pct = min(max(float(request.POST.get('center_x_pct')), 0.0), 100.0)
@@ -1989,10 +2044,27 @@ def save_photo_crop(request, repair_id):
     except (TypeError, ValueError):
         return JsonResponse({'success': False, 'error': 'Bad coordinates.'}, status=400)
 
+    suggestion = None
+    try:
+        suggested_x = request.POST.get('suggested_x_pct', '')
+        suggested_by = request.POST.get('suggested_by', '')[:64]
+        if suggested_x != '' and suggested_by:
+            suggestion = Suggestion(
+                float(suggested_x),
+                float(request.POST.get('suggested_y_pct')),
+                float(request.POST.get('suggestion_score') or 0.0),
+                engine=suggested_by,
+            )
+    except (TypeError, ValueError):
+        # A malformed suggestion echo is not worth failing the tap over —
+        # the tap is the thing the technician actually did.
+        suggestion = None
+
     try:
         crop = save_crop_for(
             repair, source_field, center_x_pct, center_y_pct,
-            technician=technician,
+            technician=technician, confirmed_by_human=True,
+            suggestion=suggestion,
         )
     except Exception:
         logger.exception(

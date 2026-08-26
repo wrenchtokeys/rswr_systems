@@ -26,7 +26,7 @@ without re-running the exploration that produced this doc.
 |---|---|---|---|
 | P1 · Capture | Tap-to-crop on upload (job form + old repair form) | M | DONE (2026-08-25, branch `feat/photoml-p1-tap-to-crop`) |
 | P2 · Coverage | Detail-page crop/re-crop + retry queue + multi-break & customer-portal wiring | M | DONE (2026-08-25, branch `feat/photoml-p2-crop-coverage`) |
-| P3 · Assist | Auto-suggest crops (Claude vision first; trained detector when data suffices) | M | TODO |
+| P3 · Assist | Auto-suggest crops (local saliency detector; no photo leaves the server) | M | DONE (2026-08-25, branch `feat/photoml-p3-auto-suggest`) |
 | P4 · Payoff | Dataset export + repairability classifier | L | TODO |
 
 **Suggested sequence:** P1 → P2 → P3 → P4. P2 first because coverage compounds
@@ -36,13 +36,24 @@ built any time after a few hundred crops exist and is a good way to smoke-test
 the metadata before committing to a model. P3 before the P4 classifier because
 auto-suggest raises the capture rate that P4 feeds on.
 
-**Where we are (2026-08-25, after P2):** P1 merged as PR #211. P2 built on
-`feat/photoml-p2-crop-coverage` (24 new tests, 37 green with P1's; the one
-adjacent failure reproduces identically on `main`) and verified in a real
-browser end to end. Not yet merged/deployed at the time of writing — check the
-PR list. **Every capture surface now has tap-to-crop except the customer
-portal, which by decision never asks a customer to tap** (see P2's Notes).
-Next up is P3, or P4's export step on its own to smoke-test the metadata.
+**Where we are (2026-08-25, after P3):** P1 merged as PR #211, P2 as PR #215.
+P3 built on `feat/photoml-p3-auto-suggest` (39 new tests; P1+P2's 37 still
+green) and verified in a real browser end to end. **Every capture surface has
+tap-to-crop except the customer portal, which by decision never asks a
+customer to tap** (P2's Notes), and an unmarked photo on the detail page now
+opens with a suggested marker already placed (P3).
+
+**The big decision of this session: no damage photo leaves our
+infrastructure.** The plan below originally recommended sending photos to a
+hosted vision model; Drake rejected that outright because these are real
+customers' photos. P3 is therefore a local pure-Pillow saliency detector — no
+API key, no per-photo cost, nothing to train first. A test asserts the
+suggester opens no sockets, so reversing this decision by accident is not
+possible. See P3's Notes before reaching for a hosted model again.
+
+Next up is P4 — and its export step alone is worth building now, because the
+suggester's real accuracy is sitting in the `suggested_*` columns waiting to
+be measured.
 
 **Sizes:** S ≈ half a day · M ≈ 1–2 days · L ≈ 3–5 days.
 
@@ -73,6 +84,11 @@ after the `Repair` model; migration `0057_repairphotocrop`): FK `repair`
 image couldn't be opened; retry later), `cropped_image`
 (upload_to `repair_photos/crops/`), `created_by` Technician. Unique on
 `(repair, source_field)` — re-tap replaces, latest wins, no history.
+P3 added provenance (`0058` + backfill `0059`): `confirmed_by_human`
+(a human vouched for these coordinates — **the field P4 weights labels by**),
+plus `suggested_x_pct`/`suggested_y_pct`/`suggested_by`/`suggestion_score`,
+which stay on the row even after a technician moves the mark, so the guess
+and the correction can be compared.
 
 **The coordinate convention (do not break this).** Coordinates are percent of
 the photo's natural, **EXIF-upright** dimensions. Browsers render photos
@@ -96,7 +112,22 @@ Everything fails open — a crop must never block saving a job in the field, and
 a tap on an unreadable original is still recorded (null box) for
 `retry_crop(crop)` / `manage.py retry_photo_crops` to finish later.
 `delete_crops_for(repair, source_field)` removes crop + file when a source
-photo is deleted.
+photo is deleted. `save_crop_for` also takes `confirmed_by_human` and a
+`suggestion` — **all three of its callers (tap, sweep, retry) must pass the
+right provenance**, because `update_or_create(defaults=…)` writes every key.
+`apply_suggestion(repair, source_field)` is the sweep's entry point; it
+refuses to overwrite an existing crop.
+
+**The suggester (P3).** `apps/technician_portal/services/photo_suggest.py`:
+`suggest_point(fp)` → `Suggestion(x_pct, y_pct, score, engine)` or None, and
+`suggest_for(repair, source_field)` for a stored photo. Pure Pillow, ~50ms,
+**no network — a test asserts it opens no sockets**, because sending
+customers' photos to a hosted model was explicitly rejected. Same
+percent-of-EXIF-upright convention as a tap, so a suggestion drops straight
+into the modal's marker and into the same columns. Returning None is normal
+and frequent; `MAX_SPREAD` is the decline threshold and is a starting guess
+meant to be tuned from real corrections, not from more test images. Killable
+with `PHOTO_SUGGEST_ENABLED=false`.
 
 **The photo fields.** On the abstract `GlassService` base
 (`apps/technician_portal/models.py:517-544`), so `Repair` AND `Replacement`
@@ -110,7 +141,8 @@ both have them; P1 crops repairs only.
 | Old repair form create/update | `views/repairs.py` | yes | `repair_form.js` (manual) | **P1** |
 | Multi-break | `views/batch.py` | yes | `multi_break.js` | **P2** (one tap per break, posted as `breaks[i][crop_x_<field>]`) |
 | Customer portal request | `customer_portal/views.py` (~:1800) | yes | none | never — by decision, customers are not asked to tap; the shop marks their photo from the detail page |
-| Repair detail page | `views/repairs.py::save_photo_crop` | n/a | n/a | **P2** (crop or re-crop any photo already on the job) |
+| Repair detail page | `views/repairs.py::save_photo_crop` | n/a | n/a | **P2** (crop or re-crop any photo already on the job) + **P3** (an unmarked photo opens on a suggested marker, via `suggest_photo_crop`) |
+| Backlog sweep | `manage.py suggest_photo_crops` | n/a | n/a | **P3** (marks unmarked photos `confirmed_by_human=False`; never overwrites a tap, never touches an original) |
 
 **The client JS contract.** The modal itself belongs to
 `static/js/photo_crop_modal.js` (ES5 IIFE, house style), which owns
@@ -118,7 +150,10 @@ both have them; P1 crops repairs only.
 `templates/technician_portal/partials/photo_crop_modal.html`, standard `ui.js`
 modal contract) and exposes `PhotoCropModal.open({src, title, hint,
 confirmLabel, at, onConfirm(xPct, yPct), onSkip})`. **It must load before any
-driver.** Three drivers use it: `photo_tap_crop.js` (upload forms),
+driver.** `open()` returns a **session token** (P3); `suggest(token, x, y)`
+pre-places a machine marker and `setHint(token, text)` swaps the sub-line,
+both no-ops on a stale token or once the tech has tapped. Three drivers use
+it: `photo_tap_crop.js` (upload forms),
 `photo_crop_detail.js` (repair detail page — POSTs to `save_photo_crop`) and
 `multi_break.js` (keeps the tap in its `breaks[]` state).
 
@@ -143,7 +178,9 @@ against DB references — **any new photo-bearing field or model MUST be added t
 its enumeration or `--delete` destroys the files as orphans** (P1 added crops +
 fixed two blind spots: soft-deleted repairs and all Replacement photos).
 
-**Tests.** `tests/test_photo_tap_crop.py` (13 tests). `real_jpeg()` there
+**Tests.** `tests/test_photo_tap_crop.py` (13, P1),
+`tests/test_photo_crop_coverage.py` (24, P2),
+`tests/test_photo_suggest.py` (39, P3). `real_jpeg()` there
 builds actual decodable JPEGs (with optional EXIF orientation);
 `QuickJobForm` uses `forms.ImageField`, which rejects fake bytes at form
 validation — but model-level writes (multi-break, customer portal) don't, so
@@ -190,6 +227,25 @@ Postgres recipe when local auth fails: scratch cluster via
   file first, so the same name is free again and the browser serves the stale
   close-up. Any surface showing a crop must version the URL — the detail page
   uses `?v={{ crop.updated_at|date:'U' }}`, the JS uses a timestamp.
+- **A confident wrong answer is worse than no answer** (P3): the first scoring
+  function rated a foliage boundary 0.89 while pointing 32% away from the
+  chip. Any suggestion engine here needs a signal that catches *ambiguity*,
+  not just strength — see P3's Notes on compactness.
+- **`save_crop_for` is called by three paths with different provenance** (P3):
+  a tap, a sweep suggestion, and `retry_crop` re-deriving an existing row. Any
+  new field on `RepairPhotoCrop` must be threaded through all three, or a
+  retry silently resets it. `update_or_create(defaults=…)` writes every key.
+- **A suggestion is asynchronous but the modal is not** (P3): open first, mark
+  later, and gate the late arrival on a session token — otherwise a slow
+  answer for photo A drops a marker on photo B.
+- **`MEDIA_ROOT` is a real directory that survives between runs** (P3): dev
+  and test share `media/`, and it accumulates crop files. Any test that
+  counts or names files there must diff against what was already present.
+  P1's `test_retap_replaces_the_previous_crop` asserted a re-tap gets a
+  *different* filename and passed only because a stale file from an earlier
+  run was squatting on the base name — on a clean `media/` it failed, on
+  `main` as well as on the P3 branch. It now asserts the real invariant
+  (one file survives, the box moved) and says nothing about the name.
 
 ---
 
@@ -277,21 +333,132 @@ Postgres recipe when local auth fails: scratch cluster via
   so a suggestion is just a marker the tech confirms — and it costs the tech
   nothing while they are still in the field.
 
-# P3 · Assist: auto-suggest crops — TODO
+# P3 · Assist: auto-suggest crops — DONE (2026-08-25)
 
 | Field | Value |
 |---|---|
-| **Goal** | The modal opens with a suggested marker already placed; the tech confirms or drags. Capture rate goes up because confirming is cheaper than aiming. |
+| **Goal** | The modal opens with a suggested marker already placed; the tech confirms or nudges. Capture rate goes up because confirming is cheaper than aiming. |
 | **Size** | M |
-| **Depends on** | P1 (modal + coords plumbing). Better after P2. |
+| **Depends on** | P1 (modal + coords plumbing), P2 (detail-page endpoint + `at:` marker). |
 | **Why it matters** | The dataset grows only as fast as techs tap. A one-tap confirm beats an aim-and-tap, and the suggestion engine is a dry run for P4's model. |
-| **Verified current state** | No detection anywhere in the codebase. Claude API access exists (Amelia/clawdbot namespace) but no vision calls in this app yet. |
-| **Considerations** | Two stages. (a) **Claude vision**: send the compressed photo, ask for the break's bounding point; works day one, costs pennies per photo, needs an API key in EB env and a strict timeout + fail-open (no suggestion = P1 behavior). Client-side call is not an option (no CDN/keys in the browser) — suggest server-side on a small endpoint, or suggest lazily on the P2 detail page rather than blocking the upload modal. (b) **Trained detector**: once ≥ a few hundred confirmed taps exist, a nano detection model on the crops; only worth it if Claude-vision accuracy or cost disappoints. Confirmed-vs-suggested must be recorded (add `suggested` / `confirmed_by_human` fields) — ML-suggested crops that nobody confirmed are weaker labels. |
-| **Decisions needed** | Where the suggestion happens (upload modal vs detail page); Claude vs detector first (recommend Claude). |
-| **Acceptance criteria** | Suggestion appears in under ~3s or not at all; tech can always override; suggested-but-unconfirmed is distinguishable in the data. |
-| **Out of scope** | The repairability classifier itself (P4). |
+| **Decisions taken** | **(1) Local only — no hosted vision model.** Drake's call: these are real customers' photos and they do not leave our infrastructure. The Claude-vision stage this plan originally recommended is *not* built and should not be built without asking him again. **(2) Suggest from the detail page**, as P2 recommended: the photo is already on S3 so the server fetches it itself (the upload modal would mean a second upload of the photo over field data), and P2's endpoint, `at:` marker and re-crop UI were already there. **(3) Sweep the backlog too**, on Drake's condition that originals are preserved — they are, and three tests assert it byte-for-byte. |
+| **Acceptance criteria** | ✅ Suggestion appears in under ~3s or not at all. ✅ Tech can always override. ✅ Suggested-but-unconfirmed is distinguishable in data and UI. ⚠️ **But accuracy was never an acceptance criterion, and that was the mistake — see "The detector does not work well enough" below. It ships DISABLED.** |
+| **Out of scope** | The repairability classifier itself (P4). A hosted vision model (rejected). Suggesting inside the upload modal (the photo isn't on the server yet). |
 
 **Notes**
+*(session run 2026-08-25, branch `feat/photoml-p3-auto-suggest`)*
+
+### The detector does not work well enough — it ships disabled
+
+Benchmarked after the fact against the dumbest possible baseline, "guess the
+centre of the photo", over 12 randomised chip placements per condition:
+
+| condition | detector median error | centre-guess median error |
+|---|---|---|
+| chip on clean glass | **0.2%** | 21.2% |
+| chip + road grime + wiper + dash in frame | **30.7%** | 22.4% |
+
+On a clean pane it is excellent. On a windshield that looks like a windshield
+it is **worse than guessing the middle of the frame** — and it does not
+decline, it answers confidently all 12 times. The spread gate catches diffuse
+texture (foliage), but a bug splat is a compact high-contrast blob, which is
+exactly what the algorithm is built to find. Most real windshields are dirty.
+
+`PHOTO_SUGGEST_ENABLED` therefore defaults to **False**, and
+`test_clutter_defeats_the_suggester` pins the failure so it cannot be quietly
+forgotten — **that test is designed to fail once the suggester is actually
+fixed.**
+
+Two process lessons worth more than the code:
+
+1. **Fixtures I invented were graded by the same intuition that wrote the
+   algorithm.** The clean-glass fixtures were near-perfect from the first
+   run, which read as success and stopped the investigation. Nothing was
+   validated until a baseline was introduced.
+2. **A baseline should come before the algorithm, not after.** "Guess the
+   centre" takes one line and would have set the bar on day one. Without it,
+   "0.2% error" sounds like proof and is not.
+
+**Nothing here has ever been run against a real windshield photo.** That is
+still true, and it is the first thing P3.1 should fix.
+
+
+- **The suggester is `apps/technician_portal/services/photo_suggest.py`, pure
+  Pillow, ~50ms.** No numpy, no OpenCV — neither is installed and neither was
+  added. The method, in four lines: high-pass the greyscale thumbnail to get
+  local structure; blur it small to gather structure into blobs; blur it large
+  to measure how busy the neighbourhood is anyway; subtract. What survives is
+  structure that stands out *from its surroundings*, which is what a chip in
+  glass is and what a uniformly textured background is not. A gentle centre
+  prior encodes the fact that the tech aimed the camera at the break.
+- **Compactness is the confidence signal, not peak height.** This was the one
+  real discovery of the session. The obvious score — how tall is the peak
+  relative to the mean — rates a sky/foliage boundary behind the glass at 0.89
+  while it points 32% away from the actual chip. Confidently wrong. Measuring
+  instead how *spread out* the bright patch is separates the cases cleanly:
+  chip ≈ 0.01, crack ≈ 0.07, background texture ≈ 0.14, all as a fraction of
+  the image diagonal. Above `MAX_SPREAD` (0.12) the suggester returns nothing,
+  and nothing is a perfectly good answer — the tech gets the plain P1 modal.
+- **The mark is the hot region's centroid, not the peak pixel.** On a crack the
+  peak lands wherever contrast happens to be highest, usually near one end
+  (36% error on a test crack); the centroid lands mid-crack (12%). On a chip
+  the two agree to within a pixel.
+- **`MAX_SPREAD = 0.12` is a starting guess and is documented as one.** It was
+  set against synthetic fixtures, which is not evidence. Do not hand-tune it
+  against more synthetic images — every row now stores `suggested_x/y_pct`
+  beside whatever the technician finally marked, so the first few hundred real
+  corrections will say where the threshold belongs. That is also the honest
+  answer to "is this thing any good": measure the correction distance.
+- **New columns on `RepairPhotoCrop`** (`0058` + backfill `0059`):
+  `confirmed_by_human`, `suggested_x_pct`, `suggested_y_pct`, `suggested_by`,
+  `suggestion_score`. `0059` marks every pre-P3 row confirmed — the field
+  defaults to False so a machine guess is untrusted by default, which makes
+  the default exactly wrong for the hand-labeled P1/P2 rows. A separate
+  `origin`/`suggested` boolean was considered and dropped: it would have been
+  a strict function of `confirmed_by_human` + `suggested_by`, i.e. a third
+  copy of the same fact waiting to drift.
+- **`retry_crop` had to learn to carry provenance.** It re-derives the image
+  from stored percentages by calling `save_crop_for` again, which would have
+  reset the new fields to their defaults and quietly demoted every
+  technician's tap that ever needed a retry. Tested both directions.
+- **`POST /tech/repairs/<id>/photo-crop/suggest/`** (`suggest_photo_crop`).
+  It shares `_resolve_crop_target` with `save_photo_crop` deliberately: two
+  endpoints answering for the same object under two copies of a permission
+  check is how one of them ends up laxer, and a lax suggest endpoint is a way
+  to read another shop's photos. `found: false` is a **success**, not an error.
+- **The modal now hands out a session token.** `PhotoCropModal.open()` returns
+  an integer instead of `true`; `suggest(token, x, y)` and `setHint(token, …)`
+  no-op on a stale one. Without it, a slow suggestion for one photo lands on
+  whichever photo the tech opened next. `suggest()` also refuses once the tech
+  has tapped (a new `tapped` flag, distinct from "a marker is showing"), and
+  parks the suggestion if it beats the image's `onload` — marker positions are
+  read off the rendered `<img>`, so it has to wait for layout.
+- **`manage.py suggest_photo_crops [--dry-run] [--tenant N] [--limit N]
+  [--field F]`** sweeps unmarked photos. It refuses to overwrite an existing
+  crop, so it can never trample a tap and re-running it is a no-op. Manual,
+  not cron — same reasoning as `retry_photo_crops`. Note `iterator()` needs an
+  explicit `chunk_size` after `prefetch_related`, or it raises.
+- Traps hit: `Repair.technician` is NOT NULL, so a second-tenant fixture needs
+  its own `Technician`. And the shared working tree switched branches under
+  this session mid-run (the documented collision) — the recovery is to back
+  the work up outside the repo first, then move.
+- **Rode along**: fixed P1's `test_retap_replaces_the_previous_crop`, which
+  was passing for the wrong reason (see the new `MEDIA_ROOT` trap above). It
+  fails on `main` too on a clean media directory — found by running the full
+  suite, not the crop suite, because a full run uses repair ids no previous
+  run had written files for.
+- **Full-suite baseline for this branch**: 4445 tests, 92 failures, against
+  `main`'s 4406 / 95 on the same machine and cluster. **Zero new failures**;
+  the three that differ fail on `main` and pass here (order-dependent
+  customer-register flakes). Both runs were done in parallel worktrees with
+  separate DB names — expect ~75 min wall-clock each under that contention,
+  not the usual ~7.
+- **For P4**: `confirmed_by_human=True` rows are the strong labels;
+  `False` rows are machine guesses nobody has looked at and should be weighted
+  down or excluded — training on them would teach the next model to imitate
+  this one. Rows where `suggested_by` is set *and* `confirmed_by_human` is
+  True are the most interesting of all: those carry both the guess and the
+  human's correction, which is the training pair for a learned detector.
 
 # P4 · Payoff: dataset export + repairability classifier — TODO
 
@@ -302,7 +469,7 @@ Postgres recipe when local auth fails: scratch cluster via
 | **Depends on** | Enough data: realistically high hundreds+ of before-crops with outcomes, and a meaningful "not repairable" class. |
 | **Why it matters** | The whole point of the arc. |
 | **Verified current state** | Label sources in the schema today: `Repair.queue_status` COMPLETED = repaired successfully; a `Replacement` created after a repair request / a customer request that got quoted as a replacement = not repairable; warranty/redo signals (`WarrantyPolicy` usage) = weak negative. `customer_submitted_photo` on portal requests is the best source of the "not repairable" class — people photograph big cracks when asking, and the shop's answer (repair vs replacement) is the label. |
-| **Considerations** | Class imbalance is the real risk: techs mostly photograph what they already know is repairable. Track the class counts from the first export. Export must be tenant-aware (Drake's dad's shop is real customer data — anonymize: no names/plates in the JSONL, crops only). Train outside this codebase; the app's only job is the export and, later, serving the verdict. |
+| **Considerations** | **Label strength is now recorded, so use it** (P3): export `confirmed_by_human=True` rows as strong labels and either exclude or down-weight the machine suggestions — training on the suggester's own unreviewed output just teaches the next model to imitate this one. Rows carrying *both* a `suggested_*` point and a human-confirmed mark are the training pairs for a learned detector, and the distance between the two is the first honest measurement of whether P3's suggester is worth keeping (see P3's Notes on `MAX_SPREAD`). Class imbalance is the other real risk: techs mostly photograph what they already know is repairable. Track the class counts from the first export. Export must be tenant-aware (Drake's dad's shop is real customer data — anonymize: no names/plates in the JSONL, crops only). Train outside this codebase; the app's only job is the export and, later, serving the verdict. |
 | **Decisions needed** | Where training runs (local vs cloud); whether the classifier ships in-app (advisory badge on customer requests?) or stays an experiment. |
 | **Acceptance criteria** | Export regenerates byte-identical crops from originals using only DB metadata; a held-out evaluation with honest per-class numbers before anything ships. |
 | **Out of scope** | Auto-quoting or auto-declining work based on the model. It advises; humans decide. |
@@ -315,3 +482,4 @@ Postgres recipe when local auth fails: scratch cluster via
 |---|---|
 | 2026-08-25 | Created with P1 executed in the same session; P2–P4 sketched from verified code state. |
 | 2026-08-25 | P2 executed: detail-page crop/re-crop endpoint + UI, multi-break per-break taps, `retry_photo_crops`, shared `PhotoCropModal`. Customer-portal tapping decided against. |
+| 2026-08-25 | P3 executed: local saliency suggester, suggest endpoint, pre-placed marker, `suggest_photo_crops` sweep, provenance columns. **Hosted vision model rejected — photos stay on our infrastructure.** |

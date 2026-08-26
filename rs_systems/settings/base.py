@@ -205,6 +205,29 @@ ADMINS = [
 MANAGERS = ADMINS
 
 # =========================================
+# PHOTO CROP SUGGESTIONS (tap-to-crop P3)
+# =========================================
+
+# Pre-place the "tap the break" marker using the local suggester in
+# apps/technician_portal/services/photo_suggest.py. Runs entirely on this
+# server — no API key, no per-photo cost, no photo leaves our infrastructure.
+#
+# DEFAULTS OFF, and it should stay off until it is measured on real photos.
+# Benchmarked against a "just guess the centre of the frame" baseline: on
+# clean glass it is near-perfect (median error 0.2%), but add road grime, a
+# wiper and the dash to the shot and it gets WORSE than the centre guess
+# (median 30.7% vs 22.4%) — and it does not decline, because a bug splat is
+# exactly the compact high-contrast blob it hunts for. Most real windshields
+# are dirty. Turning this on before that is fixed would put a confident
+# wrong marker in front of technicians.
+#
+# What is safe to run today is `manage.py suggest_photo_crops`, whose output
+# is stored unconfirmed and reviewed by a human before it counts.
+PHOTO_SUGGEST_ENABLED = (
+    os.environ.get('PHOTO_SUGGEST_ENABLED', 'False').lower() == 'true'
+)
+
+# =========================================
 # SMS CONFIGURATION (AWS End User Messaging)
 # =========================================
 

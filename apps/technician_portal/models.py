@@ -1827,6 +1827,23 @@ class RepairPhotoCrop(models.Model):
         null=True,
         blank=True,
     )
+    # Did a human vouch for these coordinates? A technician's tap always
+    # does; a machine suggestion nobody opened does not. P4 must be able to
+    # weight the two differently — an unconfirmed suggestion is a weaker
+    # label than a tap, and training on the suggester's own output would
+    # only teach the next model to imitate this one.
+    confirmed_by_human = models.BooleanField(default=False)
+
+    # Where the suggester thought the break was, kept even after a
+    # technician corrects the mark. The distance between this and
+    # center_x/y_pct is how we measure whether the suggester is any good
+    # (see services/photo_suggest.py). A blank suggested_by means no
+    # machine ever looked at this photo.
+    suggested_x_pct = models.FloatField(null=True, blank=True)
+    suggested_y_pct = models.FloatField(null=True, blank=True)
+    suggested_by = models.CharField(max_length=64, blank=True, default='')
+    suggestion_score = models.FloatField(null=True, blank=True)
+
     created_by = models.ForeignKey(
         'Technician',
         on_delete=models.SET_NULL,

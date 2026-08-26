@@ -71,12 +71,19 @@ def process_tap_coordinates(repair, post_data, technician=None,
 
 
 def save_crop_for(repair, source_field, center_x_pct, center_y_pct,
-                  technician=None):
+                  technician=None, confirmed_by_human=True, suggestion=None):
     """Crop a square around the tap point and upsert the RepairPhotoCrop.
 
     Re-tapping the same photo replaces the previous crop (latest wins —
     history would only add noise to the dataset). Returns the crop row, or
     None when there is no photo on the field.
+
+    ``confirmed_by_human`` is what separates a technician's tap from a
+    machine's guess: pass False only from the suggestion sweep, which writes
+    coordinates nobody has looked at. ``suggestion`` (a
+    photo_suggest.Suggestion, or None) is recorded alongside the final
+    coordinates even when a technician moves the mark — the gap between the
+    two is how the suggester gets scored. See MAX_SPREAD in photo_suggest.
     """
     from apps.technician_portal.models import RepairPhotoCrop
 
@@ -95,6 +102,11 @@ def save_crop_for(repair, source_field, center_x_pct, center_y_pct,
         'natural_width': None,
         'natural_height': None,
         'created_by': technician,
+        'confirmed_by_human': confirmed_by_human,
+        'suggested_x_pct': suggestion.x_pct if suggestion else None,
+        'suggested_y_pct': suggestion.y_pct if suggestion else None,
+        'suggested_by': suggestion.engine if suggestion else '',
+        'suggestion_score': suggestion.score if suggestion else None,
     }
 
     content = None
@@ -150,10 +162,22 @@ def retry_crop(crop):
     stored as a percentage, so it still means the same point on the photo.
     Returns True when the retry produced an image.
     """
+    # Carry the provenance across — a retry re-derives the image, it does
+    # not re-label the photo. Losing confirmed_by_human here would quietly
+    # demote every technician's tap that had to be retried.
+    suggestion = None
+    if crop.suggested_by:
+        from apps.technician_portal.services.photo_suggest import Suggestion
+        suggestion = Suggestion(
+            crop.suggested_x_pct, crop.suggested_y_pct,
+            crop.suggestion_score, engine=crop.suggested_by,
+        )
     refreshed = save_crop_for(
         crop.repair, crop.source_field,
         crop.center_x_pct, crop.center_y_pct,
         technician=crop.created_by,
+        confirmed_by_human=crop.confirmed_by_human,
+        suggestion=suggestion,
     )
     return bool(refreshed and refreshed.cropped_image)
 
@@ -164,6 +188,34 @@ def delete_crops_for(repair, source_field):
         if crop.cropped_image:
             crop.cropped_image.delete(save=False)
         crop.delete()
+
+
+def apply_suggestion(repair, source_field, suggestion=None):
+    """Save a machine-suggested crop for a photo nobody has marked.
+
+    Used by ``manage.py suggest_photo_crops``. The row is stored with
+    ``confirmed_by_human=False`` — it is a weaker label than a tap and P4's
+    export must be able to tell them apart. **The original photo is never
+    touched**: the crop is a separate derived file, exactly as with a tap.
+
+    Refuses to overwrite an existing crop, so a sweep can never trample a
+    technician's work. Returns the crop row, or None if there was nothing to
+    do (no photo, no confident suggestion, or already marked).
+    """
+    from apps.technician_portal.services.photo_suggest import suggest_for
+
+    if not getattr(repair, source_field, None):
+        return None
+    if repair.photo_crops.filter(source_field=source_field).exists():
+        return None
+    if suggestion is None:
+        suggestion = suggest_for(repair, source_field)
+    if suggestion is None:
+        return None
+    return save_crop_for(
+        repair, source_field, suggestion.x_pct, suggestion.y_pct,
+        technician=None, confirmed_by_human=False, suggestion=suggestion,
+    )
 
 
 def _crop_box(width, height, center_x_pct, center_y_pct):
