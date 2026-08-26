@@ -329,10 +329,28 @@
     <!-- Flatpickr DateTime Picker -->
     <script src="{% static 'js/vendor/flatpickr.min.js' %}"></script>
     <script>
+        // Defaulting an empty datetime-local to "now" is OPT-IN, via
+        // data-default-now. It used to apply to every such input on every
+        // page, which made "Optional -- leave blank to keep this job
+        // unscheduled" (job_form.html) impossible to honour: unchecking "Job
+        // is already done" revealed a field that was already filled in, so a
+        // job nobody scheduled was born with a booking time. Two fields do
+        // want the default and carry the attribute -- RepairForm.repair_date
+        // and the multi-break form's repair_date, both required. The three
+        // scheduled_for inputs (RepairForm, QuickJobForm, ReplacementForm)
+        // deliberately do not.
+        //
+        // The prefill has to happen BEFORE flatpickr initialises, not after:
+        // altInput hides the real input behind a formatted one, so a value
+        // assigned later lands on the hidden field and the visible box still
+        // reads empty. That is also why defaultDate is gone rather than
+        // guarded -- flatpickr already falls back to the input's own value,
+        // and passing `new Date()` would refill the very fields this change
+        // exists to leave alone.
         document.addEventListener('DOMContentLoaded', function() {
             const datetimeInputs = document.querySelectorAll('input[type="datetime-local"]');
             datetimeInputs.forEach(input => {
-                if (!input.value) {
+                if (!input.value && input.hasAttribute('data-default-now')) {
                     const now = new Date();
                     const year = now.getFullYear();
                     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -347,8 +365,7 @@
                     altInput: true,
                     altFormat: "F j, Y - h:i K",
                     time_24hr: false,
-                    minuteIncrement: 1,
-                    defaultDate: input.value || new Date()
+                    minuteIncrement: 1
                 });
             });
         });
