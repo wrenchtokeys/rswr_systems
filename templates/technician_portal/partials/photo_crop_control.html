@@ -1,6 +1,8 @@
 {% comment %}
-The "mark the break" control that sits under a photo on the repair detail
-page. Driven by static/js/photo_crop_detail.js.
+The "mark the break" control that sits under a photo on a job's detail
+page — repair or replacement. Driven by static/js/photo_crop_detail.js,
+which reads its endpoint from #photoCropEndpoint, so the same partial works
+on both pages.
 
 Params: field (the model field name), photo_url, crop (a RepairPhotoCrop or
 nothing), prompt (the modal heading, e.g. "Tap the break").

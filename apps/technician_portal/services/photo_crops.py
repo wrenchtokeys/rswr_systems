@@ -1,5 +1,10 @@
 """
-Tap-to-crop for repair damage photos.
+Tap-to-crop for glass-damage photos.
+
+Works on a *job*: a Repair or a Replacement. Both inherit the photo fields
+from GlassService, and both are needed — a crop can only be a training
+example if the other class exists too, and replacements are the only place
+the "not repairable" class comes from.
 
 The technician taps the break on the photo in the upload flow; the tap
 arrives as crop_x_<field>/crop_y_<field> POST values (percent of the
@@ -34,9 +39,26 @@ SOURCE_FIELDS = (
 )
 
 
-def process_tap_coordinates(repair, post_data, technician=None,
+def job_kind(job):
+    """'repair' or 'replacement' for any GlassService subclass."""
+    from apps.technician_portal.models import Replacement
+    return 'replacement' if isinstance(job, Replacement) else 'repair'
+
+
+def _crop_fk(job):
+    """The RepairPhotoCrop FK kwargs addressing this job.
+
+    Exactly one of repair/replacement is ever set (a CheckConstraint on the
+    model enforces it), so this is the only place that decides which.
+    """
+    return {job_kind(job): job}
+
+
+def process_tap_coordinates(job, post_data, technician=None,
                             key_prefix='', key_suffix=''):
     """Create crops for whichever crop_x_/crop_y_ pairs are in the POST.
+
+    ``job`` is a Repair or a Replacement.
 
     Deliberately touches Pillow only when a tap was actually made, so photo
     uploads without a tap never open the image server-side.
@@ -55,24 +77,29 @@ def process_tap_coordinates(repair, post_data, technician=None,
             center_y_pct = min(max(float(raw_y), 0.0), 100.0)
         except (TypeError, ValueError):
             logger.warning(
-                "Ignoring unparseable tap coords for repair %s %s: %r/%r",
-                repair.pk, source_field, raw_x, raw_y,
+                "Ignoring unparseable tap coords for %s %s %s: %r/%r",
+                job_kind(job), job.pk, source_field, raw_x, raw_y,
             )
             continue
         try:
             save_crop_for(
-                repair, source_field, center_x_pct, center_y_pct,
+                job, source_field, center_x_pct, center_y_pct,
                 technician=technician,
             )
         except Exception:
             logger.exception(
-                "Tap-to-crop failed for repair %s %s", repair.pk, source_field,
+                "Tap-to-crop failed for %s %s %s",
+                job_kind(job), job.pk, source_field,
             )
 
 
-def save_crop_for(repair, source_field, center_x_pct, center_y_pct,
+def save_crop_for(job, source_field, center_x_pct, center_y_pct,
                   technician=None, confirmed_by_human=True, suggestion=None):
     """Crop a square around the tap point and upsert the RepairPhotoCrop.
+
+    ``job`` is a Repair or a Replacement — the row hangs off whichever it
+    is, and the crop filename is namespaced by kind so a repair and a
+    replacement sharing an id can't collide in the same bucket prefix.
 
     Re-tapping the same photo replaces the previous crop (latest wins —
     history would only add noise to the dataset). Returns the crop row, or
@@ -87,12 +114,12 @@ def save_crop_for(repair, source_field, center_x_pct, center_y_pct,
     """
     from apps.technician_portal.models import RepairPhotoCrop
 
-    photo = getattr(repair, source_field, None)
+    photo = getattr(job, source_field, None)
     if not photo:
         return None
 
     defaults = {
-        'tenant': repair.tenant,
+        'tenant': job.tenant,
         'center_x_pct': center_x_pct,
         'center_y_pct': center_y_pct,
         'crop_left': None,
@@ -135,19 +162,19 @@ def save_crop_for(repair, source_field, center_x_pct, center_y_pct,
         # Unreadable image (fake test bytes, truncated upload, exotic
         # format): keep the tap on record so the crop can be retried.
         logger.exception(
-            "Could not crop %s of repair %s; recording tap only",
-            source_field, repair.pk,
+            "Could not crop %s of %s %s; recording tap only",
+            source_field, job_kind(job), job.pk,
         )
 
     crop, created = RepairPhotoCrop.objects.update_or_create(
-        repair=repair, source_field=source_field, defaults=defaults,
+        source_field=source_field, defaults=defaults, **_crop_fk(job),
     )
     if not created and crop.cropped_image:
         crop.cropped_image.delete(save=False)
         crop.cropped_image = None
     if content is not None:
         crop.cropped_image.save(
-            f'repair{repair.pk}_{source_field}.jpg', content, save=True,
+            f'{job_kind(job)}{job.pk}_{source_field}.jpg', content, save=True,
         )
     else:
         crop.save(update_fields=['cropped_image'])
@@ -173,7 +200,7 @@ def retry_crop(crop):
             crop.suggestion_score, engine=crop.suggested_by,
         )
     refreshed = save_crop_for(
-        crop.repair, crop.source_field,
+        crop.service, crop.source_field,
         crop.center_x_pct, crop.center_y_pct,
         technician=crop.created_by,
         confirmed_by_human=crop.confirmed_by_human,
@@ -182,15 +209,15 @@ def retry_crop(crop):
     return bool(refreshed and refreshed.cropped_image)
 
 
-def delete_crops_for(repair, source_field):
+def delete_crops_for(job, source_field):
     """Remove the crop (row and file) when its source photo is deleted."""
-    for crop in repair.photo_crops.filter(source_field=source_field):
+    for crop in job.photo_crops.filter(source_field=source_field):
         if crop.cropped_image:
             crop.cropped_image.delete(save=False)
         crop.delete()
 
 
-def apply_suggestion(repair, source_field, suggestion=None):
+def apply_suggestion(job, source_field, suggestion=None):
     """Save a machine-suggested crop for a photo nobody has marked.
 
     Used by ``manage.py suggest_photo_crops``. The row is stored with
@@ -204,16 +231,16 @@ def apply_suggestion(repair, source_field, suggestion=None):
     """
     from apps.technician_portal.services.photo_suggest import suggest_for
 
-    if not getattr(repair, source_field, None):
+    if not getattr(job, source_field, None):
         return None
-    if repair.photo_crops.filter(source_field=source_field).exists():
+    if job.photo_crops.filter(source_field=source_field).exists():
         return None
     if suggestion is None:
-        suggestion = suggest_for(repair, source_field)
+        suggestion = suggest_for(job, source_field)
     if suggestion is None:
         return None
     return save_crop_for(
-        repair, source_field, suggestion.x_pct, suggestion.y_pct,
+        job, source_field, suggestion.x_pct, suggestion.y_pct,
         technician=None, confirmed_by_human=False, suggestion=suggestion,
     )
 

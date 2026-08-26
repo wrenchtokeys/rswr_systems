@@ -167,14 +167,33 @@ class JobFormTapCropTests(TapCropTestCase):
         self.assertFalse(crop.cropped_image)
         self.assertIsNone(crop.natural_width)
 
-    def test_replacement_posts_are_ignored(self):
+    def test_replacement_taps_are_saved_too(self):
+        """P1 ignored a tap on a replacement; P4a records it.
+
+        This test used to assert the opposite. The repairs-only gate was
+        the single biggest reason the dataset held nothing but repairable
+        damage — a crop of a repair is by definition damage that WAS
+        repaired, so a repairs-only pipeline can only ever produce the
+        positive class. The negative class comes from exactly this photo:
+        damage the shop decided to replace. See PHOTO_ML_SESSIONS.md P4a.
+        """
+        from apps.technician_portal.models import Replacement
+
         self.post_job(
             service_type='replacement',
             damage_photo_before=real_jpeg(),
             crop_x_damage_photo_before='50',
             crop_y_damage_photo_before='50',
         )
-        self.assertEqual(RepairPhotoCrop.objects.count(), 0)
+        replacement = Replacement.objects.get()
+        crop = replacement.photo_crops.get()
+        self.assertEqual(crop.source_field, 'damage_photo_before')
+        self.assertEqual(crop.center_x_pct, 50.0)
+        self.assertTrue(crop.cropped_image)
+        # The row hangs off the replacement, and only off the replacement.
+        self.assertIsNone(crop.repair)
+        self.assertEqual(crop.service, replacement)
+        self.assertEqual(crop.service_kind, 'replacement')
 
     def test_heic_conversion_now_runs_on_the_job_form_path(self):
         """job_create was the one tech upload path storing raw HEIC."""

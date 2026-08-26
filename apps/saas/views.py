@@ -1331,8 +1331,13 @@ def replacement_detail(request, pk):
     if replacement.parts_cost is not None:
         job_margin = (replacement.total_with_charges or 0) - replacement.parts_cost
 
+    # Tap-to-crop marks (P4a): a replacement's damage photos are the only
+    # source of the "not repairable" class the classifier needs.
+    photo_crops = {c.source_field: c for c in replacement.photo_crops.all()}
+
     return render(request, 'saas/replacement_detail.html', {
         'replacement': replacement,
+        'photo_crops': photo_crops,
         'tenant': tenant,
         'is_admin': is_tenant_admin(request.user, tenant=tenant),
         'status_transitions': status_transitions,
