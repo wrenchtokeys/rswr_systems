@@ -1,0 +1,35 @@
+{% extends "emails/base.html" %}
+{% comment %}
+Managers, a job is sitting in the Unassigned queue. Context: job_id,
+job_type, customer_name, break_count, queue_reason, action_url, plus the
+vehicle/damage rows job_display_context supplies. Manager-facing, so the
+preferences link is the tech one.
+
+There is deliberately no technician row. The name on the job is the
+provisional pick the non-null FK forced onto it (JOB_QUEUE_SESSIONS §0) —
+printing it here would read as "assigned to Marcus", which is the exact
+lie this whole arc exists to stop telling.
+{% endcomment %}
+
+{% block email_title %}A job needs assigning{% endblock %}
+{% block header_meta %}{{ job_type|default:"Job" }} #{{ job_id }}{% endblock %}
+{% block preheader %}Nobody has picked this up yet.{% endblock %}
+{% block unsubscribe_url %}/tech/notifications/preferences/{% endblock %}
+
+{% block content %}
+{% include "emails/components/pill.html" with label="Needs assignment" tone="yellow" %}
+{% include "emails/components/headline.html" with headline="A job is waiting to be assigned." lede=queue_reason %}
+
+{% include "emails/components/rows_start.html" %}
+    {% if customer_name %}{% include "emails/components/row.html" with label="Customer" value=customer_name %}{% endif %}
+    {% include "emails/components/vehicle_row.html" %}
+    {% if damage_description %}{% include "emails/components/row.html" with label="Damage" value=damage_description %}{% endif %}
+    {% if service_location %}{% include "emails/components/row.html" with label="Location" value=service_location %}{% endif %}
+    {% if break_count %}{% include "emails/components/row.html" with label="Breaks" value=break_count %}{% endif %}
+{% include "emails/components/rows_end.html" %}
+
+{% if action_url %}{% with url=base_url|add:action_url %}
+{% include "emails/components/button.html" with text="Assign this job" url=url color=branding.primary_color %}
+{% endwith %}{% endif %}
+{% include "emails/components/note.html" with text="Until someone picks a technician, nobody has been told about this job." %}
+{% endblock %}
