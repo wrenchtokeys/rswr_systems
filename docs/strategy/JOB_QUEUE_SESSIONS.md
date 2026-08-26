@@ -32,7 +32,7 @@ able to execute exactly one session using only §0 and that session's table.
 | Q — The queue exists | Q1 · Round robin that actually rotates (CODE-278) | S | DONE (2026-08-26, commit `6a199b84`, pushed — **no PR yet**) |
 | Q — The queue exists | Q2 · The Unassigned queue (CODE-279) | M | DONE (2026-08-26, commit `33be9b22`) |
 | R — The queue drains | Q3 · Approving a queued job takes it (CODE-280) | S | DONE (2026-08-26, commit `fbf27808`) |
-| R — The queue drains | Q4 · Telling managers outside the dashboard (CODE-281) | S | DONE (2026-08-26, commit `PLACEHOLDER`) |
+| R — The queue drains | Q4 · Telling managers outside the dashboard (CODE-281) | S | DONE (2026-08-26, commit `c3f0e28e`) |
 | R — The queue drains | Q5 · Where managers actually live: board + aging | M | TODO |
 | R — The queue drains | Q6 · One provisional pick, in one place | S | TODO |
 
@@ -296,7 +296,7 @@ Each is now a comment saying why it went:
 
 ## Q4 · Telling managers outside the dashboard — DONE (2026-08-26)
 
-**Shipped:** CODE-281, 21 tests. Files: `core/migrations/0034_needs_assignment_template.py`,
+**Shipped:** commit `c3f0e28e`, CODE-281, 21 tests. Files: `core/migrations/0034_needs_assignment_template.py`,
 `core/management/commands/setup_notification_templates.py`,
 `templates/emails/notifications/needs_assignment.html` + `.txt`,
 `apps/technician_portal/services/assignments.py`, `tests/test_fieldops_n3.py`,
