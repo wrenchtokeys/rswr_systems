@@ -1,9 +1,18 @@
 """Shared UI component template tags.
 
-Single source of truth for status badge and service-type chip styling —
+Single source of truth for status badge, service-type chip and icon markup —
 see docs/development/UI_DESIGN_GUIDE.md. Load with {% load ui %}.
 """
+import logging
+
 from django import template
+from django.conf import settings
+from django.utils.html import escape
+from django.utils.safestring import mark_safe
+
+from core.icons import resolve as resolve_icon
+
+logger = logging.getLogger(__name__)
 
 register = template.Library()
 
@@ -79,3 +88,60 @@ def service_type_chip(service_type):
         'icon': 'fa-car' if is_replacement else 'fa-tools',
         'classes': 'bg-purple-100 text-purple-800' if is_replacement else 'bg-sky-100 text-sky-800',
     }
+
+
+# The stroke-only frame every icon is drawn in. It is here rather than in each
+# entry of core/icons.py so that a new icon cannot arrive with a different
+# stroke weight — the one difference that makes a mixed icon set look broken.
+# `focusable="false"` is for IE-era focus behaviour that Edge still inherits in
+# some enterprise configurations; it costs nine bytes and removes a tab stop.
+_SVG = (
+    '<svg class="icon{extra}" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
+    'focusable="false" {a11y}>{body}</svg>'
+)
+
+
+@register.simple_tag
+def icon(name, label=None, **attrs):
+    """Render a line icon from `core.icons` (UI_MAGIC S13).
+
+    {% icon 'check' %}
+    {% icon 'trash' class="w-5 h-5 text-red-600" %}
+    {% icon 'trash' label="Delete job" %}   — an icon that IS the button text
+    {% icon item.status_icon %}             — dynamic names are fine
+
+    Sized in `em`, so it is a drop-in for the `<i class="fas fa-…">` it
+    replaces: it tracks the surrounding font-size and `text-lg` on the parent
+    still works. Pass Tailwind sizing in `class` to override — utilities beat
+    the `.icon` component rule.
+
+    **Decorative by default.** An icon next to its own label is noise to a
+    screen reader, so the default is `aria-hidden`. Pass `label` only when the
+    icon is the only thing naming the control; then it announces as an image
+    with that name.
+
+    An unknown name is a template bug, not a data problem: it raises under
+    DEBUG (so dev and the test suite catch it on the spot) and, in production,
+    logs and renders an empty box of the right size rather than 500-ing a page
+    over a typo in a decoration.
+    """
+    body = resolve_icon(name)
+    if body is None:
+        if settings.DEBUG:
+            raise template.TemplateSyntaxError(
+                f"{{% icon %}}: unknown icon {name!r}. Add it to core/icons.py "
+                f"(or alias it there) — see UI_MAGIC_SESSIONS.md S13."
+            )
+        logger.warning("Unknown icon %r requested by {%% icon %%}", name)
+        body = ''
+
+    extra = attrs.get('class') or ''
+    a11y = (
+        f'role="img" aria-label="{escape(label)}"' if label else 'aria-hidden="true"'
+    )
+    return mark_safe(_SVG.format(
+        extra=f' {escape(extra)}' if extra else '',
+        a11y=a11y,
+        body=body,
+    ))

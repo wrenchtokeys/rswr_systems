@@ -221,6 +221,22 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* ---- {% icon %} (UI_MAGIC S13) ---------------------------------------
+     The one rule the tag needs, and the reason it is a drop-in for the
+     `<i class="fas fa-…">` it replaces: 1em means an icon tracks the text it
+     sits in, so `text-lg` on the parent still resizes it and no call site has
+     to name a width. -0.125em is Font Awesome's own baseline offset — without
+     it every migrated icon shifts a pixel and the diff looks like a redesign.
+     `w-4 h-4` from a call site still wins: utilities outrank components.
+     Geometry lives in core/icons.py, never here. */
+  .icon {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+    flex-shrink: 0;
+  }
+
   /* Semantic button hierarchy — see docs/development/UI_DESIGN_GUIDE.md.
      primary: the ONE main action per view. secondary: outlined supporting
      action. danger: destructive only. ghost: tertiary/overflow. */

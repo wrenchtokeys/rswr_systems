@@ -6,7 +6,9 @@ This guide documents the design system, UI components, and patterns used across 
 
 **Last Updated**: August 2026
 **Base Framework**: Tailwind CSS (compiled — see build section below)
-**Icon Library**: Font Awesome 6.4.0 (self-hosted; migrating to an SVG sprite — see UI_MAGIC_SESSIONS S13)
+**Icon Library**: line SVG via `{% icon %}` for new markup — see below. Font Awesome 6.4.0
+(self-hosted) still carries the ~1,300 call sites written before it; the migration is
+UI_MAGIC_SESSIONS S13.
 **Typography**: Inter (self-hosted variable font, weights 300–800)
 
 > **Design direction (Aug 2026):** `docs/strategy/UI_MAGIC_PLAN.md` holds the current
@@ -83,6 +85,33 @@ Two things to know before changing this:
   `data-modal-open="id"`, `data-modal-close`, `data-dropdown-toggle="id"` +
   `data-dropdown-menu`, `<form data-confirm="...">`. Bootstrap `data-bs-*`
   markup is dead — never add it.
+
+### Icons (Aug 2026, S13)
+
+`{% load ui %}` then `{% icon 'name' %}`. One 24×24 stroke-only SVG per call,
+drawn from `core/icons.py`.
+
+| | |
+|---|---|
+| `{% icon 'check' %}` | Decorative — `aria-hidden`, which is the default and right answer beside a text label |
+| `{% icon 'trash' class="w-5 h-5 text-red-600" %}` | Sizing/colour utilities beat the `.icon` component rule |
+| `{% icon 'trash' label="Delete job" %}` | The icon **is** the control's name: renders `role="img"` + `aria-label` |
+| `{% icon item.icon_name %}` | Dynamic names resolve at render |
+
+The set is deliberately small (~70 icons, ~40 aliases) and covers the top of
+this repo's Font Awesome usage. It is **stroke-only at weight 2**: one filled
+glyph among stroked ones is what makes a mixed icon set read as broken, so
+`tests/test_icon_tag.py` rejects any entry that sets its own `fill`,
+`stroke-width` or colour.
+
+Sized in `em` with Font Awesome's own `-0.125em` baseline offset, so it sits
+exactly where the `<i class="fas fa-…">` it replaces sat, at every font size.
+That is what makes an incremental migration survivable.
+
+**Not in the set?** Add it to `core/icons.py` rather than reaching for
+Font Awesome. Prefer the plain noun (`mail`, not `envelope`) and alias the
+Font Awesome spelling. `fa-`-prefixed names already resolve, so pasting an old
+class name works.
 
 ### Reusable Partials (`templates/components/`)
 
