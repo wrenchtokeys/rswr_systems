@@ -30,37 +30,48 @@ able to execute exactly one session using only §0 and that session's table.
 | Phase | Session | Size | Status |
 |---|---|---|---|
 | Q — The queue exists | Q1 · Round robin that actually rotates (CODE-278) | S | DONE (2026-08-26, commit `6a199b84`, pushed — **no PR yet**) |
-| Q — The queue exists | Q2 · The Unassigned queue (CODE-279) | M | DONE (2026-08-26, **working tree only, uncommitted**) |
-| R — The queue drains | Q3 · Approving a queued job takes it | S | TODO — needs a product decision first |
+| Q — The queue exists | Q2 · The Unassigned queue (CODE-279) | M | DONE (2026-08-26, commit `33be9b22`) |
+| R — The queue drains | Q3 · Approving a queued job takes it (CODE-280) | S | DONE (2026-08-26, commit `fbf27808`) |
 | R — The queue drains | Q4 · Telling managers outside the dashboard | S | TODO |
 | R — The queue drains | Q5 · Where managers actually live: board + aging | M | TODO |
 | R — The queue drains | Q6 · One provisional pick, in one place | S | TODO |
 
-**Suggested sequence:** Q3 → Q4 → Q5 → Q6. Q3 first because it is the only one
-that is currently a *correctness* gap rather than a reach gap — three code paths
-still test `if not job.technician` on a non-null FK, so they are dead branches
-that read as working code. Q4 before Q5 because a queue nobody is told about
-does not drain no matter how good the board is. Q6 is cleanup and can slip.
+**Suggested sequence:** Q4 → Q5 → Q6. Q3 went first because it was the only
+*correctness* gap rather than a reach gap — four code paths tested
+`if not job.technician` on a non-null FK, so they were dead branches that read
+as working code. Q4 before Q5 because a queue nobody is told about does not
+drain no matter how good the board is. Q6 is cleanup and can slip.
 
 **Sizes:** S ≈ half a day · M ≈ 1–2 days · L ≈ 3–5 days.
 
-**Where we are (2026-08-26, after Q2):** Q1 is committed and pushed on
-`fix/job-assignment-round-robin` (worktree `~/projects/rs_assign_wt`); **no PR
-has been opened for either session.** Q2 is built and green but sits
-uncommitted in that worktree: 10 modified files, migration
-`0058_add_needs_assignment`, and `tests/bug_fixes/test_code279_unassigned_queue.py`
-(27 tests). Verified this session on sqlite: the 27 new tests pass, 44 tests
-across the eight adjacent assignment regression modules pass, and
-`test_fieldops_s5 / s9 / s10 / n1 / unified_job_list` are 117 green after fixing
-one real defect found in the run — see Q2 Notes, "What the test run caught."
+**Where we are (2026-08-26, after Q3):** Q1–Q3 are four commits on
+`fix/job-assignment-round-robin` (worktree `~/projects/rs_assign_wt`), rebased
+onto `main` at `f4c1a7ad` (PR #217, photoml P3). **No PR is open yet.** The
+whole arc is committed — nothing is left in a working tree.
+
+Verified on sqlite after the rebase: 27 CODE-279 tests, 13 CODE-280 tests, and
+the eight adjacent assignment regression modules (84 together); plus
+`test_fieldops_s5/s9/s10/n1`, `test_unified_job_list`, `test_job_form_parity`
+and `test_services_offered` (167 together). One failure in
+`test_code105_repair_detail_unscoped_technician` is **pre-existing** — it
+reproduces identically on unmodified `origin/main`, checked in a throwaway
+worktree.
+
+**The migration was renumbered during this session.** It was authored as
+`0058_add_needs_assignment` against `0057_repairphotocrop`, but `main` gained
+its own `0058` and `0059` from photoml P3 while this branch sat unmerged. It is
+now `0060_add_needs_assignment` depending on `0059_backfill_confirmed_crops`,
+amended into the commit that introduced it so no commit in the branch ever has
+two leaf migrations. `manage.py makemigrations --check` is clean. If this
+branch sits unmerged again, check for the same collision before opening the PR.
 
 ## How to run a session
 
 1. Cut a fresh branch off the latest `main`: `feat/jobqueue-<id>-<slug>`. Never
    stack on another session's branch. Print `git branch --show-current` before
    every test run — other Claude sessions share this checkout's neighbours.
-   **Q3–Q6 depend on Q2's migration**, so until Q2 is merged, branch from Q2's
-   branch and say so in the PR body.
+   **Q4–Q6 depend on Q2's migration**, so until `fix/job-assignment-round-robin`
+   is merged, branch from it and say so in the PR body.
 2. Read §0 plus your session's table. Re-verify the `file:line` anchors before
    coding — the code moves.
 3. Tests: the Postgres credentials in `CLAUDE.md` (`amelia_test`) are rejected
@@ -94,7 +105,7 @@ strategy declined to pick anyone, the name on this row is the caller's
 provisional placeholder, and **the technician has not been told**. It is what
 the Unassigned queue lists.
 
-**The flag settles itself.** `GlassService._settle_needs_assignment()`
+**The flag settles itself, and says so.** `GlassService._settle_needs_assignment()`
 (`models.py`, called first thing in both `Repair.save()` and
 `Replacement.save()`) clears the flag whenever `technician_id` differs from the
 value loaded in `__init__`. So the job form, the approve action, the Django
@@ -104,6 +115,14 @@ without knowing it exists — and none of them can forget. **Saves that pass
 memory and never reach the database. If you add an assignment surface, you get
 this for free; if you write to `technician` with raw SQL or `.update()`, you do
 not.
+
+It also records `_cleared_needs_assignment` on the instance when *this* save is
+the one that drained the job. The assignment signal needs that, because by the
+time `post_save` runs the flag is already False — without it the provisional
+technician gets a "reassigned away" notification for a job they were never told
+they had. **Leaving the queue is a first assignment, not a reassignment**: the
+signal drops the old technician when the marker is set, the same shape the
+dispatch board's confirm path uses. (CODE-280)
 
 **Two entry points into the strategy** (`apps/tenants/services/assignment_service.py`):
 
@@ -150,7 +169,8 @@ unflagged job is still refused with "nothing to change".
 
 ## Q1 · Round robin that actually rotates — DONE (2026-08-26)
 
-**Shipped:** commit `6a199b84` on `fix/job-assignment-round-robin`, pushed. No PR.
+**Shipped:** commit `5a572fae` on `fix/job-assignment-round-robin` (`6a199b84` before
+the rebase onto `main`).
 
 Round robin sent every customer request to the same technician. The rotation
 anchored on the job it was currently assigning — because the row already exists
@@ -169,12 +189,13 @@ to favour.
   history anchoring a Replacement was CODE-172.
 - Guarded by `tests/bug_fixes/test_code278_round_robin_self_anchor.py`.
 
-## Q2 · The Unassigned queue — DONE (2026-08-26), uncommitted
+## Q2 · The Unassigned queue — DONE (2026-08-26)
 
-**State:** built, 27 new tests green, **not committed**. Files: `models.py`,
+**Shipped:** commit `33be9b22`, CODE-279, 27 tests. Files: `models.py`,
 `services/assignments.py`, `services/dispatch.py`, `services/quick_job.py`,
 `views/jobs.py`, `tenants/services/assignment_service.py`, four templates,
-migration `0058`, `tests/bug_fixes/test_code279_unassigned_queue.py`.
+migration `0060` (see §Where we are on the renumber),
+`tests/bug_fixes/test_code279_unassigned_queue.py`.
 
 Two product decisions, both Drake's, each chosen from three options offered:
 
@@ -185,7 +206,7 @@ Two product decisions, both Drake's, each chosen from three options offered:
    them. See §0.
 2. **In-app creation → "your own job stays yours."**
    `quick_job.resolve_technician` now returns `(tech, needs_assignment)` and
-   goes: the actor's own profile *if `_can_perform` says they can do this kind
+   goes: the actor's own profile *if `can_perform` says they can do this kind
    of work* → the shop's strategy via the new write-free `select_technician()`
    → an arbitrary fallback, flagged. A tech logging the walk-in they just
    handled keeps it; a dispatcher with no profile gets the shop's configured
@@ -209,42 +230,63 @@ Two product decisions, both Drake's, each chosen from three options offered:
 - The batch de-dup matches on the literal phrase `is waiting to be assigned`
   (`_WAITING_PHRASE`). If you reword the message, reword the constant — they
   are one thing.
-- `_can_perform` treats an inactive or ability-less profile as *cannot*, so the
+- `can_perform` treats an inactive or ability-less profile as *cannot*, so the
   actor falls through to the strategy rather than taking the job. Assigning
   work to a deactivated tech is CODE-160 from the other direction.
 
-## Q3 · Approving a queued job takes it — TODO (needs a product decision)
+## Q3 · Approving a queued job takes it — DONE (2026-08-26)
 
-**The gap.** Three paths still branch on a non-null FK and are therefore dead
-code that reads as working code:
+**Shipped:** commit `fbf27808`, CODE-280.
 
-- `apps/technician_portal/views/repairs.py:1218` — bulk approve:
-  `if repair.queue_status == 'REQUESTED' and not repair.technician and technician`
-- `apps/saas/views.py:1259` — replacement create: `if not replacement.technician_id`
-- `apps/technician_portal/views/repairs.py:395` — repair create "safety net":
-  `if not repair.technician_id`
+**The decision.** Approving a queued job takes it **only if the approver can
+actually do that kind of work**. One-person shop: the owner approves and it is
+theirs in one motion. Dispatcher shop: approving approves the work and leaves
+the pick alone, because a dispatcher who approves everything would otherwise
+end up owning the entire queue — the opposite of what Manual is for.
+`services.assignments.can_perform(technician, service_type)` is the rule; it
+moved out of `quick_job._can_perform` once two callers needed it, and it
+answers False for `None`, so an admin-only user with no `Technician` row is an
+ordinary case rather than an `AttributeError`.
 
-Rewriting the first as `if repair.needs_assignment` would make it live, and
-that means **"approving a queued job assigns it to whoever approved it."**
-That is a third product decision, not covered by Q2's two, and it is a real
-fork: for a dispatcher who approves everything, it silently makes every queued
-job theirs — the opposite of what Manual is for.
+**What became live.** Bulk approve (`views/repairs.py`) now tests
+`needs_assignment` instead of `not repair.technician`, and the update gate —
+whose message already read *"this repair has not been assigned yet"* — is live
+against the flag too, with **managers exempt**, the same way they are exempt
+from the closed-job gate directly above it. They are who the queue waits on.
 
-**Decide first, then build.** Options worth putting to Drake:
-(a) approving takes the job (fastest for one-person shops, wrong for
-dispatchers); (b) approving leaves it queued and approval never assigns
-(purest, but "approve" then feels incomplete); (c) approving takes it **only
-when the approver can actually perform the work** (`_can_perform` already
-exists) — a dispatcher who can't repair leaves it queued.
+**What was deleted instead.** Two of the four branches are unreachable by
+construction, so reviving them would have invented behaviour nobody asked for.
+Each is now a comment saying why it went:
+- `views/repairs.py` repair create — `_scoped_tech` is assigned
+  unconditionally a few lines above and the view has already returned if it is
+  None. A tech creating their own repair has chosen the technician by
+  definition.
+- `saas/views.py` replacement create — `technician` is a **required field** on
+  `ReplacementForm` (non-null FK, no `blank=True`), so `form.is_valid()`
+  already guarantees a pick. If that form should ever offer "decide later",
+  that is a new field plus a `needs_assignment` write, not a resurrected dead
+  branch.
 
-The other two branches are less loaded: `saas/views.py:1259` should call
-`auto_assign_replacement` on the flag rather than the FK, and `repairs.py:395`
-is a genuine safety net that has never fired and can either become
-flag-aware or be deleted.
-
-**Done when:** each of the three branches is either live and tested or removed
-with a comment saying why, and no `if not <job>.technician` remains in an
-assignment path. Grep for it — that shape is this arc's recurring bug.
+**Notes.**
+- **Writing the tests found a hole in Q2.** The provisional tech was being told
+  the job was "reassigned away" the moment a manager took it — the first and
+  only thing they would ever hear about a job that was never theirs. The flag
+  is cleared inside `save()`, so `notify_assignment_from_signal`'s
+  `needs_assignment` guard sees nothing by the time `post_save` fires. Fixed
+  with `_cleared_needs_assignment` (see §0). **If you add a surface that
+  drains the queue, notify with `old_technician=None`.**
+- Two `if not <job>.technician` checks survive on purpose and are *not*
+  assignment paths: `signals.py:620` is a defensive log guard in a notification
+  helper, and `views/repairs.py:1096` is a null-guard before
+  `manages_technician()`. Both are harmless; neither decides who gets a job.
+- **Test-base trap.** `Tenant.objects.create` gives you a tenant with no
+  subscription, and the middleware sends the first view request into a redirect
+  loop (`RedirectCycleError`, which reads like a routing bug and is not). Build
+  shops with `create_tenant_with_owner` + `TenantMembership`, as
+  `tests/test_unified_job_list.py` does.
+- The one-person-shop path is the common case and it now costs one click. The
+  dispatcher path deliberately costs two, and that is the whole point of the
+  decision.
 
 ## Q4 · Telling managers outside the dashboard — TODO
 
@@ -261,7 +303,9 @@ priority→channel map decides whether email is even possible: HIGH yields
 URGENT yields all three. Audience is decided by the call site, not the template
 name. `tests/test_fieldops_n3.py` guards the inventory table.
 
-**Watch for:** one email per break. The batch de-dup in Q2 is per-`repair_batch_id`
+**Watch for:** one email per break, and the drain rule from Q3 — a
+notification that fires when the queue *empties* must treat it as a first
+assignment, not a reassignment (§0, `_cleared_needs_assignment`). The batch de-dup in Q2 is per-`repair_batch_id`
 and unread-scoped; the template path needs the same rule or a six-break request
 becomes six emails.
 
