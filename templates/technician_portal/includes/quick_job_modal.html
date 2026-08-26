@@ -1,0 +1,168 @@
+{% comment %}
+Quick-add (FIELD_OPS S10) — a customer calls, and the job exists and is on
+the schedule in one submit.
+
+The motion it replaces: Jobs → New Job → fill the form → save → land on the
+job ticket → navigate to Schedule → find the job in the rail → set
+date/window/tech → Book.
+
+Deliberately who / what / when and nothing else. Photos, insurance, vehicle
+details, extra charges and pricing all still live on the ticket — a phone
+call is not the moment for them, and the full form at {% url 'job_create' %}
+has not gone anywhere.
+
+House modal contract from static/js/ui.js: a `.modal-overlay` that starts
+`.hidden`, opened by [data-modal-open="<id>"], closed by [data-modal-close],
+Escape, or a click on [data-modal-overlay]. No new modal machinery.
+
+The date/window/exact-time controls are copied from the triage rail's inline
+book form (includes/schedule_row.html) on purpose — one vocabulary for "when"
+on this page, and one set of values the booking endpoint already parses.
+{% endcomment %}
+<div id="quick-job-modal" class="modal-overlay hidden" data-modal-overlay
+     data-post-url="{% url 'schedule_quick_job' %}"
+     data-search-url="{% url 'customer_search_api' %}"
+     data-day="{{ day|date:'Y-m-d' }}"
+     role="dialog" aria-modal="true" aria-labelledby="quick-job-title">
+  <div class="modal-panel p-6">
+
+    <div class="flex items-start justify-between gap-4 mb-5">
+      <div>
+        <h2 id="quick-job-title" class="t-h3 text-gray-900">Add a job</h2>
+        <p class="text-sm text-gray-500 mt-0.5">
+          Who, what and when. Everything else can wait for the ticket.
+        </p>
+      </div>
+      <button type="button" data-modal-close aria-label="Close"
+              class="tap-target flex-shrink-0 text-gray-400 hover:text-gray-600">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <form id="quick-job-form" class="space-y-4">
+
+      {% if shop_service_mix == 'both' %}
+      <div>
+        <span class="block text-sm font-medium text-gray-700 mb-2">Service</span>
+        <div class="flex gap-2" role="radiogroup" aria-label="Service type">
+          {% comment %}
+          Repair carries the selected classes in the markup, not just
+          aria-pressed. The JS only paints them on click, so a modal opened
+          and never touched showed two identical buttons with nothing chosen —
+          while a repair is in fact what would be submitted.
+          {% endcomment %}
+          <button type="button" data-qj-type="repair" aria-pressed="true"
+                  class="qj-type-btn flex-1 min-h-11 px-4 py-2 rounded-lg border text-sm font-medium transition-colors border-brand-500 bg-brand-50 text-brand-700">
+            Repair
+          </button>
+          <button type="button" data-qj-type="replacement" aria-pressed="false"
+                  class="qj-type-btn flex-1 min-h-11 px-4 py-2 rounded-lg border text-sm font-medium transition-colors border-gray-300 text-gray-600">
+            Replacement
+          </button>
+        </div>
+      </div>
+      {% endif %}
+
+      {% comment %}
+      Customer: type a name. Matches appear as you go; if nobody matches, the
+      typed name becomes a new individual. That is the phone-call case and it
+      must not require a detour to the customer page first — the endpoint
+      still asks "did you mean this person?" before creating a second John
+      Smith, and those suggestions render below.
+      {% endcomment %}
+      <div>
+        <label for="qj-customer" class="block text-sm font-medium text-gray-700 mb-1">Customer</label>
+        <input type="text" id="qj-customer" autocomplete="off"
+               placeholder="Name or phone"
+               class="w-full min-h-11 px-4 py-2.5 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+        <div id="qj-customer-results" class="hidden mt-1 border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto"></div>
+        <p id="qj-customer-chosen" class="hidden text-xs text-gray-500 mt-1.5"></p>
+        <div id="qj-new-person" class="hidden mt-2">
+          <label for="qj-phone" class="sr-only">Phone for the new customer</label>
+          <input type="tel" id="qj-phone" placeholder="Phone (optional)"
+                 class="w-full min-h-11 px-4 py-2.5 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+        </div>
+        <div id="qj-duplicates" class="hidden mt-2"></div>
+      </div>
+
+      <div>
+        <label for="qj-work" class="block text-sm font-medium text-gray-700 mb-1">What's wrong</label>
+        <input type="text" id="qj-work" placeholder="e.g. Chip, passenger side"
+               class="w-full min-h-11 px-4 py-2.5 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+      </div>
+
+      <div>
+        <label for="qj-unit" class="block text-sm font-medium text-gray-700 mb-1">
+          Unit or vehicle <span class="text-gray-400 font-normal">(optional)</span>
+        </label>
+        <input type="text" id="qj-unit" placeholder="e.g. T-1045 or 2019 Silverado"
+               class="w-full min-h-11 px-4 py-2.5 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+      </div>
+
+      {% comment %}
+      A replacement has no price book to fall back on, so QuickJobForm refuses
+      one without a price. Shown only for that type rather than asking every
+      caller for a number they don't have yet.
+      {% endcomment %}
+      <div id="qj-price-row" class="hidden">
+        <label for="qj-price" class="block text-sm font-medium text-gray-700 mb-1">Price</label>
+        <input type="number" id="qj-price" step="0.01" min="0" placeholder="0.00"
+               class="w-full min-h-11 px-4 py-2.5 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+      </div>
+
+      <div class="pt-1 border-t border-gray-100">
+        <span class="block text-sm font-medium text-gray-700 mt-3 mb-2">When</span>
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="sr-only" for="qj-date">Date</label>
+          <input type="date" id="qj-date" value="{{ day|date:'Y-m-d' }}"
+                 class="min-h-11 px-3 py-2 text-base border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          <label class="sr-only" for="qj-window">Time of day</label>
+          <select id="qj-window"
+                  class="min-h-11 px-3 py-2 text-base border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+            {% for value, label in preferred_windows %}
+            <option value="{{ value }}"{% if value == 'ANYTIME' %} selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <span id="qj-exact" class="hidden inline-flex items-center gap-2">
+            <label class="sr-only" for="qj-start">Start time</label>
+            <input type="time" id="qj-start"
+                   class="min-h-11 px-2 py-2 text-base border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+            <span class="text-xs text-gray-400">to</span>
+            <label class="sr-only" for="qj-end">End time</label>
+            <input type="time" id="qj-end"
+                   class="min-h-11 px-2 py-2 text-base border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          </span>
+        </div>
+      </div>
+
+      {% comment %}
+      Who. Only for a shop that has somebody to choose between, and only for a
+      manager who may reassign — a one-tech shop never sees a picker with one
+      name in it. Off-duty techs stay listed, marked: a shop with one truck
+      down calls somebody in on their day off, and a picker that omits the
+      person the manager is on the phone with reads as broken (S8).
+      {% endcomment %}
+      {% if can_assign and roster|length > 1 %}
+      <div>
+        <label for="qj-tech" class="block text-sm font-medium text-gray-700 mb-1">Technician</label>
+        <select id="qj-tech"
+                class="w-full min-h-11 px-3 py-2 text-base border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+          {% for tech in roster %}
+          <option value="{{ tech.pk }}">{{ tech.user.get_full_name|default:tech.user.username }}{% if tech.off_today %} — off {{ day|date:"D" }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+
+      <p id="qj-error" class="hidden text-sm text-red-600" role="alert"></p>
+
+      <div class="flex items-center justify-end gap-3 pt-2">
+        <button type="button" data-modal-close
+                class="btn btn-ghost">Cancel</button>
+        <button type="submit" id="qj-submit" class="btn btn-primary press">
+          Add &amp; schedule
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

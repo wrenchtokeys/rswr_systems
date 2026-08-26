@@ -283,18 +283,6 @@ def _job_detail_redirect(service):
     return redirect('replacement_detail', pk=service.id)
 
 
-def _resolve_technician_for_create(request, tenant, service_type):
-    """The tech to assign a quick-created job to: the user's own profile, or
-    (for admins without one) any active tech with the matching ability."""
-    tech = Technician.objects.filter(user=request.user, tenant=tenant).first()
-    if tech:
-        return tech
-    qs = Technician.objects.filter(tenant=tenant, is_active=True)
-    ability_qs = qs.filter(
-        can_replace=True) if service_type == 'replacement' else qs.filter(can_repair=True)
-    return ability_qs.first() or qs.first()
-
-
 def _job_form_sms_ready(tenant):
     """Whether the send-invoice dialog may offer "Also text it"."""
     from apps.billing.services.invoice_send_service import InvoiceSendService
@@ -364,19 +352,16 @@ def _parse_extra_charges(request):
 
 
 def _save_extra_charges(service, charges, tenant, taxable=True):
-    """Replace the job's extra charges with the parsed rows."""
-    from apps.technician_portal.models import JobCharge
+    """Replace the job's extra charges with the parsed rows.
 
-    service.extra_charges.all().delete()
-    field = 'replacement' if type(service).__name__ == 'Replacement' else 'repair'
-    for desc, amount in charges:
-        JobCharge.objects.create(
-            tenant=tenant,
-            description=desc,
-            amount=amount,
-            taxable=taxable,
-            **{field: service},
-        )
+    The implementation moved to services/quick_job.py with the rest of the
+    creation path (S10). This name stays because four call sites outside this
+    module import it — repairs.py twice, saas/views.py twice — and a second
+    copy of the logic is exactly what that extraction was for.
+    """
+    from apps.technician_portal.services.quick_job import save_extra_charges
+
+    return save_extra_charges(service, charges, tenant, taxable=taxable)
 
 
 @technician_required
@@ -387,18 +372,19 @@ def job_create(request):
     from apps.tenants.services.usage_service import (
         UsageService, limit_message_for,
     )
+    from apps.technician_portal.services.quick_job import (
+        QuickJobError, allowed_service_types, create_job, shop_tax_state,
+    )
 
     tenant = getattr(request, 'tenant', None)
     if not tenant:
         messages.error(request, 'No shop context. Please log in.')
         return redirect('technician_dashboard')
 
-    allowed_types = []
-    if tenant.offers_repairs:
-        allowed_types.append('repair')
-    if tenant.offers_replacements:
-        allowed_types.append('replacement')
+    allowed_types = allowed_service_types(tenant)
 
+    # Checked here as well as inside create_job so the shop is turned away at
+    # the door rather than after filling the whole form in.
     can_create, limit_msg = UsageService(tenant).can_create_repair()
     if not can_create:
         messages.warning(
@@ -409,10 +395,7 @@ def job_create(request):
 
     # Shop-level tax state drives the "Charge sales tax" checkbox: hidden
     # entirely when the shop doesn't charge tax.
-    from apps.billing.services.tax_service import TaxService
-    tax_svc = TaxService(tenant=tenant)
-    shop_tax_enabled = tax_svc.is_tax_enabled()
-    shop_tax_rate = tax_svc.calculate_tax(subtotal=Decimal('0'))['rate'] if shop_tax_enabled else None
+    shop_tax_enabled, shop_tax_rate = shop_tax_state(tenant)
 
     from apps.technician_portal.models import FeePreset
     fee_presets = FeePreset.objects.filter(tenant=tenant, is_active=True)
@@ -435,140 +418,58 @@ def job_create(request):
         if form.is_valid():
             data = form.cleaned_data
 
-            # Resolve the customer — either an existing pick or a new individual
-            # added inline (no "create the customer first" detour).
-            customer = data.get('customer')
-            if customer is None:
-                from apps.technician_portal.services.customer_service import (
-                    create_individual, find_individual_matches, service_summary,
+            # Everything from "resolve the customer" to service.save() lives
+            # in services/quick_job.py, shared with the schedule page's
+            # quick-add endpoint. This view's remaining job is to turn a
+            # QuickJobError back into the form's own idiom: a message and a
+            # redirect, or the duplicate-suggestion re-render.
+            try:
+                service = create_job(
+                    tenant=tenant,
+                    actor_user=request.user,
+                    data=data,
+                    charges=charges,
+                    # A walk-in being logged after the work is done has no
+                    # assignment to announce.
+                    notify_assignment=not data['already_completed'],
                 )
-                can_add, add_msg = UsageService(tenant).can_add_customer()
-                if not can_add:
+            except QuickJobError as exc:
+                if exc.suggestions:
+                    # Duplicate guard: suggest the existing person instead of
+                    # erroring or silently creating "John Smith (2)". A
+                    # confirmed resubmit ("No, this is a different person")
+                    # goes through.
+                    return render(request, 'technician_portal/job_form.html', {
+                        'invoice_sms_ready': _job_form_sms_ready(tenant),
+                        'form': form,
+                        'allowed_types': allowed_types,
+                        'user_can_invoices': user_can_invoices,
+                        'advanced_has_errors': _advanced_has_errors(form),
+                        'duplicate_suggestions': exc.suggestions,
+                        'shop_tax_enabled': shop_tax_enabled,
+                        'shop_tax_rate': shop_tax_rate,
+                        'fee_presets': fee_presets,
+                        'charge_rows': charges,
+                    })
+                if exc.status == 403:
                     messages.warning(
                         request,
-                        limit_message_for(request.user, tenant, add_msg))
-                    return redirect('job_list')
-
-                # Duplicate guard: suggest the existing person instead of
-                # erroring or silently creating "John Smith (2)". A confirmed
-                # resubmit ("No, this is a different person") goes through.
-                if not data.get('confirmed_new_customer'):
-                    matches = find_individual_matches(
-                        tenant,
-                        name=data['new_customer_name'],
-                        phone=data.get('new_customer_phone'),
-                    )
-                    if matches:
-                        suggestions = [{
-                            'id': m.id,
-                            'name': m.name,
-                            'phone': m.phone or '',
-                            'summary': service_summary(m),
-                        } for m in matches[:3]]
-                        return render(request, 'technician_portal/job_form.html', {
-                            'invoice_sms_ready': _job_form_sms_ready(tenant),
-                            'form': form,
-                            'allowed_types': allowed_types,
-                            'user_can_invoices': user_can_invoices,
-                            'advanced_has_errors': _advanced_has_errors(form),
-                            'duplicate_suggestions': suggestions,
-                            'shop_tax_enabled': shop_tax_enabled,
-                            'shop_tax_rate': shop_tax_rate,
-                            'fee_presets': fee_presets,
-                            'charge_rows': charges,
-                        })
-
-                customer = create_individual(
-                    tenant,
-                    name=data['new_customer_name'],
-                    phone=data.get('new_customer_phone'),
-                    email=data.get('new_customer_email'),
-                )
-
-            # An explicit pick from "More details" wins; otherwise fall back to
-            # the shop's assignment strategy as before.
-            technician = data.get('technician') or _resolve_technician_for_create(
-                request, tenant, data['service_type'])
-            if technician is None:
-                messages.error(request, 'No active technician found for this shop. '
-                                        'Add one under Team settings first.')
+                        limit_message_for(request.user, tenant, exc.message))
+                else:
+                    messages.error(request, exc.message)
                 return redirect('job_list')
 
-            common = dict(
-                tenant=tenant,
-                customer=customer,
-                technician=technician,
-                unit_number=data['unit_number'] or '',
-                cost_override=data['price'],
-                # Only meaningful when the shop charges tax: unchecking the
-                # "Charge sales tax" box marks the job no-tax (cash deal).
-                # When shop tax is off the box isn't rendered, so leave
-                # no_tax False — enabling tax later behaves normally.
-                no_tax=shop_tax_enabled and not data.get('charge_tax'),
-                vehicle_year=data.get('vehicle_year'),
-                vehicle_make=data.get('vehicle_make') or '',
-                vehicle_model=data.get('vehicle_model') or '',
-                customer_notes=data.get('customer_notes') or '',
-                internal_notes=data.get('internal_notes') or '',
-                damage_photo_before=data.get('damage_photo_before'),
-                damage_photo_after=data.get('damage_photo_after'),
-                insurance_claim=data.get('insurance_claim') or False,
-                insurance_company=data.get('insurance_company') or '',
-                claim_number=data.get('claim_number') or '',
-                deductible=data.get('deductible'),
-                # Booking time — the form clears it for already-completed
-                # jobs, so a walk-in never lands in a schedule bucket.
-                scheduled_for=data.get('scheduled_for'),
-                # Service location — the form blanks an untouched prefill
-                # (== the customer's address), so only real overrides land.
-                service_address=data.get('service_address') or '',
-                service_city=data.get('service_city') or '',
-                service_state=data.get('service_state') or '',
-                service_zip=data.get('service_zip') or '',
-            )
             if data['service_type'] == 'repair':
-                service = Repair(
-                    technician_notes=data['work_done'] or '',
-                    damage_type=data['damage_type'] or '',
-                    damage_location_x=data['damage_location_x'],
-                    damage_location_y=data['damage_location_y'],
-                    windshield_temperature=data.get('windshield_temperature'),
-                    resin_viscosity=data.get('resin_viscosity') or '',
-                    drilled_before_repair=data.get('drilled_before_repair') or False,
-                    **common,
-                )
-            else:
-                service = Replacement(
-                    description=data['work_done'] or '',
-                    glass_position=data['glass_position'] or '',
-                    glass_type=data['glass_type'] or '',
-                    nags_number=data['nags_number'] or '',
-                    requires_adas_calibration=data.get('requires_adas_calibration') or False,
-                    adas_calibration_cost=data.get('adas_calibration_cost'),
-                    **common,
-                )
-            # Assignment signal: notify the assigned tech when someone else
-            # created the job for them — but not about their own creations,
-            # and not for walk-ins being logged after the work is done.
-            service._assignment_actor_user_id = request.user.id
-            if data['already_completed']:
-                service._skip_assignment_notifications = True
-            service.save()
-
-            if data['service_type'] == 'repair':
+                # Tap-to-crop (PHOTO_ML P1, #211): save a labeled close-up of
+                # the break beside the photo. Reads the tap coordinates off
+                # request.POST, which is why it stays in the view rather than
+                # moving into create_job with the rest of the creation path —
+                # the quick-add modal takes no photos.
                 from apps.technician_portal.services.photo_crops import (
                     process_tap_coordinates,
                 )
                 process_tap_coordinates(
-                    service, request.POST, technician=technician,
-                )
-
-            # Extra charges (trip fee etc.) ride along on the ticket and
-            # invoice as their own lines. Must exist before complete/invoice
-            # below so auto-invoicing picks them up.
-            if charges:
-                _save_extra_charges(
-                    service, charges, tenant, taxable=not common['no_tax'],
+                    service, request.POST, technician=service.technician,
                 )
 
             send_requested = 'save_and_send' in request.POST and user_can_invoices
