@@ -80,10 +80,15 @@ def auto_assign_replacement(replacement):
 # ---------------------------------------------------------------------------
 
 def _get_eligible_techs(tenant, service_type='repair'):
-    """Return a queryset of active technicians eligible for *service_type*."""
+    """Return a queryset of active technicians eligible for *service_type*.
+
+    ``user`` is joined in: every caller logs the tech (``Technician.__str__``
+    reads ``user``) and the views then print ``tech.user.get_full_name()``.
+    """
     from apps.technician_portal.models import Technician
 
-    qs = Technician.objects.filter(tenant=tenant, is_active=True)
+    qs = Technician.objects.filter(
+        tenant=tenant, is_active=True).select_related('user')
     if service_type == 'replacement':
         qs = qs.filter(can_replace=True)
     else:
@@ -126,23 +131,24 @@ def _assign_smart(service, tenant, service_type='repair'):
     if result:
         return result
 
-    eligible = _get_eligible_techs(tenant, service_type)
-    if not eligible.exists():
-        return None
-
     active_statuses = ['PENDING', 'APPROVED', 'IN_PROGRESS', 'REQUESTED']
     # The reverse relation from Technician → Repair/Replacement uses Django's
     # default lowercase model name ('repair', 'replacement'), NOT 'repairs'/'replacements'.
     # Using 'repairs' raises FieldError at runtime; fixed to 'repair'/'replacement'. (CODE-163)
     count_field = 'replacement' if service_type == 'replacement' else 'repair'
-    tech_with_load = eligible.annotate(
-        active_repairs=Count(
-            count_field,
-            filter=Q(**{f'{count_field}__queue_status__in': active_statuses}),
-        )
-    ).order_by('active_repairs', 'id')
+    # The job being assigned is already in the database — callers create it
+    # with a provisional technician — and REQUESTED is one of the statuses
+    # counted here, so leaving it in inflates the provisional tech's workload
+    # by one and pushes the job away from the very tech the count was meant to
+    # favour.  Balance against everything EXCEPT this job.  (CODE-278)
+    load_filter = Q(**{f'{count_field}__queue_status__in': active_statuses})
+    if service.pk is not None:
+        load_filter &= ~Q(**{f'{count_field}__pk': service.pk})
 
-    tech = tech_with_load.first()
+    tech = _get_eligible_techs(tenant, service_type).annotate(
+        active_repairs=Count(count_field, filter=load_filter)
+    ).order_by('active_repairs', 'id').first()
+
     if tech:
         service.technician = tech
         service.save(update_fields=['technician'])
@@ -164,33 +170,42 @@ def _assign_round_robin(service, tenant, service_type='repair'):
     ``last_service`` is always None and the same technician always receives
     the first slot.  It also cross-contaminates rotation state between the
     two service types for tenants that do both.  (CODE-172)
+
+    The anchor must also exclude the job being assigned right now.  Callers
+    create the job with a provisional technician before handing it here, and
+    ``technician`` is a non-null FK, so that brand-new row IS the most recent
+    one — the rotation was anchoring on itself and returning "provisional
+    pick + 1" every time.  Because the provisional pick is the lowest-workload
+    tech, and this rotation then moves the job off them, that tech never
+    accumulates work and is picked again next time: every customer request
+    landed on the same neighbour, with the rest of the shop getting none.
+    (CODE-278)
+
+    Order by ``-id``, not ``-service_date``: ``service_date`` is the date of
+    service, editable from the job form (``repair_date``), so backdating or
+    forward-dating a job would drag the rotation anchor with it.  ``-id`` is
+    creation order, which is what "last assigned" means here.  (CODE-278)
     """
     from apps.technician_portal.models import Repair, Replacement
 
-    eligible = _get_eligible_techs(tenant, service_type)
-    if not eligible.exists():
+    eligible_list = list(
+        _get_eligible_techs(tenant, service_type).order_by('id'))
+    if not eligible_list:
         return None
 
-    # Find the most recently assigned tech for the same service type.
-    # Both Repair and Replacement inherit service_date from GlassService (no
-    # created_at on either model).  Order by ('-service_date', '-id') so ties
-    # are broken deterministically.
-    if service_type == 'replacement':
-        last_service = Replacement.objects.filter(
-            tenant=tenant,
-            technician__isnull=False,
-        ).order_by('-service_date', '-id').first()
-    else:
-        last_service = Repair.objects.filter(
-            tenant=tenant,
-            technician__isnull=False,
-        ).order_by('-service_date', '-id').first()
+    model = Replacement if service_type == 'replacement' else Repair
+    anchor_qs = model.objects.filter(tenant=tenant, technician__isnull=False)
+    if service.pk is not None:
+        anchor_qs = anchor_qs.exclude(pk=service.pk)
+    last_tech_id = (
+        anchor_qs.order_by('-id')
+        .values_list('technician_id', flat=True)
+        .first()
+    )
 
-    eligible_list = list(eligible.order_by('id'))
-
-    if last_service and last_service.technician in eligible_list:
-        last_idx = eligible_list.index(last_service.technician)
-        next_idx = (last_idx + 1) % len(eligible_list)
+    eligible_ids = [t.id for t in eligible_list]
+    if last_tech_id in eligible_ids:
+        next_idx = (eligible_ids.index(last_tech_id) + 1) % len(eligible_list)
         tech = eligible_list[next_idx]
     else:
         tech = eligible_list[0]
