@@ -42,14 +42,11 @@
         }
     }
 
-    function serviceTypeAllows() {
-        // Job form: only repairs get a crop. The old repair form has no
-        // service_type input, so absence means proceed.
+    function isReplacement() {
         var checked = document.querySelector('input[name="service_type"]:checked');
-        if (checked) return checked.value === 'repair';
+        if (checked) return checked.value === 'replacement';
         var single = document.querySelector('select[name="service_type"], input[name="service_type"]');
-        if (single && single.value) return single.value === 'repair';
-        return true;
+        return !!(single && single.value === 'replacement');
     }
 
     function offer(input, file) {
@@ -58,7 +55,12 @@
         // A new photo invalidates any previous tap for this field; coords
         // are only ever written back on an explicit Confirm.
         clearCoords(field);
-        if (!serviceTypeAllows()) return;
+        // Replacements are offered the tap too (P4a). A photo of damage the
+        // shop decided to replace rather than repair is the negative class
+        // the dataset is missing — see docs/strategy/PHOTO_ML_SESSIONS.md.
+        // Their *after* photo is the exception: it is a sheet of new glass,
+        // with nothing in it to mark.
+        if (field === 'damage_photo_after' && isReplacement()) return;
         if (!window.PhotoCropModal || !PhotoCropModal.available()) return;
 
         releaseUrl();

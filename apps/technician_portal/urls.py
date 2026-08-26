@@ -36,6 +36,12 @@ urlpatterns = [
     path('repairs/<int:repair_id>/apply-reward/', views.apply_reward_to_repair, name='apply_reward_to_repair'),
     path('repairs/<int:repair_id>/photo-crop/', views.save_photo_crop, name='save_photo_crop'),
     path('repairs/<int:repair_id>/photo-crop/suggest/', views.suggest_photo_crop, name='suggest_photo_crop'),
+    # Replacements carry the same GlassService photo fields, and they are the
+    # only source of the "not repairable" class — see PHOTO_ML_SESSIONS.md P4a.
+    path('replacements/<int:repair_id>/photo-crop/', views.save_photo_crop,
+         {'kind': 'replacement'}, name='save_replacement_photo_crop'),
+    path('replacements/<int:repair_id>/photo-crop/suggest/', views.suggest_photo_crop,
+         {'kind': 'replacement'}, name='suggest_replacement_photo_crop'),
     path('repairs/create/', views.create_repair, name='create_repair'),
     path('repairs/create-multi-break/', views.create_multi_break_repair, name='create_multi_break_repair'),
     path('repairs/<int:repair_id>/convert-to-batch/', views.convert_to_batch, name='convert_to_batch'),

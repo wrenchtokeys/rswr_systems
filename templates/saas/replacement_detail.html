@@ -244,25 +244,52 @@
             </div>
             {% endif %}
 
-            <!-- Photos -->
-            {% if replacement.damage_photo_before or replacement.damage_photo_after %}
+            {% comment %}
+            Photos. The customer's own photo is shown here — it was missing
+            before P4a, and it is the single most valuable photo on the page:
+            a customer who photographs damage and gets quoted a replacement
+            has just produced a "not repairable" training example, which is
+            the class the dataset has none of. See PHOTO_ML_SESSIONS.md.
+            {% endcomment %}
+            {% if replacement.customer_submitted_photo or replacement.damage_photo_before or replacement.damage_photo_after %}
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 <h2 class="text-lg font-semibold text-gray-900 mb-4"><i class="fas fa-camera mr-2 text-gray-500"></i>Photos</h2>
                 <div class="grid grid-cols-2 gap-4">
+                    {% if replacement.customer_submitted_photo %}
+                    <div>
+                        <p class="text-xs text-gray-500 mb-2">From the customer</p>
+                        <img src="{{ replacement.customer_submitted_photo.url }}" alt="Customer submitted photo"
+                             class="rounded-lg w-full object-cover" loading="lazy" decoding="async">
+                        {% include "technician_portal/partials/photo_crop_control.html" with field="customer_submitted_photo" photo_url=replacement.customer_submitted_photo.url crop=photo_crops.customer_submitted_photo prompt="Tap the damage" %}
+                    </div>
+                    {% endif %}
                     {% if replacement.damage_photo_before %}
                     <div>
                         <p class="text-xs text-gray-500 mb-2">Before</p>
-                        <img src="{{ replacement.damage_photo_before.url }}" alt="Before" class="rounded-lg w-full object-cover">
+                        <img src="{{ replacement.damage_photo_before.url }}" alt="Before" class="rounded-lg w-full object-cover"
+                             loading="lazy" decoding="async">
+                        {% include "technician_portal/partials/photo_crop_control.html" with field="damage_photo_before" photo_url=replacement.damage_photo_before.url crop=photo_crops.damage_photo_before prompt="Tap the damage" %}
                     </div>
                     {% endif %}
                     {% if replacement.damage_photo_after %}
                     <div>
                         <p class="text-xs text-gray-500 mb-2">After</p>
-                        <img src="{{ replacement.damage_photo_after.url }}" alt="After" class="rounded-lg w-full object-cover">
+                        <img src="{{ replacement.damage_photo_after.url }}" alt="After" class="rounded-lg w-full object-cover"
+                             loading="lazy" decoding="async">
                     </div>
                     {% endif %}
                 </div>
             </div>
+            {% comment %}
+            Tap-to-crop, same contract as the repair detail page: endpoint +
+            CSRF in a hidden div because the tap POSTs on its own.
+            The "after" photo of a replacement is deliberately not markable —
+            it is a photo of new glass, with no damage in it to mark.
+            {% endcomment %}
+            <div id="photoCropEndpoint" class="hidden"
+                 data-endpoint="{% url 'save_replacement_photo_crop' replacement.id %}"
+                 data-suggest-endpoint="{% url 'suggest_replacement_photo_crop' replacement.id %}">{% csrf_token %}</div>
+            {% include 'technician_portal/partials/photo_crop_modal.html' %}
             {% endif %}
         </div>
 </div>
@@ -274,6 +301,9 @@
 
 {% block extra_js %}
 <script src="{% static 'js/field_dispatch.js' %}" defer></script>
+{% comment %}photo_crop_modal.js owns the modal and must load before its driver.{% endcomment %}
+<script src="{% static 'js/photo_crop_modal.js' %}" defer></script>
+<script src="{% static 'js/photo_crop_detail.js' %}" defer></script>
 {% if mygrant_enabled and replacement.nags_number %}
 <script>
 (function () {

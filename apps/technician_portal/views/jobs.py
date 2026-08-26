@@ -459,18 +459,23 @@ def job_create(request):
                     messages.error(request, exc.message)
                 return redirect('job_list')
 
-            if data['service_type'] == 'repair':
-                # Tap-to-crop (PHOTO_ML P1, #211): save a labeled close-up of
-                # the break beside the photo. Reads the tap coordinates off
-                # request.POST, which is why it stays in the view rather than
-                # moving into create_job with the rest of the creation path —
-                # the quick-add modal takes no photos.
-                from apps.technician_portal.services.photo_crops import (
-                    process_tap_coordinates,
-                )
-                process_tap_coordinates(
-                    service, request.POST, technician=service.technician,
-                )
+            # Tap-to-crop (PHOTO_ML P1, #211): save a labeled close-up of
+            # the break beside the photo. Reads the tap coordinates off
+            # request.POST, which is why it stays in the view rather than
+            # moving into create_job with the rest of the creation path —
+            # the quick-add modal takes no photos.
+            #
+            # Replacements included since P4a. This used to be gated on
+            # service_type == 'repair', which was the single biggest reason
+            # the dataset held nothing but repairable damage: the busiest
+            # capture surface in the app declined to label the negative
+            # class. See docs/strategy/PHOTO_ML_SESSIONS.md.
+            from apps.technician_portal.services.photo_crops import (
+                process_tap_coordinates,
+            )
+            process_tap_coordinates(
+                service, request.POST, technician=service.technician,
+            )
 
             send_requested = 'save_and_send' in request.POST and user_can_invoices
             if data['already_completed'] or send_requested:

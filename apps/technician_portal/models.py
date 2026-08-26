@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.db import models
+from django.db.models import Q
 from django.contrib.auth.models import User
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -1778,15 +1779,25 @@ class Repair(GlassService):
 
 class RepairPhotoCrop(models.Model):
     """
-    A technician-tapped crop of a repair damage photo.
+    A technician-tapped crop of a glass-damage photo.
 
     PURPOSE (durable): these crops are training data for a future
-    "repairable vs not" classifier — each crop box plus its repair's
+    "repairable vs not" classifier — each crop box plus its job's
     eventual outcome is one labeled example (see
     docs/strategy/PHOTO_ML_SESSIONS.md). Coordinates are stored as
     percent of the photo's natural, EXIF-upright dimensions so the
     dataset can be regenerated from the untouched original at any time.
     Originals are never modified; the crop is a separate derived file.
+
+    **It hangs off a Repair OR a Replacement — exactly one.** The name is
+    historical (P1-P3 cropped repairs only); `InvoiceLineItem` carries the
+    same pair of FKs for the same reason. This is not a cosmetic
+    generalisation: a crop of a repair is by definition a photo of damage
+    that WAS repaired, so a repairs-only table can only ever hold the
+    positive class, and no amount of waiting would make it trainable.
+    Replacements — especially a customer's photo on a request the shop
+    quoted as a replacement — are where the negative class comes from.
+    Use `.service` / `.service_kind` rather than testing the FKs.
     """
     SOURCE_FIELD_CHOICES = [
         ('damage_photo_before', 'Before photo'),
@@ -1801,10 +1812,21 @@ class RepairPhotoCrop(models.Model):
         null=True,
         blank=True,
     )
+    # Exactly one of these is set — see the CheckConstraint below. Both are
+    # nullable so the pair can exist at all; neither is optional in practice.
     repair = models.ForeignKey(
         'Repair',
         on_delete=models.CASCADE,
         related_name='photo_crops',
+        null=True,
+        blank=True,
+    )
+    replacement = models.ForeignKey(
+        'Replacement',
+        on_delete=models.CASCADE,
+        related_name='photo_crops',
+        null=True,
+        blank=True,
     )
     source_field = models.CharField(max_length=32, choices=SOURCE_FIELD_CHOICES)
 
@@ -1862,10 +1884,36 @@ class RepairPhotoCrop(models.Model):
                 fields=['repair', 'source_field'],
                 name='uniq_photocrop_per_repair_field',
             ),
+            models.UniqueConstraint(
+                fields=['replacement', 'source_field'],
+                name='uniq_photocrop_per_replacement_field',
+            ),
+            # Postgres treats NULLs as distinct, so the two unique
+            # constraints above cannot enforce this on their own: without
+            # the check, a row with neither FK set would be legal and
+            # unreachable from either job.
+            models.CheckConstraint(
+                condition=(
+                    Q(repair__isnull=False, replacement__isnull=True)
+                    | Q(repair__isnull=True, replacement__isnull=False)
+                ),
+                name='photocrop_exactly_one_service',
+            ),
         ]
 
+    @property
+    def service(self):
+        """The Repair or Replacement this crop belongs to."""
+        return self.repair or self.replacement
+
+    @property
+    def service_kind(self):
+        """'repair' or 'replacement' — the coarse training label."""
+        return 'repair' if self.repair_id else 'replacement'
+
     def __str__(self):
-        return f"Crop of {self.get_source_field_display().lower()} for repair #{self.repair_id}"
+        return (f"Crop of {self.get_source_field_display().lower()} for "
+                f"{self.service_kind} #{self.repair_id or self.replacement_id}")
 
 
 # =============================================================================
