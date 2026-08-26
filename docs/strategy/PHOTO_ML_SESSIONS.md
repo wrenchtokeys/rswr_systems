@@ -84,7 +84,7 @@ and needs nothing from P6, and the trap list explains at length what stacking
 cost this arc last time.
 
 - **#222 — P6**, the customer-visible close-up.
-- **#22? — P4a.1**, the queue below.
+- **#224 — P4a.1**, the queue below.
 
 **The order they land in matters for the copy, not the code.** The queue page
 tells a technician their tap "becomes the close-up your customer sees on the
