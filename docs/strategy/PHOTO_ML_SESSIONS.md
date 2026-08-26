@@ -1,20 +1,40 @@
-# Photo ML Sessions — tap-to-crop toward a repairability classifier
+# Photo ML Sessions — tap-to-crop: a better photo for the customer, and a training set
 
 **Created:** 2026-08-25
 **Author:** Claude (planning session with Drake)
 **Status:** living document — update statuses and Notes as sessions complete
 **Companions:** none required; this arc is self-contained. The wider product queues live in `IMPROVEMENT_SESSIONS.md` and `FIELD_OPS_SESSIONS.md`.
 
-**What this arc is for (the durable purpose statement):** every damage photo a
-technician taps gets a close-up crop of the break saved next to the untouched
-original, labeled before/after by which field it came from. Those crops, joined
-to the repair's eventual outcome, are the training set for a future
-**"repairable vs not" classifier** — Drake's explicit long-term goal. Nothing in
-P1–P2 does any ML; they exist to make the dataset accumulate as a side effect of
-normal field work, with enough metadata (percent coordinates on EXIF-upright
-originals) that the dataset can be regenerated at any time. Do not delete or
-"clean up" `RepairPhotoCrop` rows or `repair_photos/crops/` files thinking they
-are derived caches — they are the product of human labeling work.
+**What this arc is for (the durable purpose statement — REVISED 2026-08-26):**
+every damage photo a technician taps gets a **close-up of the break** derived
+next to the untouched original. That close-up has **two** jobs, and for four
+sessions this document only admitted to one of them:
+
+1. **It is something the customer should see.** A close-up of the actual
+   damage on the invoice is proof of work, and on a replacement it is the
+   answer to "why couldn't you just repair it?" — plus insurance-claim
+   evidence. **This is the job that pays the technician back for tapping, and
+   it is not built yet (P6).**
+2. **It is training data** for a future **"repairable vs not" classifier** —
+   Drake's long-term goal, and the only thing P1–P4a were built for.
+
+**The order matters and was wrong.** Written training-first, the arc gave a
+tech nothing in return for a tap: the crop appears on one internal page and
+feeds a model that does not exist. The result, measured in production on
+2026-08-26, is a marking rate of **1 photo out of 77**. Purpose 1 is what makes
+purpose 2 accumulate; a capture pipeline whose only payoff is a future model
+does not capture. See **P6** and §The pause.
+
+**The two purposes do not compete**, and that is worth understanding before
+touching anything: the stored asset is the **percent coordinates**, not the
+JPEG. Any crop — tight for training, generous for a customer — renders from the
+same tap. One tap serves both forever.
+
+Nothing in P1–P4a does any ML; they exist to make the dataset accumulate as a
+side effect of normal field work, with enough metadata (percent coordinates on
+EXIF-upright originals) that the dataset can be regenerated at any time. Do not
+delete or "clean up" `RepairPhotoCrop` rows or `repair_photos/crops/` files
+thinking they are derived caches — they are the product of human labeling work.
 
 Each session is self-contained — a fresh Claude session with no memory should be
 able to execute exactly one session using only §0 and that session's table,
@@ -27,16 +47,77 @@ without re-running the exploration that produced this doc.
 | P1 · Capture | Tap-to-crop on upload (job form + old repair form) | M | DONE (2026-08-25, branch `feat/photoml-p1-tap-to-crop`) |
 | P2 · Coverage | Detail-page crop/re-crop + retry queue + multi-break & customer-portal wiring | M | DONE (2026-08-25, branch `feat/photoml-p2-crop-coverage`) |
 | P3 · Assist | Auto-suggest crops (local saliency detector; no photo leaves the server) | M | DONE (2026-08-25, branch `feat/photoml-p3-auto-suggest`) |
-| P4 · Payoff | Dataset export + repairability classifier | L | TODO |
+| P4a · Both classes | Crops on replacements + dataset export + class/accuracy report | M | DONE (2026-08-26, PR #218 → **re-landed as PR #219**, see the merge-race trap) |
+| **P6 · Show the close-up** | **Put the marked point on surfaces customers already see — and fix three bugs there** | **M** | **TODO — DO THIS NEXT** |
+| P3.1 · Validate | Run the suggester against the 77 real windshield photos we now have | S | TODO — **unblocked as of 2026-08-26** |
+| P4a.1 · Backfill | Mark the break on the 77 completed repairs that already carry a photo | S | TODO |
+| P5 · Negative class | Record the jobs we turn away — the only source of "not repairable" | M | TODO — **this is the actual gate on P4b** |
+| P4b · Payoff | Repairability classifier | L | BLOCKED on **P5** — see P4b and §The pause |
 
-**Suggested sequence:** P1 → P2 → P3 → P4. P2 first because coverage compounds
-(every uncovered surface is training data lost forever — you can't retro-tap a
-photo whose break location nobody remembers). P4's *export step only* can be
-built any time after a few hundred crops exist and is a good way to smoke-test
-the metadata before committing to a model. P3 before the P4 classifier because
-auto-suggest raises the capture rate that P4 feeds on.
+**Suggested sequence, as revised 2026-08-26:**
+P1 → P2 → P3 → P4a → **P6 → P4a.1 → P5** → P4b, with P3.1 droppable in
+anywhere.
 
-**Where we are (2026-08-25, after P3):** P1 merged as PR #211, P2 as PR #215.
+The original sequence (P1 → P2 → P3 → P4a → P4b) assumed the only thing
+standing between here and a classifier was volume. Two findings changed it:
+the negative class accrues at **zero** per month (§The pause), and the positive
+class accrues barely faster because tapping pays nobody back (1 of 77). **P6
+before P4a.1** because backfilling 77 photos is worth an afternoon once each
+one visibly improves a real invoice, and is charity before that. **P5 before
+P4b** because P5 is the only negative-class source this business generates.
+
+**Where we are (2026-08-26, end of day — reframed, and one PR pending):**
+
+**Step 0 for the next session: merge PR #219.** P4a's commits are *not* on
+`main`, even though #218 reads MERGED — it was stacked on P3's branch and the
+two merges landed ten seconds apart in the wrong order (see the merge-race
+trap). #219 re-targets the same commits at `main` and carries the doc updates.
+Production is nonetheless *running* P4a (`app-7d571-…`, deployed off the branch
+directly), so prod behaviour is ahead of `main`. **Verify before building on
+it:** `git log origin/main..origin/feat/photoml-p4a-both-classes-export` should
+be empty once #219 lands.
+
+**The arc was reframed today, by Drake, and the reframe is the important
+part.** Asked what a shop actually gets out of tapping, the honest answer was:
+nothing. Drake's response was that he had understood the close-up to be *a
+better photo for the customer*, with training as the by-product — the reverse
+of how P1–P4a were built. He is right about the direction and the production
+numbers prove it: **1 of 77 eligible photos has ever been marked.** The revised
+purpose statement at the top of this document is the durable version. **P6
+exists to fix it and is the next session.**
+
+Two corrections that came out of the same conversation, both now in §0:
+
+- The mechanics are the other way round from the intuition. The **crop** is
+  the derived, training-shaped artifact; the **original** is what is preserved
+  *and what every customer already sees*. But the stored asset is the percent
+  coordinates, so both uses render from one tap and never compete.
+- **The invoice already crops these photos — blindly.**
+  `public_invoice_view.html:51` renders them `height: 120px; object-fit:
+  cover`, i.e. a centre-crop of the frame. That is precisely the "guess the
+  centre" baseline P3 benchmarked at ~21% median error from the actual break.
+  A human-marked point exists and the page ignores it.
+
+**Collection and preservation, audited today:** preservation is sound —
+`save_crop_for` never assigns to an original photo field (verified by grep),
+`audit_repair_photos` enumerates crops so `--delete` cannot eat them
+(`:94-97`), and P4a proved crops regenerate byte-identically from the stored
+box. **Collection is not** — 1 of 77, for the reason above.
+
+**The classifier is still gated on P5,** not on time; see §The pause for the
+census.
+
+**Where we were (2026-08-26, after P4a):****Where we were (2026-08-26, after P4a):** P1 merged as PR #211, P2 as PR #215.
+P3 is PR #217, still open. **P4a stacks on P3's branch** — it needs P3's
+provenance columns and its migration number, and `main` is still at P2, so
+#217 must merge first. P4a fixed the structural blocker P3 discovered (crops
+could only hang off a Repair, so the corpus was 100% positive class), added
+the export, and made the class balance and the suggester's real accuracy
+something the tooling reports out loud instead of something nobody had
+measured. **P4b — training the classifier — is blocked on data, not on code,
+and that is the correct state.**
+
+**Where we were (2026-08-25, after P3):** P1 merged as PR #211, P2 as PR #215.
 P3 built on `feat/photoml-p3-auto-suggest` (39 new tests; P1+P2's 37 still
 green) and verified in a real browser end to end. **Every capture surface has
 tap-to-crop except the customer portal, which by decision never asks a
@@ -51,9 +132,7 @@ API key, no per-photo cost, nothing to train first. A test asserts the
 suggester opens no sockets, so reversing this decision by accident is not
 possible. See P3's Notes before reaching for a hosted model again.
 
-Next up is P4 — and its export step alone is worth building now, because the
-suggester's real accuracy is sitting in the `suggested_*` columns waiting to
-be measured.
+That export step is now built (P4a), and it does measure the suggester.
 
 **Sizes:** S ≈ half a day · M ≈ 1–2 days · L ≈ 3–5 days.
 
@@ -76,7 +155,11 @@ be measured.
 
 **The data model.** `RepairPhotoCrop` (`apps/technician_portal/models.py`,
 after the `Repair` model; migration `0057_repairphotocrop`): FK `repair`
-(related_name `photo_crops`), `tenant` FK + `TenantManager` (not auto-filtering
+**or** FK `replacement` — exactly one, both nullable, a CheckConstraint
+(`photocrop_exactly_one_service`, migration `0060`) enforcing it, and one
+unique constraint per FK. Both use related_name `photo_crops`; read the job
+with `crop.service` and its kind with `crop.service_kind`, never by testing
+the FKs. Then `tenant` FK + `TenantManager` (not auto-filtering
 — call `.for_tenant()` in views), `source_field` in
 {`damage_photo_before`, `damage_photo_after`, `customer_submitted_photo`},
 `center_x_pct`/`center_y_pct` (the tap, 0–100), `crop_left/top/right/bottom` +
@@ -99,8 +182,13 @@ the rendered image is in upright space; the server MUST
 pixels) is what makes the crop regenerable from the original no matter how the
 photo was displayed.
 
-**The crop service.** `apps/technician_portal/services/photo_crops.py`:
-`process_tap_coordinates(repair, post_data, technician=None, key_prefix='',
+**The crop service.** `apps/technician_portal/services/photo_crops.py`.
+Everything in it takes a **job** — a Repair or a Replacement — not a repair;
+`job_kind(job)` and `_crop_fk(job)` are the only two places that decide which,
+and the crop filename is namespaced by kind so a repair and a replacement
+sharing an id cannot overwrite each other (`repair12_…` is unchanged, so no
+existing file moved).
+`process_tap_coordinates(job, post_data, technician=None, key_prefix='',
 key_suffix='')` reads `crop_x_<field>`/`crop_y_<field>` POST pairs and only
 touches Pillow when a pair is present — that is what keeps the wider test suite
 (which uploads `b"fake image content"` photos) green. The prefix/suffix wrap
@@ -129,20 +217,73 @@ and frequent; `MAX_SPREAD` is the decline threshold and is a starting guess
 meant to be tuned from real corrections, not from more test images. Killable
 with `PHOTO_SUGGEST_ENABLED=false`.
 
+**Where a crop is visible — and where it is not (verified 2026-08-26).** The
+crop is a **second file derived beside the original; the original is never
+modified, replaced or re-pointed** — `save_crop_for` contains no assignment to
+`damage_photo_before` / `damage_photo_after` / `customer_submitted_photo`. That
+is the core promise of the arc and it is what makes every crop regenerable from
+stored percentages.
+
+The consequence, which looks exactly like a bug the first time you meet it:
+**no customer-facing surface has ever shown a crop, and none shows a label.**
+
+| Surface | What it renders today |
+|---|---|
+| Public invoice page (`rs_systems/views.py:657-678` → `templates/billing/public_invoice_view.html:180-189`) | The **original**, CSS centre-cropped to a 120px tile (`:51`). **Repair line items only** — `exclude(repair_id__isnull=True)` at `:659` means a replacement invoice shows no photos at all. |
+| Invoice email | No photos by design (multi-MB payloads get invoices quarantined at corporate gateways) — it links to the page above. |
+| Customer portal repair / replacement / batch detail | The original, full frame (`damage_photo_before.url`). |
+| Technician repair detail + `saas/replacement_detail.html` | **The only two places** referencing `photo_crops` / `cropped_image`, via `partials/photo_crop_control.html`. |
+
+**And no label is stored anywhere at all** — labels do not exist as a column;
+they are derived at export time by `services/photo_dataset.py`. So "I marked
+the break but the invoice photo is uncropped and unlabeled" is the system
+working as designed, not a defect. **P6 is the session that changes it.**
+
+**Three live bugs on that invoice photo path**, all in the same ~20 lines and
+all P6's to fix:
+1. The tile is a **blind centre-crop** while a human-marked point sits unused.
+2. **Replacements contribute no photos** (`:659`), so the invoices where a
+   close-up matters most — the expensive ones — have none.
+3. The caption is `Unit {{ photo.unit }}` fed from the raw
+   `repair.unit_number` (`:672`). That is the documented individual-vs-fleet
+   trap in CLAUDE.md: an individual has a blank `unit_number`, so their
+   invoice caption reads "Unit  — Before". Must go through
+   `get_vehicle_identifier()` / `vehicle_column_label`.
+
+**Insurance lives on the shared base.** `insurance_claim`, `insurance_company`,
+`claim_number`, `deductible` are on `GlassService`, so **Replacement has them
+too** — a documented close-up of the damage is claim evidence, which is part of
+why cropping a replacement is worth a tech's time independent of any model.
+
 **The photo fields.** On the abstract `GlassService` base
 (`apps/technician_portal/models.py:517-544`), so `Repair` AND `Replacement`
-both have them; P1 crops repairs only.
+both have them. P1–P3 cropped repairs only; **P4a crops both**, because that
+is the only way the negative class can ever exist.
+
+**The labels.** `apps/technician_portal/services/photo_dataset.py` (P4a) is
+the single place that turns a crop into a training label, and it derives it
+from **what the shop did**, which is the only ground truth available: a
+completed repair is `repairable`; a completed *windshield* replacement is
+`not_repairable`. Side and rear glass is tempered — it shatters and is always
+replaced no matter what hit it — so a non-windshield replacement is
+`not_applicable`, not a negative. Anything undecided is `unknown`, and an
+`damage_photo_after` crop is `not_applicable` (it is a photo of the outcome;
+training on it would teach the model that resin-filled chips are the
+repairable ones). Every row carries the `label_source` rule that fired, so a
+training run can drop a rule it doesn't trust without re-deriving anything.
 
 **Upload surfaces map** (who converts HEIC, who compresses, who has tap-to-crop):
 
 | Surface | View | HEIC→JPEG | Client compress | Tap-to-crop |
 |---|---|---|---|---|
-| Unified job form `/tech/jobs/new/` | `views/jobs.py::job_create` | yes (P1) | `image_compress.js` auto-wire | **P1** |
+| Unified job form `/tech/jobs/new/` | `views/jobs.py::job_create` | yes (P1) | `image_compress.js` auto-wire | **P1**, repairs *and* replacements since **P4a** |
 | Old repair form create/update | `views/repairs.py` | yes | `repair_form.js` (manual) | **P1** |
 | Multi-break | `views/batch.py` | yes | `multi_break.js` | **P2** (one tap per break, posted as `breaks[i][crop_x_<field>]`) |
 | Customer portal request | `customer_portal/views.py` (~:1800) | yes | none | never — by decision, customers are not asked to tap; the shop marks their photo from the detail page |
 | Repair detail page | `views/repairs.py::save_photo_crop` | n/a | n/a | **P2** (crop or re-crop any photo already on the job) + **P3** (an unmarked photo opens on a suggested marker, via `suggest_photo_crop`) |
-| Backlog sweep | `manage.py suggest_photo_crops` | n/a | n/a | **P3** (marks unmarked photos `confirmed_by_human=False`; never overwrites a tap, never touches an original) |
+| Replacement detail page `/tech/replacement/<pk>/` | same two views, `kind='replacement'` | n/a | n/a | **P4a**. Same partial, same JS, endpoints `/tech/replacements/<id>/photo-crop/[suggest/]`. Permission comes from `_replacement_technician_access`, not `can_view_repair`. The *after* photo is not markable — it is new glass |
+| Backlog sweep | `manage.py suggest_photo_crops` | n/a | n/a | **P3** (marks unmarked photos `confirmed_by_human=False`; never overwrites a tap, never touches an original); **P4a** adds `--kind` and sweeps replacements |
+| Dataset export | `manage.py export_photo_dataset` | n/a | n/a | **P4a** — read-only; images + JSONL, anonymised, with a class-balance and suggester-accuracy report every run |
 
 **The client JS contract.** The modal itself belongs to
 `static/js/photo_crop_modal.js` (ES5 IIFE, house style), which owns
@@ -180,7 +321,8 @@ fixed two blind spots: soft-deleted repairs and all Replacement photos).
 
 **Tests.** `tests/test_photo_tap_crop.py` (13, P1),
 `tests/test_photo_crop_coverage.py` (24, P2),
-`tests/test_photo_suggest.py` (39, P3). `real_jpeg()` there
+`tests/test_photo_suggest.py` (39, P3),
+`tests/test_photo_dataset.py` (40, P4a). `real_jpeg()` there
 builds actual decodable JPEGs (with optional EXIF orientation);
 `QuickJobForm` uses `forms.ImageField`, which rejects fake bytes at form
 validation — but model-level writes (multi-break, customer portal) don't, so
@@ -238,6 +380,65 @@ Postgres recipe when local auth fails: scratch cluster via
 - **A suggestion is asynchronous but the modal is not** (P3): open first, mark
   later, and gate the late arrival on a session token — otherwise a slow
   answer for photo A drops a marker on photo B.
+- **Patching a name in its source module rebinds a lazily-imported consumer
+  for the rest of the process** (P4a). `suggest_photo_crops` does
+  `from ...photo_suggest import is_enabled` at module scope, and Django only
+  imports the command module when `call_command` first runs it. Patch
+  `photo_suggest.is_enabled` and then trigger that first import *inside the
+  same `with` block*, and the command binds the **mock** as its module-level
+  `is_enabled` — the patch exiting restores `photo_suggest`, not the copy the
+  command took. Every later test in the process then sees a mock that returns
+  True, so `test_kill_switch_stops_the_sweep` failed only when a new test
+  module ran ahead of it, and passed in isolation. Flip the switch with
+  `override_settings(PHOTO_SUGGEST_ENABLED=…)` — the house idiom — and patch
+  only leaf functions like `suggest_for`.
+- **A crop of a repair is not a neutral data point** (P4a). It is a positive
+  label by construction. Any pipeline that collects only repairs is
+  collecting only one class, and it will look healthy the whole time — rows
+  accumulate, files land, tests pass. The tell is a count nobody prints;
+  `export_photo_dataset` now prints it every run and says "Only one class
+  present" in red.
+- **Side and rear glass is tempered** (P4a): it always gets replaced, so a
+  non-windshield replacement is not evidence that anything was unrepairable.
+  Labeling it as a negative would have taught the model that a shattered door
+  window is what unrepairable windshield damage looks like.
+- **A capture pipeline with no user-visible payoff does not capture**
+  (2026-08-26). P1–P4a built four sessions of tap-to-crop whose entire visible
+  output was a thumbnail on an internal page, in exchange for a model that
+  does not exist yet. Production marking rate: **1 photo out of 77**. The code
+  was never the problem and no further capture surface would have helped.
+  **If you are asking a human for fifteen seconds, find what those fifteen
+  seconds give *them* before you optimise the mechanism.** P5's table already
+  says this about declined work; it applies with equal force to the four
+  sessions that came before it, and nobody noticed until Drake asked what a
+  shop gets out of cropping.
+- **Do not zoom the *after* photo of a repair** (2026-08-26, product
+  judgement). A resin repair leaves a visible blemish — that is normal and
+  expected. A tight close-up magnifies the scar and shows the customer the
+  flaw instead of the fix. Before → close-up. After → full frame. This is
+  also consistent with the dataset, which labels after-photos
+  `not_applicable`.
+- **A stacked PR can merge green and land nowhere** (2026-08-26). #218 was
+  based on P3's branch, correctly — it needed P3's columns and migration
+  number. #217 merged that branch into `main` at `18:30:31Z`; #218 merged P4a
+  *into the same branch* at `18:30:41Z`, ten seconds later. Both PRs report
+  MERGED. `main` has P3 and none of P4a, and the tip carrying P4a is a commit
+  no branch consumes. **Merging a stack bottom-up is a race, and GitHub's
+  "Merged" badge is not evidence your code is on `main`.** After any stacked
+  merge, verify with `git log origin/main..origin/<branch>` — empty or it did
+  not land. Better: don't stack. The house rule (one session, one branch off
+  `main`) exists for this, and P4a broke it for a real reason and still paid
+  for it.
+- **A pipeline can be code-complete and still collect nothing** (2026-08-26).
+  P4a made the negative class *possible*; the census afterwards found the
+  production database has never contained a single `Replacement` row. Every
+  test passed, every surface worked, and the collection rate for half the
+  dataset was zero and always had been. **Count the rows in production before
+  declaring a data pipeline done** — `--stats-only` on a seeded dev database
+  proves the code runs, not that anything is arriving.
+- **`Repair` has no `created_at`** (2026-08-26) — the date field is
+  `service_date`. A rate query written from habit raises `FieldError` listing
+  every field on the model, which is at least a fast way to find that out.
 - **`MEDIA_ROOT` is a real directory that survives between runs** (P3): dev
   and test share `media/`, and it accumulates crop files. Any test that
   counts or names files there must diff against what was already present.
@@ -460,19 +661,262 @@ still true, and it is the first thing P3.1 should fix.
   True are the most interesting of all: those carry both the guess and the
   human's correction, which is the training pair for a learned detector.
 
-# P4 · Payoff: dataset export + repairability classifier — TODO
+# P4a · Both classes, and an export that counts them — DONE (2026-08-26)
 
 | Field | Value |
 |---|---|
-| **Goal** | A `manage.py export_photo_dataset` command producing an images+JSONL (or COCO) bundle: crop file, coords, dims, source_field (before/after label), and the outcome label joined through the repair. Then train and evaluate a repairable-vs-not classifier on it. |
-| **Size** | L (export is S on its own — build it early to smoke-test the metadata) |
-| **Depends on** | Enough data: realistically high hundreds+ of before-crops with outcomes, and a meaningful "not repairable" class. |
+| **Goal** | Make the negative class collectable at all, then export the corpus and report honestly what is in it. |
+| **Size** | M |
+| **Depends on** | P1–P3. Built on P3's branch, because it needs P3's provenance columns and its migration number. |
+| **Why it matters** | P3 discovered that `RepairPhotoCrop` could only hang off a `Repair`. A crop of a repair is by definition a photo of damage that WAS repaired, so every crop the arc had ever collected was the positive class — and no amount of further waiting would have changed that. The dataset was not "small yet". It was structurally untrainable, and nothing in the app said so. |
+| **Acceptance criteria** | ✅ A crop can hang off a Replacement, enforced so it can never hang off both or neither. ✅ Every surface that captures a repair tap captures a replacement tap. ✅ `export_photo_dataset` produces images + JSONL, anonymised and tenant-scoped. ✅ The bundle regenerates byte-identically from the originals using only stored metadata. ✅ Every run reports the class balance and the suggester's real correction distance. |
+| **Out of scope** | Training anything (P4b). Tuning `MAX_SPREAD` — the export now measures it, but there is no real data to tune against yet. |
+
+**Notes**
+*(session run 2026-08-26, branch `feat/photoml-p4a-both-classes-export`, 40 new tests)*
+
+### The blocker, and how invisible it was
+
+The bug was not that replacements lacked a feature. It was that the pipeline
+had a *sampling* fault: it collected labels only from jobs whose label was
+always the same value. Everything downstream looked healthy — rows
+accumulated, crops rendered, 77 tests passed, the detail page showed
+thumbnails. The only symptom was a count nobody was printing.
+
+Three things now make that impossible to repeat:
+
+1. `RepairPhotoCrop` carries both FKs with a `CheckConstraint` that exactly
+   one is set (`InvoiceLineItem` precedent, migration `0060`).
+2. The unified job form's tap was gated on `service_type == 'repair'`, in the
+   view **and** in `photo_tap_crop.js`. That gate is gone — it was the single
+   highest-volume place the app declined to label a negative. Its P1 test,
+   `test_replacement_posts_are_ignored`, asserted the old behaviour and has
+   been rewritten to assert the new one.
+3. `export_photo_dataset` prints the class balance every run, and says
+   **"Only one class present — a classifier cannot be trained on this"** in
+   red when that is true. A test pins that message.
+
+### What the label actually is
+
+`services/photo_dataset.py` derives labels from **what the shop did**, which
+is the only ground truth here and a good one: a technician who replaced a
+windshield decided, with the glass in front of them, that the damage was not
+repairable.
+
+The one piece of real domain knowledge in it: **tempered glass**. Side and
+rear windows shatter and are always replaced, so a non-windshield replacement
+says nothing about repairability — it is `not_applicable`, not a negative.
+Blank `glass_position` is common and usually means a windshield, but
+"usually" is not a label, so it keeps a distinct `label_source`
+(`replacement_completed_glass_unspecified`) that a training run can drop in
+one line. `damage_photo_after` crops are `not_applicable` too: training on a
+resin-filled chip would teach the model that repaired damage is the
+repairable kind.
+
+### The export
+
+`manage.py export_photo_dataset [--out DIR] [--tenant N] [--limit N]
+[--include-unconfirmed] [--trainable-only] [--from-originals] [--stats-only]`
+
+- Read-only. Nothing is written back to the database or to media storage, and
+  no original is touched.
+- Anonymised: ids only. No customer name, unit number, plate or note text
+  reaches the bundle. A test greps the JSONL for the customer's name.
+- Unconfirmed machine suggestions are **excluded by default** — training on
+  the suggester's own unreviewed output teaches the next model to imitate it.
+- `--from-originals` re-derives every crop from the untouched original using
+  only the stored box, at `save_crop_for`'s Pillow settings, and comes out
+  byte-identical. That is the standing proof that the derived files are
+  disposable and the coordinates are the real asset. Verified through the CLI
+  as well as in a test.
+
+### Measuring the suggester, at last
+
+Every run ends with the median/worst/best distance between the P3 suggestion
+and the mark a human settled on, over confirmed rows only — an unconfirmed
+row sits exactly on its own suggestion, and averaging those in would report
+the suggester as pixel-perfect. When there is nothing to measure it says so
+rather than printing a flattering zero. **There is still no real data in it**;
+the machinery is now in place for the first few hundred real corrections to
+answer the question P3 left open.
+
+### Verified
+
+- 40 new tests in `tests/test_photo_dataset.py`; the P1–P3 suites (117 total
+  with P4a) pass, twice, with no new failures. `test_customer_request_
+  replacement::test_shop_is_notified` fails identically on P3's tip — not
+  this work.
+- Driven end to end in the running app over HTTP: logged in, loaded
+  `/tech/replacement/1/`, confirmed the control and modal render with the
+  replacement endpoints, POSTed a re-tap (crop written as
+  `replacement1_customer_submitted_photo…jpg`), and called the suggest
+  endpoint (`found: false` — `PHOTO_SUGGEST_ENABLED` is off, as P3 shipped it).
+- `export_photo_dataset` run through argparse against a seeded database, and
+  `--from-originals` diffed byte-for-byte against the stored crops.
+
+### For P4b
+
+The corpus is now *capable* of holding both classes. It does not yet hold
+them, and no amount of code changes that. The next honest step is Drake's
+own plan from P3: keep marking breaks during normal work, and re-run
+`export_photo_dataset --stats-only` every so often. When the minority class
+clears a few hundred rows, P4b has something to train on.
+
+# P6 · Show the close-up — TODO · **DO THIS NEXT**
+
+| Field | Value |
+|---|---|
+| **Goal** | The break a technician marked becomes visible to the customer on the surfaces that already show photos, and the three bugs on that path get fixed. A tap starts paying for itself the day it happens. |
+| **Size** | M |
+| **Depends on** | P1–P4a (all the data exists already). **PR #219 must be on `main` first** — see the merge-race trap. Nothing else. No new model, no migration expected. |
+| **Why it matters** | This is the missing half of the arc's purpose (see the revised statement at the top). Four sessions built capture with no payoff for the person capturing, and production says 1 of 77 photos has ever been marked. Every later session in this document — the backfill, P5, and ultimately the classifier — is rate-limited by whether techs mark breaks, and they will not until doing so does something. **Treat the capture rate as the acceptance metric, not the pixels.** |
+| **Verified current state (2026-08-26)** | `rs_systems/views.py:657-678` builds the `photos` list for the public invoice page; `templates/billing/public_invoice_view.html:180-189` renders it, with the tile CSS at `:51`. Only these two files matter for the main change. The crop itself is `crop.cropped_image`; the point is `crop.center_x_pct` / `center_y_pct`; read the job with `crop.service` / `crop.service_kind`, never the raw FKs. |
+| **The three bugs to fix here** | **(1)** The tile is `height: 120px; object-fit: cover` — a blind centre-crop, i.e. P3's "guess the centre" baseline, ~21% off the real break. **(2)** `:659` does `exclude(repair_id__isnull=True)`, so replacement line items contribute **no photos at all** — the expensive invoices, where a close-up matters most, have none. **(3)** `:672` passes raw `repair.unit_number` into a `Unit {{ photo.unit }}` caption (`:189`); an individual's is blank, so the caption reads "Unit  — Before". That is the documented CLAUDE.md individual-vs-fleet trap — route it through `get_vehicle_identifier()` / `vehicle_column_label`. |
+| **DECISION NEEDED FROM DRAKE (ask before building)** | Two ways to show the mark, and it was left open deliberately: **(a)** render the stored `cropped_image` as the tile — a true close-up, tightest on the damage; **(b)** keep the full original and *position* it on the marked point (`object-position: <x>% <y>%`), so the customer still sees their whole windshield with the damage centred, and the click-through is unchanged. **(b) is the safer default** — it changes no asset, degrades gracefully to today's behaviour when no crop exists, and cannot surprise anyone with a 300px square. Recommend (b) unless he wants the harder close-up. |
+| **Do not zoom the after photo** | A resin repair leaves a visible blemish; magnifying it shows the customer the scar rather than the fix. Before and customer-submitted → close-up. After → full frame. See the trap. |
+| **Consider, don't assume** | The customer portal detail pages (`customer_portal/repair_detail.html`, `replacement_detail.html`, `batch_detail.html`) show the same originals and could get the same treatment — but the invoice is where the money and the dispute are, so do that first and see whether it is worth spreading. The invoice **PDF** is a separate renderer; check before promising it. |
+| **Acceptance criteria** | An invoice for a job with a marked break shows the damage centred, not the middle of the frame. A replacement invoice shows its photos. No caption reads "Unit " with nothing after it. A job with **no** crop renders exactly as it does today (this must degrade to current behaviour, not to a broken tile). Nothing writes to an original. |
+| **Out of scope** | Backfilling the 77 (P4a.1 — but note P6 is what makes that worth doing). Recording declined work (P5). Any model. |
+| **Watch for** | The invoice page is public and tokened — it is served to people who are not logged in, so anything added there must not leak another tenant's media or require auth. Crops live under `media/repair_photos/crops/` with unsigned public URLs in prod, same as the originals already on that page, so this changes no exposure — but verify rather than assume. |
+
+**Notes**
+
+# P3.1 · Validate the suggester against real photos — TODO (newly unblocked)
+
+| Field | Value |
+|---|---|
+| **Goal** | Answer the question P3 could not: is the saliency suggester any good on photographs of actual windshields? |
+| **Size** | S |
+| **Depends on** | P3. **Unblocked 2026-08-26** — production holds 77 completed repairs carrying a real damage photo. Until now the only evidence was synthetic fixtures the author also designed. |
+| **Why it matters** | P3 ships `PHOTO_SUGGEST_ENABLED=false` on the strength of one synthetic benchmark where the detector lost to "guess the centre of the photo" on cluttered glass. That is either a correct kill or an unfair one, and nobody knows which. A suggester that works raises the capture rate everything downstream feeds on; one that doesn't should be deleted, not left dark. |
+| **How** | Pull the 77 originals (they are on S3 under `media/repair_photos/`; do NOT mutate them). Run `suggest_point` over each. There are no ground-truth marks yet — so either run this *after* P4a.1 and measure against the human taps it produces, or have a human tap first and treat P3.1 as the scoring pass. **Keep "guess the centre" in the table as the baseline; that is the lesson P3 paid for.** |
+| **Acceptance criteria** | A table of median/worst error for detector vs centre-guess over real photos, plus the decline rate (how often it correctly returns None). A recommendation to tune `MAX_SPREAD`, keep the kill switch off, or remove the suggester. |
+| **Out of scope** | Building a better detector. This session measures; a rebuild is its own session and probably wants P4b's data anyway. |
+| **Note** | `test_clutter_defeats_the_suggester` is designed to fail once the suggester is fixed. If this session improves it, that test is the one to update — deliberately, with the new numbers in the message. |
+
+**Notes**
+
+# P4a.1 · Backfill the 77 — TODO
+
+| Field | Value |
+|---|---|
+| **Goal** | Every completed repair that already carries a photo gets its break marked. 77 photos, 1 marked. |
+| **Size** | S |
+| **Depends on** | P2's detail-page endpoint, which already does this one photo at a time. |
+| **Why it matters** | 77 labeled positives are sitting in production requiring no new field work, no waiting and no business change. It is the largest single increment available to this arc and the only one not gated on something outside the code. **Do P6 first** — after it, marking one of these 77 visibly improves a real customer's invoice, and the backfill is an afternoon with a product result. Before it, the backfill is charity for a model that does not exist. |
+| **Considerations** | P2 deliberately left "a bulk backfill UI for hundreds of old photos" out of scope, *"do it only if the shop actually wants to label history."* The census makes the case that it does. Think about what the cheapest possible burn-down looks like: probably one page, one photo at a time, tap and auto-advance — not a new modal, not a queue model. The existing `save_photo_crop` endpoint is the whole backend. |
+| **Order it by value** | An unmarked photo on a completed repair is worth more than one on a cancelled job; a `damage_photo_before` is worth more than a `damage_photo_after` (which labels `not_applicable` anyway — do not spend human taps on after-photos). |
+| **Acceptance criteria** | A human can mark the whole backlog in one sitting without navigating job by job. `export_photo_dataset --stats-only` reports the new count. Originals untouched — assert it. |
+| **Out of scope** | Marking anything the machine suggested (the suggester is off, and unconfirmed rows are excluded from export by design). |
+
+**Notes**
+
+# P5 · Record the jobs we turn away — TODO · **the gate on P4b**
+
+| Field | Value |
+|---|---|
+| **Goal** | When a technician looks at damage and decides it cannot be repaired, the app can record that — with the photo — in about fifteen seconds, on site. |
+| **Size** | M |
+| **Depends on** | P1–P4a (the crop plumbing already exists and already accepts a job that is not a repair). |
+| **Why it matters** | **This is the only negative-class source that this business actually generates.** The census found zero replacements, ever. But a repair shop turns away unrepairable damage constantly — that is a normal week — and the moment it happens is the moment an expert has looked at real damage and rendered exactly the verdict the classifier is meant to learn. Today that verdict is spoken aloud and never written down. Every one is a training example destroyed at the point of creation. |
+| **The insight, stated plainly** | The arc assumed the negative class would arrive as completed windshield *replacements*. That assumed the shop does replacements. It does not. The negative class it really produces is **declined work**, and nothing in the product can express it. |
+| **Considerations** | Do not model this as a `Replacement` — the shop did not replace anything and inventing a phantom replacement row would poison invoicing, counts and revenue. It is closer to a *declined assessment*: photo, reason, timestamp, vehicle, and nothing financial. Check first whether an existing shape fits (a `Repair` with a terminal declined status? a lightweight new model?) before adding one. `services/photo_dataset.py` is the single place a new label rule goes, and its `label_source` convention means a training run can drop the rule if it turns out to be noisy. |
+| **The reason field is the real prize** | "Crack too long", "in the driver's sight line", "already spidered", "edge crack", "prior bad repair" — those are the classes a genuinely useful model would predict, and a tech will pick from a five-item list where they would never type a sentence. Get the list from Drake; do not invent it. |
+| **Considerations, product side** | This has value beyond ML and should be pitched on that: a shop that records what it turned away can see how much work it is walking away from, and can hand the customer something (a referral, a quote for replacement) instead of nothing. That is what makes it worth a tech's fifteen seconds — an ML dataset never is. |
+| **Acceptance criteria** | A declined assessment can be recorded from the field in one screen; it carries a photo; that photo can be tapped like any other; `photo_dataset.py` labels it `not_repairable` with its own `label_source`; `export_photo_dataset` shows two classes for the first time. |
+| **Out of scope** | Quoting the replacement. Referral routing. Anything that makes the flow longer than the walk back to the van. |
+| **Decisions needed from Drake** | The reason list. Whether this is worth building for its own sake (it should be pitched that way). Whether The Glass Guy is going to be recording replacement jobs, which would open the second source. |
+
+**Notes**
+
+# §The pause · what we are waiting for, and why waiting alone won't end it
+
+*(census taken 2026-08-26 against production, read-only, both tenants,
+soft-deleted rows included)*
+
+**The short answer to "how much longer until we pause and collect data": we are
+already there.** P4a was the last thing worth building without data, and
+everything after it needs rows that do not exist. But the shape of the wait is
+not what the arc assumed.
+
+### What is actually banked
+
+| | count | rate |
+|---|---|---|
+| Positive class — completed repairs with a photo | **77** banked | ~9/month |
+| ...of those actually marked with a crop | **1** | — |
+| Negative class — windshield replacements with a photo | **0** | **0/month** |
+
+The positive side is healthy: 77 examples are sitting in production right now,
+already photographed, needing only a human to tap where the break is. That is
+an afternoon of work, not a wait — see **P4a.1**.
+
+The negative side is not thin. It is **empty, and structurally so**. There has
+never been a `Replacement` row in this database. Tenant 1 (Rockstar Windshield
+Repair) is a repair shop and does not do replacements; tenant 15 (The Glass
+Guy) does, and has no jobs in the app at all.
+
+### Why "collect data for a few months" is the wrong plan
+
+P4a's Notes end by recommending exactly that: keep marking breaks during
+normal work and re-run `--stats-only` every so often. That advice is right for
+the positive class and **useless for the negative one**, because normal work
+at this shop produces zero replacements and always has. Three months of
+patience multiplies zero by three.
+
+The mistake is the same species as the one P4a itself caught, one level up.
+P4a found that the *schema* could only express one class. The census finds
+that the *business* only generates one class. Fixing the schema was necessary
+and did not move the count.
+
+### The three ways out, in order of cost
+
+1. **Record the jobs we turn away (P5).** Every repair shop looks at damage it
+   cannot repair — a crack past the length limit, damage in the driver's sight
+   line, a chip that has already spidered — and says so out loud, on site,
+   with the customer's windshield in front of them. That judgement is the
+   single most valuable label in this entire arc, and today the app has no
+   way to write it down. The tech says "that's a replacement, I can't help
+   you," and walks away, and nothing is recorded. **This is the cheapest
+   negative-class source that exists and it is already happening every week.**
+2. **Get The Glass Guy onto the app for replacement work.** A business
+   question, not an engineering one, and the reason P4a bothered to make
+   replacement crops possible at all. Worth asking Drake where that stands.
+3. **Import an outside corpus.** Note the asymmetry with P3's standing
+   decision: Drake rejected sending *our customers' photos out*. Bringing
+   someone else's photos *in* is a different question and has not been asked.
+   Do not assume the answer either way.
+
+### What to do during the pause
+
+- **P6 first.** Nothing else in this list is worth much while a tap pays the
+  technician back with nothing — the capture rate is 1 of 77 and that is the
+  binding constraint on every remaining session, this one included.
+- **P4a.1** — burn down the 77, *after* P6, when each mark visibly improves a
+  real invoice. Highest value per minute available in this arc once it has a
+  product result attached. It is pure positive class, which is only half
+  useful until P5 exists — do it anyway; it is perishable in the sense that
+  nobody remembers where the break was on a 2025 windshield.
+- **P3.1** — the suggester has never once been run on a real windshield photo,
+  which P3 flagged as the first thing to fix. **There are now 77 of them.**
+  This is the cheapest honest test in the arc and it is newly possible.
+- **P5** — the real gate.
+- Re-run `export_photo_dataset --stats-only` after each, and believe the
+  balance line over any narrative, this one included.
+
+# P4b · Payoff: the repairability classifier — BLOCKED on P5
+
+| Field | Value |
+|---|---|
+| **Goal** | Train and evaluate a repairable-vs-not classifier on the exported bundle. |
+| **Size** | L |
+| **Depends on** | P4a's export, and **P5** — not merely "data", and not merely time. The minority class stands at **0** and accrues at **0/month**; see §The pause. `export_photo_dataset --stats-only` is the check; it prints the balance and refuses to flatter it. |
 | **Why it matters** | The whole point of the arc. |
-| **Verified current state** | Label sources in the schema today: `Repair.queue_status` COMPLETED = repaired successfully; a `Replacement` created after a repair request / a customer request that got quoted as a replacement = not repairable; warranty/redo signals (`WarrantyPolicy` usage) = weak negative. `customer_submitted_photo` on portal requests is the best source of the "not repairable" class — people photograph big cracks when asking, and the shop's answer (repair vs replacement) is the label. |
-| **Considerations** | **Label strength is now recorded, so use it** (P3): export `confirmed_by_human=True` rows as strong labels and either exclude or down-weight the machine suggestions — training on the suggester's own unreviewed output just teaches the next model to imitate this one. Rows carrying *both* a `suggested_*` point and a human-confirmed mark are the training pairs for a learned detector, and the distance between the two is the first honest measurement of whether P3's suggester is worth keeping (see P3's Notes on `MAX_SPREAD`). Class imbalance is the other real risk: techs mostly photograph what they already know is repairable. Track the class counts from the first export. Export must be tenant-aware (Drake's dad's shop is real customer data — anonymize: no names/plates in the JSONL, crops only). Train outside this codebase; the app's only job is the export and, later, serving the verdict. |
-| **Decisions needed** | Where training runs (local vs cloud); whether the classifier ships in-app (advisory badge on customer requests?) or stays an experiment. |
-| **Acceptance criteria** | Export regenerates byte-identical crops from originals using only DB metadata; a held-out evaluation with honest per-class numbers before anything ships. |
-| **Out of scope** | Auto-quoting or auto-declining work based on the model. It advises; humans decide. |
+| **Verified current state** | The export exists, is anonymised, tenant-scoped and reproducible from metadata. Labels come from `services/photo_dataset.py`. Label strength is recorded (`confirmed_by_human`) and unconfirmed suggestions are excluded by default. |
+| **Considerations** | Class imbalance is the live risk, not model choice: techs photograph what they already know is repairable, and windshield replacements are rarer than repairs. Read the balance before writing a line of training code. Rows carrying both a `suggested_*` point and a human-confirmed mark are the training pairs for a *learned* detector, and their correction distances are also the honest answer to whether P3's saliency suggester is worth keeping at all. Train outside this codebase; the app's job is the export and, later, serving a verdict. |
+| **Decisions needed** | Where training runs (local vs cloud). Whether the classifier ships in-app (an advisory badge on customer requests?) or stays an experiment. Both are Drake's calls and neither is urgent while the data is thin. |
+| **Acceptance criteria** | A held-out evaluation with honest per-class numbers before anything ships. |
+| **Out of scope** | Auto-quoting or auto-declining work. It advises; humans decide. |
 
 **Notes**
 
@@ -483,3 +927,6 @@ still true, and it is the first thing P3.1 should fix.
 | 2026-08-25 | Created with P1 executed in the same session; P2–P4 sketched from verified code state. |
 | 2026-08-25 | P2 executed: detail-page crop/re-crop endpoint + UI, multi-break per-break taps, `retry_photo_crops`, shared `PhotoCropModal`. Customer-portal tapping decided against. |
 | 2026-08-25 | P3 executed: local saliency suggester, suggest endpoint, pre-placed marker, `suggest_photo_crops` sweep, provenance columns. **Hosted vision model rejected — photos stay on our infrastructure.** |
+| 2026-08-26 | P4a executed: crops hang off replacements too (the negative class was structurally uncollectable), `export_photo_dataset`, label rules in `services/photo_dataset.py`. P4 split into P4a (done) and P4b (blocked on data, correctly). |
+| 2026-08-26 | **Census + pause.** Discovered P4a never reached `main` (stacked-merge race, #218 merged into an already-consumed branch; re-landed as #219). Production census: 77 banked positives, **0 replacements ever**. P4b re-gated from "blocked on data" to **blocked on P5**. Added P3.1 (suggester now testable on real photos), P4a.1 (backfill the 77), P5 (record declined work — the only negative-class source this business generates). |
+| 2026-08-26 | **Reframed by Drake.** Asked what a shop gets from cropping: nothing, today. The arc was built training-first and the capture rate proves the cost — **1 of 77**. Purpose statement rewritten around the customer-visible close-up as the *first* purpose and the training set as the second, with the note that percent coordinates serve both from one tap. **P6 added and sequenced next**, carrying three live bugs on the invoice photo path (blind centre-crop, replacements excluded, `Unit ` caption for individuals). Preservation audited and sound; collection is not. |

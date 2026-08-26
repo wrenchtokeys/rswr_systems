@@ -133,6 +133,8 @@ python manage.py audit_repair_photos         # Dry run — show orphaned S3 phot
 python manage.py audit_repair_photos --delete # Delete orphaned photos
 python manage.py retry_photo_crops           # Finish tap-to-crop close-ups whose original wouldn't open
 python manage.py suggest_photo_crops --dry-run  # Guess the break in photos nobody marked (local; originals untouched)
+python manage.py export_photo_dataset --stats-only  # What the crop corpus holds: class balance + suggester accuracy
+python manage.py export_photo_dataset --out DIR   # images/ + dataset.jsonl training bundle (anonymised, read-only)
 python manage.py security_audit              # Security checks
 python manage.py setup_simplified_rewards    # Seed 4 default reward options
 python manage.py audit_remediation_data      # Read-only data-drift audit (A1/A2/A3/C2)
@@ -246,6 +248,18 @@ Tax is calculated automatically on every `Repair.save()` via `TaxService(tenant=
 **One row, one mention**: an invoice line names its vehicle once and its service type once. `get_invoice_description()` therefore does NOT name the vehicle — every surface that renders a description also renders the vehicle in its own column or sub-line, so putting it in both printed `Windshield repair - 2022 Toyota Camry - Crack` beside a Vehicle column already reading `2022 Toyota Camry`. The description DOES name its own service, because the customer portal, public pay page and owner screens have no type column; the two renderers that do have one (invoice PDF, plain-text email) trim it back out through `invoice_service.description_detail()` — use that helper, don't re-derive it. Historical rows were cleaned by `billing/0035`, which skips PAID/CANCELLED invoices and anything an owner hand-edited.
 
 **`UnitRepairCount` is keyed by vehicle, not by the `unit_number` column** — build the key with `UnitRepairCount.key_for(job)` (clamps to the 50-char column) on every read and write. An individual's job leaves `unit_number` blank, so keying on it collapsed every car a person owns into one `''` row and made their second car's first repair count as their third. `technician_portal/0051` re-keyed existing individuals' rows; fleets were left alone, hand-adjusted counts included.
+
+**Tap-to-crop photo labeling**: `RepairPhotoCrop` hangs off a `Repair` **or** a
+`Replacement` — exactly one, enforced by a CheckConstraint (`InvoiceLineItem`
+precedent). This is not cosmetic: a crop of a repair is by definition damage
+that WAS repaired, so a repairs-only table can only ever hold the positive
+class of the repairable-vs-not dataset. Replacements — above all a customer's
+photo on a request the shop quoted as a replacement — are the negative class.
+Use `crop.service` / `crop.service_kind`, never the raw FKs, and pass a job
+(not "a repair") to everything in `services/photo_crops.py`. Labels are derived
+in `services/photo_dataset.py` from what the shop *did*; note that side and
+rear glass is tempered and always replaced, so only a **windshield**
+replacement means "not repairable". See `docs/strategy/PHOTO_ML_SESSIONS.md`.
 
 **Multi-Break Batch Repairs**: Multiple repairs for same unit in one session. Each break is a separate `Repair` linked via `repair_batch_id` (UUID). Progressive pricing: Break N priced as repair #(existing_count + N). Created atomically. URL: `/tech/repairs/create-multi-break/`.
 

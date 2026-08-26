@@ -232,15 +232,18 @@ def _locate(energy, context, width, height):
     )
 
 
-def suggest_for(repair, source_field):
-    """Suggest a break point for one photo field on a repair, or None.
+def suggest_for(job, source_field):
+    """Suggest a break point for one photo field on a job, or None.
+
+    ``job`` is a Repair or a Replacement — this only ever reads a photo
+    field, so it never needed to care which.
 
     Never raises: no suggestion is always an acceptable answer, and the
     caller's fallback is the plain empty modal.
     """
     if not is_enabled():
         return None
-    photo = getattr(repair, source_field, None)
+    photo = getattr(job, source_field, None)
     if not photo:
         return None
     try:
@@ -248,6 +251,7 @@ def suggest_for(repair, source_field):
             return suggest_point(photo)
     except Exception:
         logger.exception(
-            "Crop suggestion failed for repair %s %s", repair.pk, source_field,
+            "Crop suggestion failed for %s %s %s",
+            job._meta.model_name, job.pk, source_field,
         )
         return None

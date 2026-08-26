@@ -47,7 +47,7 @@ class Command(BaseCommand):
         pending = RepairPhotoCrop.objects.filter(
             Q(cropped_image='') | Q(cropped_image__isnull=True)
             | Q(natural_width__isnull=True)
-        ).select_related('repair', 'created_by').order_by('id')
+        ).select_related('repair', 'replacement', 'created_by').order_by('id')
 
         if options['tenant'] is not None:
             pending = pending.filter(tenant_id=options['tenant'])
@@ -63,9 +63,9 @@ class Command(BaseCommand):
         if dry_run:
             for crop in pending:
                 self.stdout.write(
-                    f"  would retry crop {crop.pk}: repair #{crop.repair_id} "
-                    f"{crop.source_field} at ({crop.center_x_pct:.1f}%, "
-                    f"{crop.center_y_pct:.1f}%)"
+                    f"  would retry crop {crop.pk}: {crop.service_kind} "
+                    f"#{crop.service.pk} {crop.source_field} at "
+                    f"({crop.center_x_pct:.1f}%, {crop.center_y_pct:.1f}%)"
                 )
             self.stdout.write(self.style.WARNING("Dry run — nothing changed."))
             return
@@ -81,7 +81,7 @@ class Command(BaseCommand):
             if ok:
                 fixed += 1
                 self.stdout.write(
-                    f"  cropped repair #{crop.repair_id} {crop.source_field}"
+                    f"  cropped {crop.service_kind} #{crop.service.pk} {crop.source_field}"
                 )
             else:
                 still_failing += 1

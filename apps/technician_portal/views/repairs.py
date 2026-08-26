@@ -13,7 +13,9 @@ from decimal import Decimal, InvalidOperation
 import logging
 import uuid
 
-from apps.technician_portal.models import Technician, Repair, TechnicianNotification
+from apps.technician_portal.models import (
+    Technician, Repair, Replacement, TechnicianNotification,
+)
 from apps.customer_portal.models import RepairApproval, CustomerUser
 from core.models import Customer
 from apps.technician_portal.forms import RepairForm
@@ -1942,14 +1944,19 @@ def portal_bulk_reassign(request):
     })
 
 
-def _resolve_crop_target(request, repair_id):
-    """Shared front half of the two photo-crop endpoints.
+def _resolve_crop_target(request, job_id, kind='repair'):
+    """Shared front half of the photo-crop endpoints.
 
-    Returns ``(repair, technician, source_field, None)`` on success, or
-    ``(None, None, None, JsonResponse)`` with the reason. Both endpoints
-    answer for the same object under the same permission, so they must not
-    drift apart — a suggestion endpoint that is laxer than the save endpoint
-    would leak one shop's photos to another.
+    Returns ``(job, technician, source_field, None)`` on success, or
+    ``(None, None, None, JsonResponse)`` with the reason. All four endpoints
+    (save/suggest × repair/replacement) answer for the same kind of object
+    under the same permission, so they must not drift apart — a suggestion
+    endpoint that is laxer than the save endpoint would leak one shop's
+    photos to another.
+
+    ``kind`` is 'repair' or 'replacement'. Replacements carry the same
+    GlassService photo fields, and they are the only source of the "not
+    repairable" class the P4 classifier needs — see PHOTO_ML_SESSIONS.md.
     """
     from apps.technician_portal.services.photo_crops import SOURCE_FIELDS
 
@@ -1958,18 +1965,27 @@ def _resolve_crop_target(request, repair_id):
             {'success': False, 'error': 'POST required'}, status=405)
 
     tenant = getattr(request, 'tenant', None)
-    qs = Repair.objects.filter(tenant=tenant) if tenant else Repair.objects.none()
-    repair = get_object_or_404(qs, id=repair_id)
+    model = Replacement if kind == 'replacement' else Repair
+    qs = model.objects.filter(tenant=tenant) if tenant else model.objects.none()
+    job = get_object_or_404(qs, id=job_id)
 
     user_is_admin = is_tenant_admin(request.user, tenant=tenant)
     technician = (
         Technician.objects.filter(user=request.user, tenant=tenant).first()
         if tenant else None
     )
-    if not can_view_repair(repair, technician, user_is_admin):
+    if kind == 'replacement':
+        # Mirror the replacement detail page's own gate rather than
+        # inventing a second one: can_view_repair reads queue_status rules
+        # that only exist for repairs.
+        from apps.saas.views import _replacement_technician_access
+        allowed = _replacement_technician_access(request, tenant, replacement=job)
+    else:
+        allowed = can_view_repair(job, technician, user_is_admin)
+    if not allowed:
         return None, None, None, JsonResponse(
             {'success': False,
-             'error': "You don't have permission to edit this repair."},
+             'error': f"You don't have permission to edit this {kind}."},
             status=403,
         )
 
@@ -1977,16 +1993,17 @@ def _resolve_crop_target(request, repair_id):
     if source_field not in SOURCE_FIELDS:
         return None, None, None, JsonResponse(
             {'success': False, 'error': 'Unknown photo.'}, status=400)
-    if not getattr(repair, source_field, None):
+    if not getattr(job, source_field, None):
         return None, None, None, JsonResponse(
-            {'success': False, 'error': 'That photo is no longer on this repair.'},
+            {'success': False,
+             'error': f'That photo is no longer on this {kind}.'},
             status=400,
         )
-    return repair, technician, source_field, None
+    return job, technician, source_field, None
 
 
 @technician_required
-def suggest_photo_crop(request, repair_id):
+def suggest_photo_crop(request, repair_id, kind='repair'):
     """Guess where the break is, so the modal opens on a marker.
 
     Runs entirely on this server (apps/technician_portal/services/
@@ -1996,12 +2013,12 @@ def suggest_photo_crop(request, repair_id):
     """
     from apps.technician_portal.services.photo_suggest import suggest_for
 
-    repair, _technician, source_field, error = _resolve_crop_target(
-        request, repair_id)
+    job, _technician, source_field, error = _resolve_crop_target(
+        request, repair_id, kind=kind)
     if error is not None:
         return error
 
-    suggestion = suggest_for(repair, source_field)
+    suggestion = suggest_for(job, source_field)
     if suggestion is None:
         return JsonResponse({'success': True, 'found': False})
     return JsonResponse({
@@ -2015,8 +2032,8 @@ def suggest_photo_crop(request, repair_id):
 
 
 @technician_required
-def save_photo_crop(request, repair_id):
-    """Record a tap on a photo that is already on the repair.
+def save_photo_crop(request, repair_id, kind='repair'):
+    """Record a tap on a photo that is already on the job.
 
     The upload forms post their taps as hidden fields alongside the photo;
     this is the detail-page counterpart, for photos that arrived without a
@@ -2033,8 +2050,8 @@ def save_photo_crop(request, repair_id):
     from apps.technician_portal.services.photo_crops import save_crop_for
     from apps.technician_portal.services.photo_suggest import Suggestion
 
-    repair, technician, source_field, error = _resolve_crop_target(
-        request, repair_id)
+    job, technician, source_field, error = _resolve_crop_target(
+        request, repair_id, kind=kind)
     if error is not None:
         return error
 
@@ -2062,13 +2079,13 @@ def save_photo_crop(request, repair_id):
 
     try:
         crop = save_crop_for(
-            repair, source_field, center_x_pct, center_y_pct,
+            job, source_field, center_x_pct, center_y_pct,
             technician=technician, confirmed_by_human=True,
             suggestion=suggestion,
         )
     except Exception:
         logger.exception(
-            "Detail-page crop failed for repair %s %s", repair.pk, source_field,
+            "Detail-page crop failed for %s %s %s", kind, job.pk, source_field,
         )
         crop = None
 
