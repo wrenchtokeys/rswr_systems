@@ -342,11 +342,46 @@ Postgres recipe when local auth fails: scratch cluster via
 | **Depends on** | P1 (modal + coords plumbing), P2 (detail-page endpoint + `at:` marker). |
 | **Why it matters** | The dataset grows only as fast as techs tap. A one-tap confirm beats an aim-and-tap, and the suggestion engine is a dry run for P4's model. |
 | **Decisions taken** | **(1) Local only — no hosted vision model.** Drake's call: these are real customers' photos and they do not leave our infrastructure. The Claude-vision stage this plan originally recommended is *not* built and should not be built without asking him again. **(2) Suggest from the detail page**, as P2 recommended: the photo is already on S3 so the server fetches it itself (the upload modal would mean a second upload of the photo over field data), and P2's endpoint, `at:` marker and re-crop UI were already there. **(3) Sweep the backlog too**, on Drake's condition that originals are preserved — they are, and three tests assert it byte-for-byte. |
-| **Acceptance criteria** | ✅ Suggestion appears in under ~3s or not at all (client abandons at 3s; the local pass measures ~25–50ms). ✅ Tech can always override — a tap wins over a suggestion, always. ✅ Suggested-but-unconfirmed is distinguishable in the data (`confirmed_by_human`) and in the UI ("Check the mark" / "We guessed this one"). |
+| **Acceptance criteria** | ✅ Suggestion appears in under ~3s or not at all. ✅ Tech can always override. ✅ Suggested-but-unconfirmed is distinguishable in data and UI. ⚠️ **But accuracy was never an acceptance criterion, and that was the mistake — see "The detector does not work well enough" below. It ships DISABLED.** |
 | **Out of scope** | The repairability classifier itself (P4). A hosted vision model (rejected). Suggesting inside the upload modal (the photo isn't on the server yet). |
 
 **Notes**
 *(session run 2026-08-25, branch `feat/photoml-p3-auto-suggest`)*
+
+### The detector does not work well enough — it ships disabled
+
+Benchmarked after the fact against the dumbest possible baseline, "guess the
+centre of the photo", over 12 randomised chip placements per condition:
+
+| condition | detector median error | centre-guess median error |
+|---|---|---|
+| chip on clean glass | **0.2%** | 21.2% |
+| chip + road grime + wiper + dash in frame | **30.7%** | 22.4% |
+
+On a clean pane it is excellent. On a windshield that looks like a windshield
+it is **worse than guessing the middle of the frame** — and it does not
+decline, it answers confidently all 12 times. The spread gate catches diffuse
+texture (foliage), but a bug splat is a compact high-contrast blob, which is
+exactly what the algorithm is built to find. Most real windshields are dirty.
+
+`PHOTO_SUGGEST_ENABLED` therefore defaults to **False**, and
+`test_clutter_defeats_the_suggester` pins the failure so it cannot be quietly
+forgotten — **that test is designed to fail once the suggester is actually
+fixed.**
+
+Two process lessons worth more than the code:
+
+1. **Fixtures I invented were graded by the same intuition that wrote the
+   algorithm.** The clean-glass fixtures were near-perfect from the first
+   run, which read as success and stopped the investigation. Nothing was
+   validated until a baseline was introduced.
+2. **A baseline should come before the algorithm, not after.** "Guess the
+   centre" takes one line and would have set the bar on day one. Without it,
+   "0.2% error" sounds like proof and is not.
+
+**Nothing here has ever been run against a real windshield photo.** That is
+still true, and it is the first thing P3.1 should fix.
+
 
 - **The suggester is `apps/technician_portal/services/photo_suggest.py`, pure
   Pillow, ~50ms.** No numpy, no OpenCV — neither is installed and neither was

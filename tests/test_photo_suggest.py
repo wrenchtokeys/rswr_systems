@@ -16,6 +16,10 @@ Two things are load-bearing and tested hard here:
      tap, and a retry must not quietly demote one.
 
 See docs/strategy/PHOTO_ML_SESSIONS.md.
+
+The suggester ships DISABLED (see PHOTO_SUGGEST_ENABLED in settings/base.py
+and test_clutter_defeats_the_suggester below), so every class that exercises
+it opts in explicitly.
 """
 import json
 import math
@@ -98,6 +102,7 @@ def as_stream(img):
     return buf
 
 
+@override_settings(PHOTO_SUGGEST_ENABLED=True)
 class SuggesterTests(TapCropTestCase):
     """The maths, in isolation from any request."""
 
@@ -120,6 +125,51 @@ class SuggesterTests(TapCropTestCase):
         self.assertIsNotNone(result)
         self.assertLess(abs(result.x_pct - 32.5), 8.0)
         self.assertLess(abs(result.y_pct - 31.7), 8.0)
+
+    def test_clutter_defeats_the_suggester(self):
+        """The measured reason this feature ships disabled.
+
+        On clean glass the suggester is near-perfect. Add what is actually on
+        a working windshield — road grime, a wiper blade, the dash in frame —
+        and it loses to a baseline of "just guess the middle of the photo",
+        because a bug splat is precisely the compact high-contrast blob it
+        hunts for. Worse, it does NOT decline: the spread gate catches
+        diffuse texture like foliage, not a sharp speck.
+
+        Measured over 12 randomised placements each: clean 0.2% median error
+        vs 21.2% for a centre guess; cluttered 30.7% vs 22.4%.
+
+        This test pins the failure so nobody turns PHOTO_SUGGEST_ENABLED on
+        believing it is solved. **When the suggester is genuinely fixed this
+        test will fail** — that is the point. Re-run the benchmark, confirm
+        it beats the centre baseline on cluttered glass, then rewrite this.
+        """
+        chip_at = (900, 400)
+        img = add_chip(glass_photo(1400, 1050), *chip_at)
+        draw = ImageDraw.Draw(img)
+        value = 11
+        for _ in range(25):   # road grime / bug splatter
+            value = (value * 1103515245 + 12345) % 2147483648
+            x = value % 1400
+            y = (value // 1400) % 1050
+            radius = 3 + value % 7
+            draw.ellipse([x, y, x + radius, y + radius], fill=(70, 60, 45))
+        draw.line([(80, 930), (1200, 790)], fill=(35, 35, 40), width=14)  # wiper
+        draw.rectangle([0, 860, 1400, 1050], fill=(38, 38, 44))           # dash
+
+        result = suggest_point(as_stream(img))
+        if result is None:
+            return   # declining is an acceptable outcome; guessing badly is not
+
+        truth_x, truth_y = chip_at[0] / 1400 * 100, chip_at[1] / 1050 * 100
+        error = math.hypot(result.x_pct - truth_x, result.y_pct - truth_y)
+        centre_error = math.hypot(50 - truth_x, 50 - truth_y)
+        self.assertGreater(
+            error, centre_error * 0.5,
+            "The suggester now beats a centre guess on cluttered glass — "
+            "re-run the benchmark and, if it holds, enable the feature and "
+            "rewrite this test.",
+        )
 
     def test_declines_on_undamaged_glass(self):
         """No answer beats a confident marker on a reflection."""
@@ -221,6 +271,7 @@ class SuggesterTests(TapCropTestCase):
         self.assertIsNone(suggest_for(repair, 'damage_photo_before'))
 
 
+@override_settings(PHOTO_SUGGEST_ENABLED=True)
 class SuggestEndpointTests(TapCropTestCase):
     """The detail page's non-blocking ask."""
 
@@ -312,6 +363,7 @@ class SuggestEndpointTests(TapCropTestCase):
         self.assertEqual(response.status_code, 404)
 
 
+@override_settings(PHOTO_SUGGEST_ENABLED=True)
 class ProvenanceTests(TapCropTestCase):
     """confirmed_by_human is what P4 weights labels by. Guard it."""
 
@@ -425,6 +477,7 @@ class ProvenanceTests(TapCropTestCase):
         self.assertAlmostEqual(crop.suggestion_score, 0.8)
 
 
+@override_settings(PHOTO_SUGGEST_ENABLED=True)
 class SweepCommandTests(TapCropTestCase):
     """manage.py suggest_photo_crops."""
 
@@ -558,6 +611,7 @@ class SweepCommandTests(TapCropTestCase):
         self.assertEqual(repair.photo_crops.count(), 0)
 
 
+@override_settings(PHOTO_SUGGEST_ENABLED=True)
 class DetailPageMarkupTests(TapCropTestCase):
     """What the tech sees for a mark a machine placed."""
 
