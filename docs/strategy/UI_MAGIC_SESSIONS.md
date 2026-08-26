@@ -26,9 +26,9 @@ session with no memory of this work can pick exactly one up and finish it.
 | 2 | S8 · Retire the second accent everywhere else (FAB, black pills) | **DONE** 2026-08-10 |
 | 3 | S9 · Motion primitives: press feedback + enter/exit | **DONE** 2026-08-10 |
 | 3 | S10 · View Transitions for list → detail continuity | **DONE** 2026-08-11 |
-| 3 | S11 · Skeletons and optimistic status changes | **DONE** 2026-08-25 (PR #210) |
-| 3 | S12 · Auth pages: one brand mention, full-height, no marketing nav | **DONE** 2026-08-25 (PR #209) |
-| 3 | S13 · Icon language: Font Awesome solid → line-weight SVG sprite | TODO |
+| 3 | S11 · Skeletons and optimistic status changes | **DONE** 2026-08-25 (PR #210) — merged, **not yet on prod** |
+| 3 | S12 · Auth pages: one brand mention, full-height, no marketing nav | **DONE** 2026-08-25 (PR #209) — merged, **not yet on prod** |
+| 3 | S13 · Icon language: Font Awesome solid → line-weight SVG sprite | TODO — debt now **1,303** and rising |
 | 4 | S14 · Landing: real product imagery instead of the fake mock | TODO |
 | 4 | S15 · Landing: trust bar rewrite | TODO |
 | 4 | S16 · Landing: rhythm, dark section, sharper promise | TODO |
@@ -765,6 +765,29 @@ direction**.
   is progress on a *submit* rather than a content load — the one job a spinner is
   still right for. The one this session replaced was the only content load among them.
 
+**What happened next (2026-08-25, added after the fact)**
+
+S11 is the first session in this arc whose output left the arc. Within hours of #210
+merging, `static/js/optimistic.js` and `static/js/list-loading.js` were documented in
+`CLAUDE.md` and picked up as house infrastructure by a queue that has nothing to do with
+UI magic: `FIELD_OPS_SESSIONS.md` now carries a *"Use the house helpers, don't hand-roll"*
+rule pointing S12 (the ordered day list) at them, added because that session had been
+specced to write its own optimistic-move code before these existed.
+
+Two things follow.
+
+- **The rollback contract is now load-bearing for people who never read this file.**
+  `Optimistic.rollback` restores saved `innerHTML`, so a row's handlers must be inline
+  `onclick` attributes — an `addEventListener` binding dies on rollback and the row goes
+  quietly inert. That was an implementation detail of two lists inside this session; it is
+  now an API constraint on every arc in the repo. It is written down in `CLAUDE.md` and in
+  FieldOps' §0, and it must stay written down in both.
+- **A primitive earns its keep by being reached for, not by being right.** The measure of
+  S9/S10/S11 is not the two lists each shipped on. It is whether the next person building
+  an unrelated feature finds them before hand-rolling. S11 passed that test in under a day
+  because it landed as *named, documented, opt-in* helpers with a one-attribute contract.
+  S13's `{% icon %}` tag needs to land the same way, and for the same reason.
+
 ## S12 · Auth pages: one brand mention, full-height, no marketing nav — DONE
 
 `/login/` said "RS Systems" **seven** times, not the three this brief guessed at, and the
@@ -828,8 +851,22 @@ Dropped the marketing nav from the auth pages, made the split full-height, said 
 
 ## S13 · Icon language: Font Awesome solid → line-weight SVG sprite
 
-1,281 FA **solid** usages. Solid weights read dated; consistent-stroke line icons are most
-of what people mean by "Apple-like".
+1,281 FA **solid** usages when this session was written. **Re-counted 2026-08-25 20:50 CDT:
+1,303** (`grep -rho 'fas fa-' --include='*.html' templates apps | wc -l`), plus 14 `far`.
+Solid weights read dated; consistent-stroke line icons are most of what people mean by
+"Apple-like".
+
+**The count is not a constant — it is a burn-up.** It grew by 22 in sixteen days without
+anyone touching icons on purpose: every new surface in every arc reaches for the icon
+vocabulary that already exists, and `fas` is what exists. Photo-ML and FieldOps together
+added five more on 2026-08-25 alone (`fa-times`, `fa-plus`, `fa-crosshairs`) and removed
+none. That is not carelessness — it is the correct thing to do with no `{% icon %}` tag to
+reach for.
+
+The practical consequence: **ship the tag before the migration.** An `{% icon 'name' %}`
+that exists and is documented in `CLAUDE.md` stops the debt growing on the day it lands,
+months before the last `<i class="fa` is gone, and it is a fraction of the work. Doing it
+in the other order means racing three parallel arcs to a moving finish line.
 
 Do this **last in Phase 3**, and incrementally: add an `{% icon 'name' %}` tag backed by an
 inlined SVG sprite, migrate surface by surface, and only delete the vendored FA files when
@@ -847,11 +884,24 @@ here — this is purely aesthetic, which is exactly why it must not be rushed in
 ## S14 · Real product imagery instead of the fake mock
 
 `landing.html:120-190` is hand-built HTML imitating the dashboard inside fake browser
-chrome — and it has already drifted from reality (the mock shows a *blue* revenue banner;
-the real dashboard is green). Replace with a real screenshot, or better, a 4-frame
-scroll-scrubbed sequence: chip photo → job created → invoice sent → paid.
+chrome — and it has already drifted from reality. Replace with a real screenshot, or
+better, a 4-frame scroll-scrubbed sequence: chip photo → job created → invoice sent → paid.
 
 Run this **after S5**, so the shot captures the redesigned dashboard.
+
+**Correction, 2026-08-25.** This brief's example of the drift — *"the mock shows a blue
+revenue banner; the real dashboard is green"* — was written before S5 and is now wrong in
+both halves. S5 killed the green slab, so the real dashboard is not green; and the drift
+is no longer about colour at all. `landing.html:131` still paints
+`bg-gradient-to-r from-blue-600 to-blue-800` — a flat slab with a number on it — while the
+surface it claims to show is a `.card` with a delta chip, a sparkline and a period toggle.
+The mock now under-sells the product it is advertising.
+
+Take that as the argument for the session rather than a detail to fix: **a hand-built mock
+does not drift once and stop.** It drifted, then the thing it copied was redesigned, and
+the mock's error changed shape without anyone editing either file. A screenshot cannot do
+that. Whatever S14 ships, it should be regenerable from the real app by a command, not
+re-authored by hand — otherwise this note gets written a third time.
 
 ## S15 · Trust bar rewrite
 
@@ -1159,3 +1209,82 @@ simply down until someone loads it.
   deploy ships your commits without telling you, and a deploy claim written into
   a doc rots faster than anything else in it. Date-stamp it, and re-run
   `eb status` before repeating it rather than reading it forward.
+
+---
+
+# Where this stands — 2026-08-25, 20:50 CDT
+
+Written after S11 and S12 closed Phase 3's design work. Nothing was built in this pass;
+it is a state check, and it exists because the last one found that a doc's claims about
+*merged* and *deployed* rot at very different speeds.
+
+## Merged is not deployed — again
+
+**S11 (#210) and S12 (#209) are on `main` and are not on production.**
+
+```
+$ eb status rs-systems-production
+  Deployed Version: app-0f9d-260825_141159999225        # 0f9d062d — PR #208, 09:54 CDT
+$ git merge-base --is-ancestor 496b83a9 0f9d062d ; echo $?
+  1                                                      # #210 not contained
+```
+
+`0f9d062d` is the email-chassis quality pass. Everything merged after 14:11 CDT that day
+— #209, #210, then #211, #212, #213, #214, #215 — is sitting on `main` waiting for
+somebody's deploy. Drake's call on 2026-08-25 was to leave it: record the gap and let the
+next arc's deploy sweep it in, exactly as #205's deploy swept in #202/#203/#204.
+
+So this section is a **dated snapshot, not a status**. Do not read it forward. If you are
+here to find out whether the skeletons are live, run `eb status` — the answer has probably
+changed, and the way it changes is that someone else ships it without telling you. That is
+the second time this arc has recorded this. It is the normal behaviour of a repo running
+parallel sessions, not an incident.
+
+## This file no longer owns its own surfaces
+
+When Phase 1 started, UI magic was the only arc touching templates. It is now one of three
+live queues in this repo, and the other two edit pages this doc redesigned:
+
+| Arc | Queue | Landed 2026-08-25 | UI_MAGIC surfaces it touched |
+|---|---|---|---|
+| Photo-ML | `PHOTO_ML_SESSIONS.md` | P1 (#211), P2 (#215) | `job_form.html`, `repair_form.html` (S7), `repair_detail.html`, `base_app.html` |
+| FieldOps | `FIELD_OPS_SESSIONS.md` | S9 (#213), S10 (#214) | `schedule.html`, `base_app.html`, `quick_job_modal.html` |
+
+Consequences worth acting on rather than just noting:
+
+- **A "DONE" here means done on the day it merged.** S7 flattened the job/repair form;
+  two sessions have since added crop controls and a multi-break flow to it. The design
+  rules held — nothing reintroduced the green header or the ALL-CAPS tiles — but the
+  session notes describe a page that no longer exists exactly as described. Re-read the
+  template before trusting a Phase 2 note about its markup.
+- **The rules only hold because they are in `CLAUDE.md`.** No one on the Photo-ML or
+  FieldOps sessions read this file. They stayed inside the design system because the
+  brand tokens, the motion primitives and the S11 helpers are documented where a fresh
+  session actually looks. **Anything in this doc that other arcs must obey belongs in
+  `CLAUDE.md`, and this doc is the reasoning behind it, not the source of it.** S13 will
+  live or die on this.
+- **Debt accrues from arcs that never opened this file.** Five new `fas` icons on
+  2026-08-25 (see S13). Nobody did anything wrong; the alternative did not exist yet.
+
+## What is actually left
+
+| # | Session | Size | Why it is still here |
+|---|---|---|---|
+| S13 | Icon sprite | L | Real work, and now racing three arcs. Ship the `{% icon %}` tag first — see S13's revised notes |
+| S14 | Landing: real product imagery | M | Blocked on nothing, and its brief needed a correction this pass — the mock's drift changed shape on its own. See S14 |
+| S15 | Landing: trust bar rewrite | S | Copy, not code. Wants Drake's eye, like the `InAppCopy` sweep below |
+| S16 | Landing: rhythm + kill `[data-reveal]` | M | The fade-deletion half is small and strictly an improvement; it does not need the redesign half |
+| S17 | Tailwind source out of the served tree | S | Self-contained. Unwinds the `@font-face` workaround S1 and S2 both had to route around |
+
+**If you want the cheapest real win:** S17, or the `[data-reveal]` deletion split out of
+S16. **If you want the one that stops getting more expensive:** the `{% icon %}` tag.
+Phase 4 is the only chunk that is genuinely a project rather than a session.
+
+## Re-dating the Still-open list
+
+Re-checked 2026-08-25 20:50 CDT, all four still open and unchanged: the `InAppCopy`
+message-copy sweep (still wants Drake's wording), the invoice's Python-built plain-text
+half (still correct, still pinned by two suites), safe drive-away time (still Drake's
+call, still do not add it without him), and emoji in the three staff-only surfaces. The
+fifth entry — #202's deploy — is closed and correct as written; leave it, it is the
+worked example this section's first half depends on.
