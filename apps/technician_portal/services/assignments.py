@@ -39,6 +39,26 @@ def _is_replacement(job):
     return isinstance(job, Replacement)
 
 
+def can_perform(technician, service_type):
+    """Is this technician allowed to do this kind of work?
+
+    An inactive profile, or one whose `can_repair`/`can_replace` is off,
+    cannot — assigning work to a deactivated tech or one who does not do
+    replacements makes the job invisible to the people who can do it (the
+    CODE-160 failure, from the other direction).
+
+    Callers use this to decide whether *they themselves* may take a job:
+    quick job creation (the actor keeps the walk-in they just handled) and
+    bulk approve (approving a queued job takes it, if you can do it).
+    A technician who cannot perform the work is not a failure — it just
+    means the shop's strategy decides instead, or the job stays queued.
+    """
+    if technician is None or not technician.is_active:
+        return False
+    return (technician.can_replace if service_type == 'replacement'
+            else technician.can_repair)
+
+
 def _job_action_url(job):
     if _is_replacement(job):
         return f'/tech/replacement/{job.pk}/'
@@ -411,6 +431,14 @@ def notify_assignment_from_signal(job, old_technician, old_status, created,
     # auto-accept below is exactly where that fired.  (CODE-279)
     if getattr(job, 'needs_assignment', False):
         return
+
+    # Leaving the queue is a *first* assignment, not a reassignment. The
+    # provisional technician on the row was never told the job was theirs, so
+    # "reassigned away from you" would be the first and only thing they ever
+    # heard about it. Drop them, exactly as the dispatch board's confirm path
+    # does. (CODE-280)
+    if getattr(job, '_cleared_needs_assignment', False):
+        old_technician = None
 
     changed = (job.technician is not None
                and (old_technician is None

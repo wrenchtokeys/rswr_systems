@@ -621,6 +621,9 @@ class GlassService(models.Model):
         # _settle_needs_assignment.  Both subclasses' __init__ call up to
         # here, so tracking it once covers Repair and Replacement.
         self._loaded_technician_id = self.technician_id
+        # Did THIS save take the job out of the queue?  The assignment signal
+        # reads it — see _settle_needs_assignment.
+        self._cleared_needs_assignment = False
 
     def _settle_needs_assignment(self, save_kwargs):
         """Clear the unassigned flag when someone actually picks a tech.
@@ -632,14 +635,23 @@ class GlassService(models.Model):
 
         Saves that pass `update_fields` get the column appended, or the
         clear would be computed in memory and then never written.
+
+        `_cleared_needs_assignment` records that this particular save is the
+        one that drained the job out of the queue. The assignment signal needs
+        it because the flag is already False by the time the signal runs, and
+        without it the *provisional* technician gets told the job was
+        "reassigned away" from them — a job they were never told they had.
+        (CODE-280)
         """
-        if (self.pk is not None
-                and self.needs_assignment
-                and self.technician_id != self._loaded_technician_id):
+        cleared = (self.pk is not None
+                   and self.needs_assignment
+                   and self.technician_id != self._loaded_technician_id)
+        if cleared:
             self.needs_assignment = False
             update_fields = save_kwargs.get('update_fields')
             if update_fields is not None and 'needs_assignment' not in update_fields:
                 save_kwargs['update_fields'] = list(update_fields) + ['needs_assignment']
+        self._cleared_needs_assignment = cleared
         self._loaded_technician_id = self.technician_id
 
     @property

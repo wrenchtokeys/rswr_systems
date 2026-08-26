@@ -23,6 +23,9 @@ from decimal import Decimal
 from django.db import transaction
 
 from apps.technician_portal.models import Replacement, Repair, Technician
+# The ability check lives in services.assignments because the approve path
+# needs the same rule (CODE-280); this module was its first caller.
+from apps.technician_portal.services.assignments import can_perform
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +92,7 @@ def resolve_technician(tenant, actor_user, service_type, customer=None):
     from apps.tenants.services.assignment_service import select_technician
 
     tech = Technician.objects.filter(user=actor_user, tenant=tenant).first()
-    if tech and _can_perform(tech, service_type):
+    if tech and can_perform(tech, service_type):
         return tech, False
 
     strategy_pick = select_technician(
@@ -104,19 +107,6 @@ def resolve_technician(tenant, actor_user, service_type, customer=None):
     )
     return (ability_qs.first() or qs.first()), True
 
-
-def _can_perform(technician, service_type):
-    """Is this tech allowed to do this kind of work?
-
-    An inactive or ability-less profile falls through to the shop strategy
-    rather than taking the job: assigning work to a deactivated tech or one
-    with `can_repair=False` makes it invisible to the people who can do it
-    (the CODE-160 failure, from the other direction).
-    """
-    if not technician.is_active:
-        return False
-    return (technician.can_replace if service_type == 'replacement'
-            else technician.can_repair)
 
 
 def resolve_customer(tenant, data, actor_user):
