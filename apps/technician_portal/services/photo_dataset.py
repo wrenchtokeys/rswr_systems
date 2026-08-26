@@ -45,18 +45,31 @@ def label_for(crop):
     ``label_source`` names the rule that fired, so a training run can drop a
     rule it doesn't trust without re-deriving any of this.
     """
-    job = crop.service
+    return label_for_photo(crop.service, crop.source_field)
+
+
+def label_for_photo(job, source_field):
+    """(label, label_source) for a photo that may not have a crop yet.
+
+    Same rules as ``label_for``, reached one step earlier — the backfill
+    queue (P4a.1) needs to know what a photo *would* be worth before anybody
+    has marked it, so it can put the trainable ones in front of a human
+    first. Two copies of these rules would drift, and the point of
+    ``label_source`` is that a training run can trust which rule fired.
+    """
+    from apps.technician_portal.services.photo_crops import job_kind
+
     if job is None:  # defended by a CheckConstraint; belt and braces
         return UNKNOWN, 'no_job'
 
     # An "after" photo is a repaired break. It is a photo of the outcome,
     # not of the decision, and training on it would teach the model that
     # resin-filled chips are the repairable ones.
-    if crop.source_field == 'damage_photo_after':
+    if source_field == 'damage_photo_after':
         return NOT_APPLICABLE, 'after_photo'
 
     completed = job.queue_status == 'COMPLETED'
-    if crop.service_kind == 'repair':
+    if job_kind(job) == 'repair':
         if completed:
             return REPAIRABLE, 'repair_completed'
         return UNKNOWN, f'repair_{job.queue_status.lower()}'

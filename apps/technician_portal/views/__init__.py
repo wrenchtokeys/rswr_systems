@@ -11,6 +11,7 @@ Split from a single 2700-line views.py into logical modules:
 - settings: Manager settings (viscosity rules, team overview)
 - notifications: Notification preferences, history, verification
 - search: Global search across jobs, customers and invoices
+- photo_backfill: The unmarked-damage-photo queue (tap the break, advance)
 - api: JSON API endpoints (pricing, viscosity, profile)
 """
 
@@ -56,6 +57,9 @@ from .repairs import (
     save_photo_crop,
     suggest_photo_crop,
 )
+
+# Unmarked-photo backfill queue (P4a.1)
+from .photo_backfill import photo_backfill_queue
 
 # Multi-break batch operations
 from .batch import (

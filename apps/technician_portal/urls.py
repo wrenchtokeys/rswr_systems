@@ -34,6 +34,9 @@ urlpatterns = [
     path('repairs/<int:repair_id>/assign/', views.assign_repair, name='assign_repair'),
     path('repairs/<int:repair_id>/reassign-to-self/', views.reassign_to_self, name='reassign_to_self'),
     path('repairs/<int:repair_id>/apply-reward/', views.apply_reward_to_repair, name='apply_reward_to_repair'),
+    # Burn down the photos nobody ever marked (P4a.1). Read-only itself —
+    # every tap it collects POSTs to save_photo_crop below.
+    path('photos/mark/', views.photo_backfill_queue, name='photo_backfill_queue'),
     path('repairs/<int:repair_id>/photo-crop/', views.save_photo_crop, name='save_photo_crop'),
     path('repairs/<int:repair_id>/photo-crop/suggest/', views.suggest_photo_crop, name='suggest_photo_crop'),
     # Replacements carry the same GlassService photo fields, and they are the

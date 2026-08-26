@@ -9,6 +9,10 @@
  *   photo_crop_detail.js repair detail page, POSTs the tap on its own
  *   multi_break.js       one tap per break, kept in the breaks[] JS state
  *
+ * photo_backfill.js is a fourth consumer of a different kind: it captures
+ * taps on its own full-page image rather than in this modal, and borrows
+ * only percentFromEvent so a tap there means what a tap here means.
+ *
  * Percent (not pixels) is the whole trick: the tap means the same point no
  * matter what size the image was displayed at. See
  * docs/strategy/PHOTO_ML_SESSIONS.md.
@@ -41,13 +45,27 @@
         if (confirmBtn) confirmBtn.disabled = true;
     }
 
+    /**
+     * Where on the image did that pointer land, in percent of its rendered
+     * box? Exported below as PhotoCropModal.percentFromEvent because the
+     * backfill queue (P4a.1) taps a full-page image rather than this modal
+     * and must mean the same thing by a tap — see PHOTO_ML_SESSIONS.md on
+     * the percent-of-EXIF-upright convention.
+     */
+    function percentFromEvent(image, e) {
+        var rect = image.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        return {
+            x: Math.min(Math.max((e.clientX - rect.left) / rect.width * 100, 0), 100),
+            y: Math.min(Math.max((e.clientY - rect.top) / rect.height * 100, 0), 100)
+        };
+    }
+
     function placeMarker(e) {
-        var rect = img.getBoundingClientRect();
-        if (!rect.width || !rect.height) return;
-        var xPct = Math.min(Math.max((e.clientX - rect.left) / rect.width * 100, 0), 100);
-        var yPct = Math.min(Math.max((e.clientY - rect.top) / rect.height * 100, 0), 100);
+        var point = percentFromEvent(img, e);
+        if (!point) return;
         tapped = true;
-        showMarkerAt(xPct, yPct);
+        showMarkerAt(point.x, point.y);
     }
 
     function showMarkerAt(xPct, yPct) {
@@ -160,6 +178,14 @@
             showMarkerAt(xPct, yPct);
             return true;
         },
+
+        /**
+         * Percent-of-rendered-image coordinates for a pointer event, or
+         * null if the image has no box yet. Pure — it needs no modal on the
+         * page, so a surface that captures a tap without this modal (the
+         * backfill queue) can still share the one conversion.
+         */
+        percentFromEvent: percentFromEvent,
 
         /** Replace the sub-line, if this is still the same open modal. */
         setHint: function (token, text) {

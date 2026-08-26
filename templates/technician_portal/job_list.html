@@ -53,6 +53,14 @@
                     <a href="{% url 'job_list' %}{% querystring status='IN_PROGRESS' page=None %}" class="hover:text-gray-900 transition-colors"><span class="num font-semibold text-gray-900">{{ stats.in_progress }}</span> in progress</a>
                     <span class="text-gray-300">&middot;</span>
                     <a href="{% url 'job_list' %}{% querystring status='COMPLETED' page=None %}" class="hover:text-gray-900 transition-colors"><span class="num font-semibold text-gray-900">{{ stats.completed_this_week }}</span> done this week</a>
+                    {% comment %}The only door to the mark-the-breaks queue (P4a.1).
+                    It sits in the summary line rather than the nav because the nav
+                    has no room, and it hides itself the moment the backlog is
+                    empty — an always-on link to an empty page is noise.{% endcomment %}
+                    {% if unmarked_photo_count %}
+                    <span class="text-gray-300">&middot;</span>
+                    <a href="{% url 'photo_backfill_queue' %}" class="hover:text-gray-900 transition-colors"><span class="num font-semibold text-gray-900">{{ unmarked_photo_count }}</span> photo{{ unmarked_photo_count|pluralize }} to mark</a>
+                    {% endif %}
                 </p>
             </div>
             <div class="flex items-center gap-2 flex-shrink-0">

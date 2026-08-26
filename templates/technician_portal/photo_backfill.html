@@ -1,0 +1,153 @@
+{% extends "base_app.html" %}
+{% load static %}
+
+{% comment %}
+Mark the break — the backfill queue (P4a.1, docs/strategy/PHOTO_ML_SESSIONS.md).
+
+One photo at a time, big enough to find a chip in, tap it, next. The whole
+worklist is handed to the page as JSON up front so advancing costs nothing
+and the next photo is already preloaded; each tap POSTs on its own to the
+same save_photo_crop endpoint the job detail page uses.
+
+Deliberately NOT the shared tap modal: this page IS the modal, seventy-seven
+times in a row, and opening and closing one for each photo would be the
+worst part of the job. It shares the one thing that must not drift —
+PhotoCropModal.percentFromEvent, the tap-to-percent conversion.
+{% endcomment %}
+
+{% block title %}Mark the breaks - RS Systems{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 py-4 safe-area-x">
+
+        <div class="flex items-center justify-between gap-3 mb-4">
+            <div class="min-w-0">
+                <h1 class="text-lg font-semibold text-gray-900">Mark the breaks</h1>
+                <p class="text-sm text-gray-500 mt-0.5">
+                    {% if queue_count %}
+                    Tap the damage in each photo. It becomes the close-up your customer sees on the invoice.
+                    {% else %}
+                    Every damage photo has a mark on it.
+                    {% endif %}
+                </p>
+            </div>
+            <a href="{% url 'job_list' %}" class="btn-ghost btn-sm shrink-0">
+                <i class="fas fa-arrow-left mr-1"></i>Jobs
+            </a>
+        </div>
+
+        {% if queue_count %}
+        {{ queue|json_script:"photoBackfillQueue" }}
+        <div id="photoBackfillCsrf" class="hidden">{% csrf_token %}</div>
+
+        <div id="photoBackfillCard" class="card overflow-hidden">
+            {# Progress: a burn-down only feels like one if you can see it. #}
+            <div class="px-4 py-3 border-b border-gray-100">
+                <div class="flex items-baseline justify-between gap-3 text-sm">
+                    <span class="font-medium text-gray-900">
+                        <span id="photoBackfillPosition">1</span> of {{ queue_count }}
+                    </span>
+                    <span class="text-gray-500" id="photoBackfillDone">0 marked</span>
+                </div>
+                <div class="mt-2 h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                    <div id="photoBackfillBar" class="h-full bg-brand-600 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                    <p class="text-sm font-medium text-gray-900 truncate" id="photoBackfillTitle"></p>
+                    <p class="text-xs text-gray-500 truncate" id="photoBackfillSubtitle"></p>
+                </div>
+                <a href="#" id="photoBackfillJobLink" class="btn-ghost btn-sm shrink-0" target="_blank" rel="noopener">
+                    Open job<i class="fas fa-external-link-alt ml-1"></i>
+                </a>
+            </div>
+
+            {% comment %}The tap surface. Black behind it so a portrait photo's
+            letterbox reads as frame rather than as broken layout, and the
+            break is the brightest thing on the screen.{% endcomment %}
+            {% comment %}Sized so the photo AND the two buttons fit one screen.
+            A burn-down where confirming means scrolling is not a burn-down —
+            the whole design is tap, Enter, tap, Enter without moving.{% endcomment %}
+            <div class="relative bg-gray-900 flex items-center justify-center overflow-hidden"
+                 style="height: 52vh; min-height: 240px;">
+                {% comment %}The box is fixed and the photo fits inside it whole —
+                a landscape photo letterboxes rather than losing its top and
+                bottom, which on this page would hide the very break being
+                marked. Marker positions are read off the rendered <img>, so
+                letterboxing costs nothing.{% endcomment %}
+                <img id="photoBackfillImage" src="" alt="Damage photo"
+                     class="block select-none"
+                     style="max-height: 100%; max-width: 100%; touch-action: manipulation; cursor: crosshair;">
+                <div id="photoBackfillMarker" class="hidden" aria-hidden="true"
+                     style="position: absolute; width: 32px; height: 32px; border: 3px solid #fff; border-radius: 9999px; box-shadow: 0 0 0 2px rgba(0,0,0,.6), inset 0 0 0 2px rgba(0,0,0,.6); transform: translate(-50%, -50%); pointer-events: none;"></div>
+                <p id="photoBackfillBroken" class="hidden absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-gray-300">
+                    This photo won't display here, so it can't be marked. Skipping.
+                </p>
+            </div>
+
+            <p class="px-4 pt-2.5 text-sm text-gray-500" id="photoBackfillHint">Tap the break.</p>
+
+            {# 44px minimum on anything tappable — this page is used one-handed. #}
+            <div class="px-4 py-2.5 flex items-center gap-3 safe-area-bottom">
+                <button type="button" id="photoBackfillSkip" class="btn-ghost flex-1 min-h-11">Skip</button>
+                <button type="button" id="photoBackfillSave" class="btn-primary flex-1 min-h-11" disabled>Save close-up</button>
+            </div>
+        </div>
+
+        <div id="photoBackfillFinished" class="hidden card p-8 text-center">
+            <div class="w-12 h-12 rounded-full bg-green-50 text-green-600 flex items-center justify-center mx-auto">
+                <i class="fas fa-check text-lg"></i>
+            </div>
+            <p class="mt-3 text-base font-medium text-gray-900" id="photoBackfillSummary">Done.</p>
+            <p class="mt-1 text-sm text-gray-500">Each mark now frames that photo on the customer's invoice.</p>
+            <div class="mt-5 flex items-center justify-center gap-3">
+                <a href="{% url 'photo_backfill_queue' %}" class="btn-ghost">Check for more</a>
+                <a href="{% url 'job_list' %}" class="btn-primary">Back to jobs</a>
+            </div>
+        </div>
+
+        {% comment %}Footnotes about the worklist, not about the session — they
+        describe what was queued at page load, so they go away with the card
+        rather than standing over a finished summary they no longer match.
+        {% endcomment %}
+        <div id="photoBackfillNotes">
+            {% if at_limit %}
+            <p class="mt-3 text-xs text-gray-500 text-center">
+                Showing the first {{ queue_count }}. Finish these and reload for the next batch.
+            </p>
+            {% endif %}
+            {% if trainable_count %}
+            <p class="mt-3 text-xs text-gray-500 text-center">
+                {{ trainable_count }} of these are on completed jobs, which is what the damage dataset is short of.
+            </p>
+            {% endif %}
+        </div>
+
+        {% else %}
+        <div class="card p-8 text-center">
+            <div class="w-12 h-12 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center mx-auto">
+                <i class="fas fa-crosshairs text-lg"></i>
+            </div>
+            <p class="mt-3 text-base font-medium text-gray-900">Nothing to mark</p>
+            <p class="mt-1 text-sm text-gray-500 max-w-sm mx-auto">
+                Every damage photo on your jobs has a break marked on it. New photos show up here when they arrive without one.
+            </p>
+            <a href="{% url 'job_list' %}" class="btn-primary mt-5 inline-flex">Back to jobs</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if queue_count %}
+{% comment %}photo_crop_modal.js first: photo_backfill.js borrows its
+tap-to-percent conversion so the two surfaces cannot mean different things
+by a tap.{% endcomment %}
+<script src="{% static 'js/photo_crop_modal.js' %}" defer></script>
+<script src="{% static 'js/photo_backfill.js' %}" defer></script>
+{% endif %}
+{% endblock %}
