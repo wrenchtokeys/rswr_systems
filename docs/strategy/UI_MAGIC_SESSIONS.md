@@ -6,6 +6,14 @@ session with no memory of this work can pick exactly one up and finish it.
 
 **Status legend:** `TODO` · `IN PROGRESS` · `DONE` · `DROPPED`
 
+> **Heads-up (2026-08-25): the schedule page is being rebuilt underneath this
+> arc.** `FIELD_OPS_SESSIONS.md` sessions **S9–S14** replace
+> `templates/technician_portal/schedule.html` with an ordered day list, add a
+> quick-add modal, and change `includes/schedule_row.html` (new data
+> attributes, a time control on booked rows). If a session here touches the
+> schedule page, the row partial, or `base_app.html`'s `datetime-local`
+> bootstrap, check that queue first — **S9 deletes that bootstrap outright.**
+
 | Phase | Session | Status |
 |---|---|---|
 | 1 | S1 · Kill the CDNs, self-host everything | **DONE** 2026-08-09 |

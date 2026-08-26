@@ -23,20 +23,43 @@ This file is the **work queue** for making field operations real: a technician f
 | S — Where and when | S6 · Routing / ETA / lot-walking | — | BACKLOG (deliberately deferred) |
 | S — Where and when | S7 · Drag to swap two appointments | M | DONE (2026-08-17, **PR #192**) |
 | S — Where and when | S8 · Technician working hours | M | DONE + DEPLOYED (2026-08-24, **PR #201**, live 2026-08-24 22:47) — built in two halves, see Notes |
+| S — Where and when | S9 · "Leave it blank" means unscheduled | S | TODO |
+| S — Where and when | S10 · Quick-add a job from the schedule | M | TODO |
+| S — Where and when | S11 · The move primitive + inline time/date edit | M | TODO |
+| S — Where and when | S12 · The ordered day list + drag to move | L | TODO |
+| S — Where and when | S13 · Schedule on the dashboard | S | TODO |
+| S — Where and when | S14 · Multi-technician moves | M | TODO |
 | P — Parts | P1 · Mygrant live quotes + ordering | M | IN PROGRESS (steps 3+4 MERGED+DEPLOYED 2026-08-15, PR #184; step 5 quote-only built 2026-08-15, **PR #186**; steps 1–2 wait on the Mygrant IT callback; step 6 ordering waits for quotes to prove out) |
 | P — Parts | P2 · Vehicle→NAGS part lookup | — | BACKLOG (blocked on a NAGS licensing decision — Appendix B) |
 
 **Suggested sequence:** N1 → N4 (start the review clock early — it's days-to-weeks of waiting either way) → S1 → S2 → S3 → N2 (whenever the TFN approves) → S4 → N3 → S5 → (S6 stays backlog until S3/S5 prove demand). **S7 slots in any time after S3** — it needs neither S4 nor S5, and S5 inherits its endpoint. P1 is independent of both arcs and can slot anywhere once Mygrant API onboarding is done (like N4, start that clock early — it's a phone call to the rep).
 Rationale: N1 is the reported bug and pays off alone. S1 is the schema foundation every S-session builds on. S2 is IMPROVEMENT_SESSIONS' "biggest daily-felt gain per hour spent." S4 before S5 because the board is only as good as the data flowing into it.
 
-**Where we are (2026-08-24, after N3 — the arc is complete and clear):** every
-session in this doc is now built or deliberately parked. N1, N3, N4, S1, S2,
+**Where we are (2026-08-25 — Phase S is REOPENED by first real use).** The
+2026-08-24 entry below said "there is no unblocked session left in this
+document." That held for exactly one day. On 2026-08-25 Drake took a customer
+call and used RS Systems to book it instead of a note in his phone — the first
+time anyone had driven this arc from the actual motion rather than from a
+screen — and the machinery held while the surface did not. **S9–S14 are the
+result, and they are all unblocked.** Read §0's *"Scheduling UX — what first
+real use found"* before starting any of them.
+
+The one-sentence diagnosis: **S1–S8 built the right machinery behind the wrong
+primitive.** Every service is transactional, price-safe and well tested, but
+the only gesture that can change a booked time is *swap*, the only way to reach
+the schedule at all is a seven-step detour through the job form, and the swap
+that does exist confirms itself with a full page reload — so on a half-empty
+day, which is every day for a one-tech shop, the feature reads as broken. None
+of S9–S14 changes a service's contract; they add the missing *move* primitive
+and rebuild the surface on top of what S1–S8 already got right.
+
+*(Kept for the record — the 2026-08-24 state, all of which is still true.)*
+Every session N1–S8 is built or deliberately parked. N1, N3, N4, S1, S2,
 S3, S4, S5, S7 and S8 are done; S6 and P2 are backlog by decision; N2 waits on
-a regulator and P1 on a vendor. **There is no unblocked session left in this
-document.** A manager runs the morning from one screen: the rail shows what the
-customer asked for, one click names a tech and a time, the tech is notified
-once, the board knows who is actually working, and — as of N3 — the
-notification actually leaves the building.
+a regulator and P1 on a vendor. A manager runs the morning from one screen: the
+rail shows what the customer asked for, one click names a tech and a time, the
+tech is notified once, the board knows who is actually working, and — as of N3
+— the notification actually leaves the building.
 
 **Deploy state: nothing in this arc is waiting.** Production runs `68dc31e9`
 (`app-68dc-260824_224726507237`, deployed 2026-08-24 22:47 CDT, health green),
@@ -48,6 +71,13 @@ production — started on that deploy.
 
 What's left in the queue:
 
+- **S9–S14 are the live queue** and nothing blocks them. Suggested order is
+  the numbering: **S9** (2h, and every later session displays or moves
+  `scheduled_for`, so it goes first), **S10** (the one Drake actually asked
+  for), **S11** (the missing primitive), **S12** (the layout + the drag),
+  **S13** (dashboard), **S14** (multi-tech). S13 is independent of S11/S12 and
+  can be pulled forward any time; S14 must come last because it is the only one
+  that depends on the primitive being proven.
 - **N2** is parked until the toll-free number clears review (Appendix A).
 - **P1** waits on Mygrant (steps 1–2), **P2** on a NAGS licensing decision,
   **S6** on demand that S3/S5/S8 have to prove first.
@@ -170,6 +200,93 @@ on top of it, and a fresh session should start from these rather than re-derive:
 **Dormant assets to reuse, not rebuild:**
 - `CustomerRepairPreference.lot_walking_enabled/_frequency/_time/_days` (`apps/customer_portal/models.py:101-126`) — a fully-formed recurring-visit spec with a settings UI and **zero consumers**. Cheapest possible first calendar feed (S6).
 - `RewardRedemption.preferred_date`/`preferred_time` (`apps/rewards_referrals/models.py:210-217`, staff display at `reward_fulfillment.html:87-109`) — a shipped customer-picks-date+window pattern to copy in S4.
+
+
+### Scheduling UX — what first real use found (2026-08-25)
+
+*(Read this before S9–S14. It is the diagnosis from the first time anyone booked
+a real customer call through the product; every finding below is verified in
+code, and re-deriving them costs an afternoon.)*
+
+**How the call actually went.** Customer phones, job needs to be on tomorrow.
+The path the product offers is: Jobs → New Job → fill the form → save → land on
+the job *ticket* → navigate to Schedule → find the job in the triage rail →
+set date/window/tech → Book. `job_create` redirects to
+`_job_detail_redirect(service)` (`views/jobs.py:280-283`), never to the
+schedule, so the detour is structural, not a wrong turn.
+
+**Four findings, in the order they bite:**
+
+1. **There is no reschedule path at all.** Grep confirms it: no endpoint, view,
+   URL or service named reschedule / move / edit-time exists. A booked row
+   renders only the *technician* picker (`includes/schedule_row.html:224-247`);
+   the date/window/exact-time form is gated `{% if triage %}` and so appears
+   only on rows that have no time yet. The three ways to change a booked time
+   are therefore: trade with another job on the same tech's same day (S7),
+   re-book through `/tech/schedule/book/` (which requires sending `expected` or
+   it 409s), or open the full edit form — **which runs `GlassService.save()`
+   and therefore re-prices the job and pushes prices onto live invoices**, the
+   exact thing every schedule service goes out of its way to avoid. Nothing can
+   return a job to unscheduled except that same edit form.
+2. **Swap confirms itself with a page reload, so a refusal is invisible.**
+   `static/js/schedule_swap.js:130-140` does `UI.flash()` + `window.location.reload()`
+   on success. Every refusal path leaves the screen *byte-identical*: a
+   cross-tech drag (refused by design, `refuse()` at `:76-81`), a 409, a
+   read-only tenant's HTML redirect, and — worst — a near-miss drop, where
+   `endDrag` returns with **no toast at all** unless the drop landed in the
+   triage group. S7's own Notes concede the structural half: *"on a half-empty
+   day the manager's intent is 'drop it at 11:00' … so on the easiest day to
+   use it, the feature can read as broken."* For a one-tech shop every day is
+   that day. **The bug is not the service — it is that swap is the only
+   gesture, and that the UI never shows its work.**
+3. **A booked REQUESTED job vanishes from both lists.** `day_schedule` filters
+   the day sheet on `DAY_STATUSES = ('PENDING','APPROVED','IN_PROGRESS','COMPLETED')`
+   (`views/schedule.py:60`) and the triage rail on `scheduled_for__isnull=True`,
+   but `confirm_appointment` accepts `REQUESTED` (`BOOKABLE_STATUSES`,
+   `schedule_booking.py:57`). So booking a customer-requested job out of the
+   rail removes it from the rail (it now has a time) and never adds it to the
+   day. Fix in whichever session touches the day query first: add `'REQUESTED'`
+   to `DAY_STATUSES`, marked not-yet-accepted. S3's rationale ("the shop hasn't
+   accepted it yet") still holds for *unscheduled* REQUESTED work, which stays
+   in the rail on the `scheduled_for` filter — the refined rule is **"REQUESTED
+   with a booked time belongs on the sheet, marked, because somebody in the
+   shop deliberately put it there."** Do **not** auto-promote REQUESTED→APPROVED
+   on booking; that bypasses `resolve_initial_shop_status` and the approve/deny
+   flow.
+4. **"Optional — leave blank to keep this job unscheduled" is a lie.**
+   `templates/base_app.html:263-285` runs on *every* page and pre-fills *every*
+   empty `input[type="datetime-local"]` with the current time before attaching
+   flatpickr. So `job_form.html:248`'s own label cannot be honoured: unchecking
+   "Job is already done" reveals a field already populated with now.
+   `ReplacementForm.scheduled_for` (`apps/saas/forms.py:355`) has the same
+   problem. This is S9, and it goes first because every later session displays
+   or moves `scheduled_for`.
+
+**The house rules S9–S14 inherit unchanged** (all four were established by S7
+and S4; none of them is up for renegotiation):
+
+- **Never `save()` to move a time.** `.update()` on the queryset, always.
+  Creating a job *is* a normal `save()` — pricing and `resolve_initial_shop_status`
+  have to run — so the rule applies to the *time* write, not the create.
+- **Each job keeps its own duration.** `new_end = new_start + (old_end - old_start)`,
+  and NULL stays NULL (`schedule_swap.py:98`).
+- **Notifications fire on `transaction.on_commit()`,** never inside the locked
+  transaction — `NotificationService` sends email/SMS synchronously.
+- **The endpoint answers JSON even when it refuses.** These paths live under
+  `/tech/`, not `/api/`, so `SubscriptionEnforcementMiddleware` answers a
+  read-only tenant with an HTML redirect that `fetch` follows and delivers as a
+  200 — **check `Content-Type` before `res.ok`** (`schedule_swap.js:113-120`).
+  And gate authorization **in-body**, not with `@manager_required`, which
+  redirects to HTML *and* queues a stray `messages.warning` that then surfaces
+  as a banner on the manager's next page.
+
+**Two facts about the data model worth having in hand:** there is no duration
+column anywhere — `NOMINAL_JOB_LENGTH = 1h` (`schedule_booking.py:63`) is a
+deliberate placeholder, not a measurement — and there is **no per-tenant
+timezone**; `TIME_ZONE` is one global setting (`models.py:387`). That second one
+is why every client→server schedule payload sends the shop's **wall clock**
+(`date` + `time`) rather than an ISO instant: a browser in another zone calling
+`toISOString()` would book the wrong hour, silently.
 
 ---
 
@@ -1409,6 +1526,129 @@ endpoint semantics, only a fact the board is currently missing.)*
 
 ---
 
+# Phase S reopened — the scheduling UX arc (added 2026-08-25)
+
+*(S1–S8 built the machinery. S9–S14 fix the surface. The premise is unchanged —
+where and when — so these live here rather than in a new document; a session
+should read §0 plus its own block and nothing else.)*
+
+**The through-line:** today the product has exactly one gesture for changing a
+booked time (*swap*), reachable only after a seven-step detour, and it confirms
+itself with a page reload. S9–S14 add the missing **move** primitive, put job
+creation and scheduling on one screen, and rebuild the day view as an ordered
+list where both gestures show their work. **Swap is kept and improved, not
+retired** — Drake's call, 2026-08-25.
+
+## S9 · "Leave it blank" means unscheduled — TODO
+
+| Field | Value |
+|---|---|
+| **Goal** | A job the owner meant to leave unscheduled actually comes out unscheduled. |
+| **Size** | S (≈2h) |
+| **Depends on** | — |
+| **Why it matters** | `job_form.html:248` promises *"Optional — leave blank to keep this job unscheduled."* It cannot keep that promise, so jobs land in a schedule bucket at the moment of creation and the Unscheduled list under-reports. Every session after this one displays or moves `scheduled_for`; shipping them on top of a field that silently fills itself means debugging the wrong thing twice. **That is the only reason a two-hour session goes first.** |
+| **Verified current state** *(2026-08-25)* | `templates/base_app.html:263-285` runs on every page: it walks `document.querySelectorAll('input[type="datetime-local"]')` and, `if (!input.value)`, writes the current local time before calling `flatpickr(input, …)`. `templates/customer_portal/base_customer.html:329-340` is a **verbatim second copy**. Four `datetime-local` sites exist: `QuickJobForm.scheduled_for` (`forms.py:975`, optional), `ReplacementForm.scheduled_for` (`apps/saas/forms.py:355`, optional, model field is `null=True, blank=True`), `RepairForm.repair_date` via `CustomDateTimeInput` (`forms.py:359`, **required**) and `multi_break_repair_form.html:109` `repair_date` (**required**). |
+| **Build** | **Delete the prefill block, keep the flatpickr attachment.** Both files. Six lines each. |
+| **Why it is safe** | Both fields that actually want a `now` default already set it themselves — `static/js/multi_break.js:31-34` unconditionally, and `static/js/repair_form.js:56-70`, which `forms.py:542` documents as exactly this. Ordering is what hides it today: `base_app`'s inline `DOMContentLoaded` handler is registered before `{% block extra_js %}`'s deferred scripts, so it fires first and those scripts find a non-empty value and skip. Remove it and they do the job they were already written to do. The customer-portal copy is dead code today (no customer-portal template renders a `datetime-local`) — delete it anyway, because leaving it is how the bug comes back through another door. |
+| **Intentional behaviour change** | Jobs created through `QuickJobForm` and replacements through `ReplacementForm` now come out **unscheduled** unless someone types a time. That is what both labels promise, and it is precisely the state S12's Unscheduled drawer exists to surface. Say so in the PR body — it will look like a regression to anyone who reads only the diff. |
+| **Tests** | New `tests/test_fieldops_s9.py`: POST `job_create` with `scheduled_for` empty → `service.scheduled_for is None`; same through the replacement form; a posted value still round-trips. Assert the prefill string is **absent** from both base templates (a render-level guard, the way `tests/test_view_transitions.py` guards its inline block) so it cannot be pasted back. Manual: load the multi-break form and the repair edit form and confirm both `repair_date` fields still land on now. |
+| **Deliberately not done** | Gating the prefill behind an opt-in `data-default-now` attribute. It needs the same audit, adds an attribute nobody will remember, and leaves dead code in place for a default that no field turns out to want. |
+| **Notes** | *(fill in when done)* |
+
+## S10 · Quick-add a job from the schedule — TODO
+
+| Field | Value |
+|---|---|
+| **Goal** | A customer calls; from `/tech/schedule/` one button opens a modal that takes who + what + when and **creates and books the job in one submit**, without leaving the page. |
+| **Size** | M (1–2d) |
+| **Depends on** | S9 (so "no time" means no time). Nothing else. Runs on today's layout — it does **not** wait for S12. |
+| **Why it matters** | This is the session Drake asked for. The current path is seven steps and ends on the wrong screen (`job_create` → `_job_detail_redirect`, `views/jobs.py:280-283`), which is why a note in a phone was winning. |
+| **Verified current state** *(2026-08-25)* | `job_create` (`views/jobs.py:383-629`) is a ~250-line view holding its business logic **inline**: plan limits (`UsageService`), customer resolution incl. `find_individual_matches` / `create_individual` and the duplicate-confirm guard, `_resolve_technician_for_create`, the `no_tax` decision, Repair/Replacement construction, extra charges, invoicing. `QuickJobForm` (`forms.py:892`) already supports an existing customer **or** a new individual on the fly (`new_customer_name` / `_phone` / `_email` + `confirmed_new_customer`), and its `__init__` tenant-scopes the `customer` and `technician` querysets. A customer typeahead endpoint already exists: `/tech/api/customers/search/` (`views/customers.py:1003`), used by `job_form.html:46`. `confirm_appointment` (`schedule_booking.py:196`) already books a time correctly, `expected=None` meaning "currently unscheduled". |
+| **Build — 1. Extract, don't duplicate** | New `apps/technician_portal/services/quick_job.py`: `allowed_service_types(tenant)` (one definition of the `offers_*` filter), `QuickJobError(message, *, status, suggestions)`, and `create_job(*, tenant, actor_user, data, charges=None, already_completed=False)` covering everything between "resolve the customer" and `service.save()`. `job_create` is refactored to call it and translate `QuickJobError` back into `messages.warning` + redirect / the duplicate-suggestion re-render. **This is the regression-risk half of the session** — a second copy of this logic is how auto-approve or tax silently diverges. |
+| **Build — 2. The endpoint** | `POST /tech/schedule/quick-job/` → `views/schedule.py::quick_job`, name `schedule_quick_job`. JSON in / JSON out, `{'ok': bool, 'message'\|'error': str}` like its three siblings, in-body auth via `_resolve_viewer`, gated on `sees_whole_shop` (it books a time, and plain techs cannot even see REQUESTED work — CODE-081). Validation instantiates **`QuickJobForm`** from the JSON body rather than re-deriving the rules; `scheduled_for` never goes through the form — the modal's date/window go around it. |
+| **Build — 3. Two writes, one transaction** | `create_job(...)` — a **normal `save()`**, because pricing, `TaxService` and `resolve_initial_shop_status` (auto-approve) all run there and must not be bypassed — then `confirm_appointment(..., expected=None, notify=True)` for the time. The job is created unscheduled and immediately booked, so there stays exactly one answer to "how does a time get onto a job" and `scheduled_window_end` is populated like every other booked job. Set `service._skip_assignment_notifications = True` on create and let the booking send the single message. |
+| **Build — 4. The modal** | `templates/technician_portal/includes/quick_job_modal.html`, opened by a `+ Add job` button in the day header through the house `data-modal-open` contract (`static/js/ui.js`) — no new modal machinery. Customer field reuses the existing search endpoint with `job_form.html`'s debounce pattern. Date/window controls are copied from the triage rail's inline form so the page has **one** vocabulary for "when". Defaults to the day on screen. Duplicate suggestions render inline as buttons: pick one to reuse that customer, or "different person" to set `confirmed_new_customer` and resubmit. |
+| **Build — 5. Fold in the REQUESTED fix** | Add `'REQUESTED'` to `DAY_STATUSES` (§0 finding 3). Quick-add makes that bug reachable in one click, so it stops being latent here. |
+| **Response** | Returns a server-rendered `row_html` from `includes/schedule_row.html` (same context keys the day view supplies: `can_book`, `can_assign`, `roster`, `preferred_windows`, `booking_default_date`, `shop_service_mix`) so the page inserts a real row with no reload and **no second copy of the partial in JS** — S7's Notes are explicit that two renderers of one row is how the rail bug happened. When the booked day is not the day on screen, return `day.on_screen: false` and say which day it landed on instead of inserting. |
+| **Acceptance criteria** | From `/tech/schedule/`, an owner adds a brand-new individual and books them for tomorrow morning in one submit, and the row appears without a reload. The job is priced **identically** to one made through `/tech/jobs/new/` — asserted field-by-field on `cost`, `tax_amount` and `queue_status` against a form-created twin. A plan-limited tenant is refused as JSON with the usual upgrade copy. A duplicate name returns suggestions; a confirmed retry creates the second person. A read-only tenant's POST is caught by the content-type check, not a parse error. A non-manager is refused. |
+| **Tests** | New `tests/test_fieldops_s10.py`. **Plus, against a `main` baseline, the suites that guard the extracted logic:** `tests.test_unified_job_create`, `tests.test_job_form_parity`, `tests.test_quick_job_invoice`, `tests.test_auto_approve_shop_created`. Wrap POSTs in `captureOnCommitCallbacks` or the notification path silently does not run and the test passes anyway (S7's trap). |
+| **Deliberately not done** | Completing or invoicing from the modal (`job_create` keeps `send_and_invoice`). Photos, insurance, extra charges — the modal is who/what/when; everything else is the ticket's job. Editing an existing job from the modal. |
+| **Notes** | *(fill in when done)* |
+
+## S11 · The move primitive + inline time/date edit — TODO
+
+| Field | Value |
+|---|---|
+| **Goal** | A booked job's time can be changed to **any** time, on **any** day, from the schedule — without `save()`, without trading against another job, and without the full edit form. |
+| **Size** | M (1–2d) |
+| **Depends on** | S9. Independent of S10. |
+| **Why it matters** | §0 finding 1: there is no reschedule path in the product at all. This is the missing primitive that S12's drag, S14's cross-tech drop, and any future customer-facing rescheduling all sit on. |
+| **Design decision — a new service, not a fourth mode on `confirm_appointment`** | `confirm_appointment`'s contract is *(date, window) → bucket bounds*, its `expected` default means "this job is unscheduled", and its notification lead is "a job on your schedule now has a time". A move is *(exact instant) → keep-own-duration* on a job that already holds a time. Bolting a `start_at` mode on gives one function four modes with two mutually exclusive parameter sets. `dispatch.py` set the precedent by **composing** `assign_job` + `confirm_appointment` rather than absorbing them. |
+| **Build — the service** | New `apps/technician_portal/services/schedule_move.py`: `parse_move_request(payload)`, `MoveError(message, *, status)`, and `@transaction.atomic move_appointment(*, tenant, service_type, pk, day, start_time, end_time=None, expected, actor_user=None, notify=True)`. Promote `schedule_swap._shifted_end` (`:98`) to a public `shifted_end(job, new_start)` here and import it back into `schedule_swap` — **one** definition of "keep your own duration", already covered by S7's tests. Reuse `BOOKABLE_STATUSES`, `NOMINAL_JOB_LENGTH`, `window_bounds()` and the `_batch_siblings` pattern from `schedule_booking`. |
+| **Wall clock, not an ISO instant** | The client sends `date` + `time` in the shop's wall clock; the server combines them with `timezone.get_current_timezone()`, same convention as `window_bounds` and the day view's day boundaries. There is no per-tenant timezone (`models.py:387`), so a browser in another zone computing `toISOString()` would book the wrong hour silently. `expected` stays a full ISO instant **because it is server-produced** (`{{ job.scheduled_for\|date:'c' }}`). |
+| **Duration rules** | had start + end → `shifted_end`; had start, end NULL → **stays NULL** (S7's rule, unchanged); came from the Unscheduled list → `new_start + NOMINAL_JOB_LENGTH`; client sent an explicit `end_time` → `window_bounds(day, 'EXACT', start_time, end_time)[1]`, which reuses S4's `end <= start` typo guard in `_parse_clock_pair`. Note in the docstring, as `schedule_conflicts` does, that `NOMINAL_JOB_LENGTH` is a placeholder, not a measurement. |
+| **Batches move whole** | S4's rule, not S7's refusal. S7 refused batches because a *swap* between N rows and one is arithmetic with no answer; a move has an answer — every row of the visit takes the same new start, each keeping its own duration. Every sibling must hold `expected` too, so a batch half-moved by someone else refuses rather than splitting (verbatim `confirm_appointment`'s loop). `schedule_row.html` gains `data-batch-id`. |
+| **No cross-day or cross-tech guard** | Pushing a job to Friday **is** the motion. The service never touches `technician` — a cross-tech drop is a *dispatch* (S14). |
+| **Refusal table** | unparseable / naive `expected` → **409** "Reload the schedule and try again."  ·  row gone or other tenant → **404** "That job is no longer here."  ·  row count ≠ 1, or any sibling drifted → **409** "This job's time changed while you were looking at it."  ·  status left `BOOKABLE_STATUSES` (pre-checked under the lock, for a specific sentence) → **400** "Only open jobs can be moved — that one is completed."  ·  no tenant → **403**. `expected` is folded into the `.update()` `WHERE` alongside `tenant` and `queue_status__in`; row-count **is** the optimistic lock. |
+| **Build — the endpoint** | `POST /tech/schedule/move/` → `views/schedule.py::move_appointment_view`, name `schedule_move`. Same JSON shape as its siblings, in-body auth via `_resolve_viewer`, `sees_whole_shop` required. Return the moved row's new time **and** freshly computed `day.conflicts` / `day.load` (`annotate_conflicts` + `technician_load` over the affected tech's day) — that is what lets S12 repaint every row's conflict chip and the capacity chip without a reload. |
+| **Build — first consumer is deliberately NOT drag** | The time block on a booked row becomes a real control that edits in place: `<input type="time">` for the start, an optional end, **and a `<input type="date">`** so moving a job straight onto another day is one control rather than a round trip through an unscheduled limbo (Drake's call, 2026-08-25). Enter or blur commits, Escape cancels. This proves the write path with a UI that is keyboard-reachable and fully testable **before** S12 moves the layout underneath it. **Use `type="time"` / `type="date"`, never `datetime-local`** — a dynamically inserted `datetime-local` never gets flatpickr (the base script runs once on `DOMContentLoaded`) and, until S9, would inherit the prefill bug. |
+| **Notifications** | Two siblings in `services/assignments.py` — `notify_appointment_moved(job, previous_start, *, job_count=1, actor_user=None)` and, if/when unscheduling is exposed, `notify_appointment_cleared(...)`. Both reuse the existing `job_rescheduled` template (category `assignment`, priority MEDIUM) with a different lead: **no new template, no migration, no new preference field.** Keep `notify_appointment_set`'s guards — skip when the actor is the assigned tech, skip outside `NOTIFIABLE_STATUSES`, and remember `TechnicianNotification.repair` is NULL for a replacement. Fire on `transaction.on_commit`. |
+| **Tests** | New `tests/test_fieldops_s11.py`, mirroring `tests/test_fieldops_s7.py` — including its two habits: the **money guard** (put both jobs on a live invoice; assert `cost`, `tax_amount` and invoice totals identical before and after) and `captureOnCommitCallbacks` around every POST. Cover: arbitrary time same day; a different day; window duration preserved; NULL end stays NULL; explicit `end_time`; a batch moves whole; a batch with one drifted sibling refuses; stale `expected` → 409; COMPLETED → 400; other tenant → 404; non-manager → 403 as JSON. |
+| **Deliberately not done** | Drag (S12). Cross-technician moves (S14). Insert-and-cascade reordering. Customer-facing "your time moved" notices — a product decision, not a side effect (S4's rule). An `unschedule` gesture in the UI: Drake's answer was **"straight onto another day"**, no limbo. Build `unschedule_appointment` in the service if it falls out for free, but do not surface it. |
+| **Notes** | *(fill in when done)* |
+
+## S12 · The ordered day list + drag to move — TODO
+
+| Field | Value |
+|---|---|
+| **Goal** | The schedule becomes one ordered day list you can drag; **both** gestures — move and swap — show what they are about to do before they do it, and what they did after. |
+| **Size** | L (3–5d) |
+| **Depends on** | S11 (the move endpoint). S10 is not a hard dependency but ships the `+ Add job` button this layout wants. |
+| **Why it matters** | §0 finding 2. The reported bug — *"the swap feature doesn't even swap them on the UI"* — is not in `schedule_swap.py`, which is correct and well tested. It is that the page reloads to confirm, so success and every flavour of refusal look identical. |
+| **Layout** | One day, one ordered list: `⠿  8:00a  Jones — Furnace  ✎`. The `Unscheduled (N)` collapsible drawer moves to the **bottom** (today's amber "Needs scheduling" rail is above the day; the backlog belongs below it). With a one-person roster the list is flat, no technician header. With more than one tech it groups under technician headers exactly as today, keeping `data-swap-group` scoping, the S8 hours chip and the capacity chip — see **Appendix C** before simplifying anything away. |
+| **Two gestures, visually distinct — this is how swap survives and gets better** | **Drop *between* two rows = move** (S11's endpoint): an insertion caret appears between the rows and prints the time it will land on — `→ 10:30 AM`. **Drop *onto* a row = swap** (S7's endpoint, unchanged): the whole target row highlights instead, and the caption names whose times trade. Caret-vs-highlight is what makes two gestures on one list guessable, and both now get the same feedback model. **Drake's call, 2026-08-25: keep swap, improve it.** |
+| **The drop rule** *(Drake's choice: slot into the gap, keep its length)* | With `prev`/`next` the neighbouring rows, `end_of(r) = r.scheduled_window_end \|\| r.scheduled_for + 1h`, and `own` = the dragged job's own duration: **(1)** between two rows → `end_of(prev)` — butt up against the job above; **(2)** at the top → `next.scheduled_for − own` — finish when the next one starts, with no clamp to opening hours (this app flags, it never blocks, and `describe_outside_hours` will say so); **(3)** at the bottom → `end_of(prev)`, unbounded; **(4)** empty day → the tech's declared start (`working_hours.hours_on`), else 08:00 local. |
+| **…then clamp, then snap** | The server re-sorts by `(scheduled_for, pk)`, so the result must land **strictly between the neighbours' starts** or the row renders somewhere other than where it was dropped: `new_start = snap5(clamp(preferred, prev.start + 1min, next.start − 1min))`, skipping the 5-minute snap when the window is narrower than that. **No cascade** — nothing below moves; rewriting times the shop already promised customers is what S7 ruled out and nothing has changed. If `upper < lower` (two neighbours booked within a minute of each other) **refuse in the browser with the reason** — *"Those two are at the same time; there's no room between them. Set a time on this job instead."* — and open S11's inline editor on the dragged row. The one unsolvable geometry becomes a next action. |
+| **Where the arithmetic lives** | **The client computes the time; the server writes what it is told.** `move_appointment` stays a pure primitive with no knowledge of neighbours — same shape as `confirm_appointment`, and independently testable. A stale neighbour can at worst produce a slightly-off time, which the reconcile step then states truthfully in the toast; `expected` still guards the moved row. Accept that trade rather than making the primitive impure for a rounding error. |
+| **Build — the feedback model** | New `static/js/schedule_move.js` (plain IIFE, `'use strict'`, event delegation, `window.UI` only — **`ui.js` is not modified**; S7 already established that an Undo toast means an interactive control inside an `aria-live` region). **(a) Show the target before the drop** — the caret prints the landing time, and turns red printing the reason when the drop is refused. This is the single biggest cure for "did anything happen?", because the answer is visible *before* the commit. **(b) `refuse()` runs on every dragover and again on drop**, so a near-miss gets a sentence instead of today's silence; a refused drop animates the row back over ~150ms so the refusal is *seen*, not just read. **(c) Optimistic move, then reconcile** — snapshot `{parent, nextSibling, timeHTML, dataset}`, move the node, mark `.schedule-row-pending`, POST; on success repaint the row's time from the response and **rewrite `data-scheduled-for`** (this is what keeps the next drag's `expected` honest), then repaint every row's conflict chips and the header capacity chip from `day.conflicts` / `day.load`. **No reload.** **(d) On refusal** restore from the snapshot and toast. **(e) On 409** restore, then `UI.confirm({title: "The schedule changed", confirmLabel: "Reload"})` — a 409 gets an *action* without touching shared `ui.js`. |
+| **Two carried-over defects to fix while here** | The in-flight guard becomes a **`Set` of job keys**, not the module-level `busy` flag that `schedule_swap.js` and `schedule_dispatch.js` both use — that one blocks a second quick drag on an unrelated row. And keep the **content-type check before `res.ok`**, verbatim (`schedule_swap.js:113-120`). |
+| **Progressive enhancement** | Nothing is drag-only. The time block stays S11's real control, so a JS failure degrades to inline editing rather than dead-ending. Handles stay visible (reveal-on-hover does not exist on a tablet) and 44px. |
+| **Tailwind** | `.schedule-row-pending`, the caret classes and any class composed in JS must be added to `safelist` in `tailwind.config.js` — the existing `swap-row-*` entries are the precedent — then `./scripts/build_css.sh` and **commit `static/css/app.css`**. |
+| **Acceptance criteria** | Dragging a job between two others lands it at the time the caret promised, with the list already in the right order and no reload. Dragging one row **onto** another trades their times **on screen**. A refused drop puts the row back where it started and says why. A near-miss says why. A 409 offers a reload. Conflict chips and the capacity chip are correct afterwards without a refresh. The whole thing works with a finger, and the page still scrolls. |
+| **Tests** | New `tests/test_fieldops_s12.py` for the server-visible half (row markup carries `data-batch-id` / `data-window-end`; the day view renders the drawer at the bottom; a one-tech roster renders no technician header). The drop arithmetic is client-side — keep it in one pure function and, if a JS test harness still does not exist, **write the rule's table of cases into this block's Notes and assert them by hand in step 8 of the verification recipe.** `tests.test_mobile_touch_targets` and `tests.test_view_transitions` must stay green. |
+| **Decision needed from Drake during this session** | With move, swap, book and dispatch all writing `scheduled_for`, the only audit trail is still S7's log line. **Build a `ScheduleChange` row (actor, job, old, new) now, or carry the debt one more session?** S7's Notes name exactly this moment as the right one to decide. |
+| **Deliberately not done** | Insert-and-cascade. A week or month grid — Drake picked the ordered list on purpose. Multi-day jobs. Capacity planning. Replacing `NOMINAL_JOB_LENGTH` with a real duration model. |
+| **Notes** | *(fill in when done)* |
+
+## S13 · Schedule on the dashboard — TODO
+
+| Field | Value |
+|---|---|
+| **Goal** | The owner's dashboard shows what is on deck today and tomorrow, and can take a phone call without navigating first. |
+| **Size** | S (½d) |
+| **Depends on** | Nothing hard. Reads better after S10 (so it can carry the `+ Add job` button) but can be pulled forward at any time. |
+| **Verified current state** *(2026-08-25)* | `grep -n "schedule" templates/saas/owner_dashboard.html` returns **zero hits** — the owner dashboard has no schedule widget and not even a link; the only route in is the navbar (`base_app.html:76`, mobile `:203`). The *technician* dashboard already does this well: "Today's Queue" buckets rows by `job.schedule_bucket` and its "Today" header links to `day_schedule` (`templates/technician_portal/dashboard.html:76-79`, `:126-128`). |
+| **Build** | A Today / Tomorrow card on `owner_dashboard.html`, reusing `includes/schedule_row.html` and the **existing** bucket logic at `views/dashboard.py:363-392` (`overdue` / `today` / `later` / `unscheduled`) rather than writing a third query. Include S10's `+ Add job` button. Empty state says what *is* waiting (`N unscheduled jobs could use a time`), the way `schedule.html:200-217` already does — not just what isn't. |
+| **Tests** | New `tests/test_fieldops_s13.py`: the card renders for an owner, buckets correctly across an overdue / today / tomorrow fixture, and is tenant-scoped. |
+| **Deliberately not done** | A second copy of the day view. Anything writable beyond the quick-add button — the dashboard shows and launches; the schedule page edits. |
+| **Notes** | *(fill in when done)* |
+
+## S14 · Multi-technician moves — TODO
+
+| Field | Value |
+|---|---|
+| **Goal** | On a multi-tech board, dragging a job into **another technician's** list assigns *and* books it in one atomic write with one notification. |
+| **Size** | M (1–2d) |
+| **Depends on** | S11 (the primitive) and S12 (the layout). **Last on purpose** — it generalises a motion that should be proven single-tech first. |
+| **Why it is in the queue at all** | Drake is currently the only tech, so none of this pays off for him today. It is here because **the shops signing up after him are not one-tech shops**, and because S12's layout work is exactly where a single-tech simplification would quietly delete the multi-tech affordances. See **Appendix C**. |
+| **Build** | Teach `parse_dispatch_request` / `apply_dispatch` (`services/dispatch.py`) to accept `date` + `time` and delegate the booking half to `move_appointment` instead of `confirm_appointment`, so a cross-list drop is one `transaction.atomic` assign-and-move emitting a single `notify_assignment_change(..., when=...)` — the pattern `apply_dispatch` already uses — rather than an assignment message followed by a booking message. Gate on `can_assign_work`, which is **strictly narrower** than `is_manager` (`views/schedule.py:74`): a manager who may schedule but not reassign gets the move, not the dispatch, and the refusal sentence already exists ("You can schedule work but not reassign it."). |
+| **Also closes** | S10's known thin spot: a quick-added job assigned to someone else announces itself only through the booking sentence. Threading `when=` through `notify_assignment_change` fixes both callers at once. |
+| **Tests** | New `tests/test_fieldops_s14.py`: cross-tech drop assigns and books atomically; exactly one notification; `can_assign_work=False` is refused as JSON while a same-tech move still succeeds; the optimistic lock on `expected_technician_id` still 409s. |
+| **Deliberately not done** | Auto-assignment by capacity. Route optimisation (S6). Per-tech working-hours enforcement — S8 flags, it does not block, and that stays true. |
+| **Notes** | *(fill in when done)* |
+
+---
+
 # Phase P — Parts (added 2026-08-12 from the sourcing investigation — full findings in Appendix B)
 
 The one-sentence version: **live Mygrant quotes and ordering are real and buildable now** (Mygrant publishes a SOAP web-service API, keyed on the NAGS numbers techs already type, authenticated with the shop's own Mygrant account); **an in-app vehicle→NAGS part lookup is the gated, expensive half** (NAGS data only comes via a negotiated Mitchell license at roughly $60–75/NAGS-user/month market rate, and Mitchell doesn't even provide the VIN→part mapping). P1 deliberately does not depend on P2.
@@ -1452,6 +1692,21 @@ Not a session yet — the blocker is a contract, not code. To show "2024 F-150 w
 
 ## Where this document ends
 
+> **Superseded 2026-08-25 — this section held for one day.** It was written
+> when the last buildable session closed, and its own final test ("what would
+> reopen this document rather than start a new one: anything that is still
+> *the tech finding out where and when*") is what reopened it. Drake used the
+> arc on a real customer call the next morning and it failed him on the
+> surface, not in the services — see §0's *"Scheduling UX — what first real
+> use found"* and sessions **S9–S14**. Everything below is still an accurate
+> description of what S1–S8 delivered; only the sentence "the document no
+> longer implies a next action of its own" is now false.
+>
+> **The lesson worth keeping:** every claim below was true, verified and
+> deployed, and the arc still did not survive first contact with the motion it
+> was built for. *Shipped and deployed is not the same as used.* Nobody had
+> booked a real customer call through this product until 2026-08-25.
+
 *(Written 2026-08-24, when the last buildable session closed. This section is
 the wrap-up: what the arc delivers, what is left, and what would reopen it.)*
 
@@ -1479,6 +1734,7 @@ supplier, a licensing decision, and demand.
 | **P1** · Mygrant quotes + ordering | Steps 3–5 built and dark | Mygrant enabling API onboarding on `C027180-001`. Escalation path is in P1's Notes. |
 | **P2** · Vehicle→NAGS lookup | Backlog | A licensing decision with Mitchell (Appendix B). |
 | **S6** · Routing / ETA / PTO / self-service rescheduling | Backlog by decision | Demand. S3/S5/S8 exist now precisely so a shop can prove it. |
+| **S9–S14** · The scheduling UX arc | **TODO, unblocked** *(added 2026-08-25)* | Nothing. This is the live queue. |
 
 **What would reopen this document rather than start a new one:** anything that
 is still *the tech finding out where and when*. Date-ranged time off, a
@@ -1517,6 +1773,8 @@ blocks a write; all of them are called once per group from
 - **`{% with %}` makes an optional email context key mandatory.** *(S8, 2026-08-24)* Django resolves filter arguments strictly inside `{% with %}`, so `{% with url=base_url|add:action_url %}` raises `VariableDoesNotExist` when `action_url` is absent — the whole email fails to render rather than losing a button. Nineteen notification templates do this. Everything else in these templates is written to the opposite convention (flat context, every optional key guarded by `{% if %}`), which is exactly why it is easy to miss. See N3.
 - **A `gh pr list` "updated" column is not a merge date.** *(S8, 2026-08-24)* Reading it as one put a wrong deploy claim into this document (S5 recorded as merged 08-18 and live; it merged 08-24 and was still undeployed). `gh pr list` prints `updatedAt` by default. Use `git log --first-parent` for the real order and the EB version label for what is actually running — `--json mergedAt` if you want the date from `gh`.
 - **A session's stated dependency applies when the branch is cut, not when the code is written.** *(S8, 2026-08-24)* S8's spec said "S5 must merge first"; its branch was cut from a `main` without S5, and the result was a half-session that shipped the fact with none of its consumers. Nothing in it was wrong and it still had to be finished twice.
+- **A page reload is not feedback.** *(S9–S14 exploration, 2026-08-25)* `schedule_swap.js:130-140` confirms a successful swap with `UI.flash()` + `window.location.reload()`. That reads fine in a code review and is invisible in use: every refusal path — cross-tech, 409, a read-only tenant's HTML redirect, and a near-miss drop that lands between rows and toasts *nothing* — leaves the screen byte-identical to before the gesture. Drake's report was "the swap feature doesn't even swap them on the UI," and the service was correct the whole time. **If a direct-manipulation gesture can be refused, the refusal has to move something on screen.**
+- **A write path the UI never exposes does not exist.** *(2026-08-25)* `confirm_appointment` has been able to set a booked job to an arbitrary new time since S4 — pass the current `scheduled_for` as `expected` and it just works. Nobody could reschedule anything for two months because no template rendered the control on a booked row (`schedule_row.html` gates the date/window form on `{% if triage %}`). Before building a new endpoint, check whether an existing service already does the job and is simply unreachable.
 - **Full suite has ~90–105 pre-existing failures on main.** Compare against a fresh main baseline; never count absolute failures. Another session may share the working tree — print `git branch --show-current` with every run.
 
 ---
@@ -1650,6 +1908,75 @@ Key sources: Mygrant SOAP spec (committed PDF; mirror: aswadtsh.com/wp-content/u
 
 ---
 
+## Appendix C — Multi-technician: what must stay true
+
+*(Added 2026-08-25. Drake's shop currently has exactly one technician — himself —
+so every simplification S12 makes for a one-person roster is correct **for him**
+and wrong for the shops signing up behind him. This appendix is the list of
+things a "just make it simple" pass must not quietly delete. Written down
+because the person deleting them will have a one-tech database in front of them
+and no way to notice.)*
+
+**The shape of the data.** `GlassService.technician` is a **non-nullable FK** —
+there is no unassigned state, so every job always has a name on it, and every
+"assign" is really a *reassign*. That is why `apply_dispatch` refuses a no-op
+(`dispatch.py:210`) and why the row's technician picker defaults to whoever
+already holds the job.
+
+**Three permission levels, not two.** They are genuinely different and the
+difference is load-bearing:
+
+| Level | Resolved by | Can |
+|---|---|---|
+| plain technician | `_resolve_viewer` → `sees_whole_shop = False` | see **only their own** day. Never loads the swap or dispatch scripts at all — there are no handles to find and no endpoint offered. |
+| manager / owner | `is_manager` or tenant admin → `sees_whole_shop = True` | see the whole shop, book times, move times, swap. `can_swap` / `can_book` in the day view are exactly this. |
+| dispatcher | additionally `technician.can_assign_work` (`models.py:82`) → `_can_assign` (`views/schedule.py:74`) | **reassign** work to someone else. Strictly narrower than manager. |
+
+The refusal sentence for the gap between the last two already exists and should
+be reused verbatim: *"You can schedule work but not reassign it."*
+(`views/schedule.py:388-395`). `schedule_row.html:156-158` encodes the same
+split by choosing the row form's endpoint — `schedule_dispatch` when
+`can_assign`, else `schedule_book` — so **neither path is dead code**; a
+one-tech shop simply never exercises the narrower one.
+
+**What the day view does with more than one tech.** `day_schedule` builds
+`groups`, one per **active technician** — including techs with nothing booked,
+so a free person is *visible rather than absent* — and each group carries
+`technician_load(annotate_conflicts(jobs))`. Keep all of it:
+
+- **Per-tech grouping and the `data-swap-group="tech-{pk}"` scope.** This is what
+  stops a swap from silently becoming a reassignment. A cross-list *swap* is
+  refused; a cross-list *move* is a dispatch (S14), not a move.
+- **The S8 hours chip** (`hours_today` / `off_today`). "Nothing scheduled" and
+  "not working" look identical on a board without hours and lead to opposite
+  decisions — one is a gap to fill, the other is a person to leave alone.
+- **The capacity chip**, printed only when `load.over_committed` — "5h of work
+  booked into 4h" is the honest form of a conflict for coarse windows, where
+  plain interval overlap would flag every normal morning.
+- **The roster picker**, which deliberately keeps an **off-duty** tech in the
+  list, marked. A shop with one truck down calls somebody in on their day off,
+  and a picker that omits the person the manager is on the phone with reads as
+  broken.
+- **Conflict chips are informational and never block.** A shop with two people
+  in one truck is allowed to double-book on purpose. `PRECISE_WINDOW_MAX = 2h`
+  (`schedule_conflicts.py:60`) exists because every job booked "MORNING"
+  overlaps every other by construction.
+
+**How S12 is allowed to simplify.** Collapse to a flat list with no technician
+header **when and only when the active roster is one person** — a runtime
+check, not a build-time assumption. The moment a second technician is added the
+headers, the per-tech scoping and the roster picker must come back with no
+migration and no setting. Test both shapes; a one-tech fixture passing is not
+evidence.
+
+**Notifications.** Everything above is why the notify rules are what they are:
+never notify the actor about their own action, notify the *assigned* tech about
+someone else's, and emit **one** message per motion — which is the entire reason
+`apply_dispatch` composes assign + book inside one transaction instead of
+calling two endpoints. S14 extends that to assign + move.
+
+---
+
 ## Document history
 
 | Date | Change |
@@ -1668,3 +1995,4 @@ Key sources: Mygrant SOAP spec (committed PDF; mirror: aswadtsh.com/wp-content/u
 | 2026-08-18 | **P1 onboarding, non-code session.** Owen (Little Rock branch) supplied the Mygrant IT support director's email 2026-08-17; written onboarding request sent (asks: enable API User onboarding on `C027180-001` so Generate Key appears, and confirm whether API Inquiries bill per-search like portal searches). Corrected a standing factual error: **Drake is the account owner** on `C027180-001` — his dad only uses it — so nothing about onboarding needs a third party. 24h of silence prompted the real question, now answered in P1's Considerations: per-shop onboarding is table stakes (every competitor POS works this way and `is_enabled()` keeps it off every other surface), but **the vendor must not be the one making the call** — a shop's own CSR handles this as routine where a cold vendor request has no SLA. Built the Connect card's **"Don't have an API key yet?"** panel (`owner_settings.html` Parts tab, open until a key is saved): who to call, what to ask for (their account number pre-filled), where Generate Key lives, that its *absence* means the rep hasn't finished, and a nudge to ask about search billing on the same call. No new CSS (every class already compiled). Queued for the first Mygrant call that connects: **does Mygrant have an integrator/partner listing for POS vendors** — worth more than our own key. Escalation if silent by ~2026-08-24 is Owen/the sales rep, not IT again. |
 | 2026-08-19 | **S8 specced (doc-only session).** Promoted S6 backlog item 4 — technician working hours — into a full session, pressure-tested against the real code the way S4 and S7 were before their builds. The finding that reframes it: `Technician.working_hours` has existed since migration `0007` and is completely inert (`default=dict`, no schema, no validator, **zero readers and zero writers** outside a collapsed Django-admin fieldset), so every production row holds `{}` — which means the session's first rule is that empty means *undeclared*, not *unavailable*. Recommended shape adopts the convention the admin help text already documents rather than inventing a better one. Named the three places it plugs in (`schedule_conflicts.annotate_conflicts` / `technician_load`, the board's roster, and S3's "Nothing scheduled" line, which should read "Off today"), and the two places it must **not** touch: `update_team_member` (three forms POST it, absent checkbox = false, so a field added there is silently erased) and auto-assignment (hours as a filter re-creates the CODE-160 dead end every evening and weekend). Recorded a live pre-existing bug found on the way: `_adjust_to_business_hours` compares **UTC** hours, so review-request emails clamp to 04:00–14:00 Central and effectively send at ~4 AM local — the fix belongs to the review system, S8's job is not to inherit it. Two traps added. |
 | 2026-08-24 | **S8 executed and the document wrapped up.** Merged the 2026-08-19 foundation branch (which had been cut before S5 landed and therefore shipped `services/working_hours.py`, the model delegates and the Settings → My Team editor with *no* consumers) and built the missing board half on top of a `main` that now has S5: a fourth conflict chip ("Outside Marcus's hours" / "Marcus is off Saturdays"), declared hours as `technician_load()`'s denominator in place of the span the jobs happen to occupy, "Off today" where the board used to say "Nothing scheduled", and off-duty marks in the dispatch picker that never remove anybody. 51 tests, no migration, no CSS rebuild. Also trued up an S4 assertion that #200 had broken hours earlier the same morning. **Corrected a deploy claim this doc had wrong:** S5 merged on 08-24, not 08-18, and is still undeployed — a `gh pr list` "updated" column is not a merge date, and that is now a trap. Rewrote the deploy state as a table of four merged-undeployed PRs (#197/#198/#200/#201), refreshed **N3** against post-#200 code with three concrete defects to start from (the `{% with %}`/`action_url` fragility that breaks the smoke set, the UTC review-hours bug, `repair_request_submitted`'s dead channel map), retired S6 backlog item 4 into S8, and added a closing **"Where this document ends"** section: what is left, what gates each item, and what would reopen this doc rather than start a new one. |
+| 2026-08-25 | **Phase S reopened by first real use — S9–S14 specced (doc-only session).** Drake took a customer call and booked it through RS Systems instead of a note in his phone; the machinery held and the surface did not. Recorded the diagnosis in a new §0 section (*"Scheduling UX — what first real use found"*) so no future session re-derives it: **there is no reschedule path in the product at all** (no endpoint, view or service; a booked row renders only the technician picker, and the only non-form writer refuses cross-day, cross-tech and batches), **swap confirms itself with a page reload** so every refusal is invisible, **a booked REQUESTED job vanishes from both lists** (`DAY_STATUSES` excludes REQUESTED while `BOOKABLE_STATUSES` includes it), and **`base_app.html:263-285` pre-fills every empty `datetime-local` on every page**, which makes `job_form.html`'s "leave blank to keep this job unscheduled" impossible to honour. Six sessions queued: S9 prefill fix (first, because everything after it moves `scheduled_for`), S10 quick-add from the schedule (the one Drake asked for — extracts `job_create`'s inline logic into `services/quick_job.py` rather than duplicating it), S11 the missing `move` primitive + inline time/date edit, S12 the ordered day list with drag-to-move, S13 dashboard schedule card, S14 multi-tech moves. **Decisions taken with Drake:** quick-add from the schedule page; ordered day list, not a calendar grid; a drop slots into the gap and keeps its own length; **swap is kept and improved, not retired**; moving a job off a day means moving it *straight onto another day*, with no unscheduled limbo. Added **Appendix C — Multi-technician** because Drake is a one-tech shop and S12's simplifications are exactly where the multi-tech affordances would quietly die. Two traps added. |
