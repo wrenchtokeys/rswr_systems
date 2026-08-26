@@ -1776,6 +1776,81 @@ class Repair(GlassService):
         return True, "Reward successfully applied to repair"
 
 
+class RepairPhotoCrop(models.Model):
+    """
+    A technician-tapped crop of a repair damage photo.
+
+    PURPOSE (durable): these crops are training data for a future
+    "repairable vs not" classifier — each crop box plus its repair's
+    eventual outcome is one labeled example (see
+    docs/strategy/PHOTO_ML_SESSIONS.md). Coordinates are stored as
+    percent of the photo's natural, EXIF-upright dimensions so the
+    dataset can be regenerated from the untouched original at any time.
+    Originals are never modified; the crop is a separate derived file.
+    """
+    SOURCE_FIELD_CHOICES = [
+        ('damage_photo_before', 'Before photo'),
+        ('damage_photo_after', 'After photo'),
+        ('customer_submitted_photo', 'Customer-submitted photo'),
+    ]
+
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='repair_photo_crops',
+        null=True,
+        blank=True,
+    )
+    repair = models.ForeignKey(
+        'Repair',
+        on_delete=models.CASCADE,
+        related_name='photo_crops',
+    )
+    source_field = models.CharField(max_length=32, choices=SOURCE_FIELD_CHOICES)
+
+    # Tap point, percent (0-100) of the natural EXIF-upright dimensions.
+    center_x_pct = models.FloatField()
+    center_y_pct = models.FloatField()
+
+    # The pixel box actually cropped (upright coords) and the dimensions it
+    # was measured against. Null when the source image couldn't be opened —
+    # the tap is still recorded so the crop can be retried later.
+    crop_left = models.PositiveIntegerField(null=True, blank=True)
+    crop_top = models.PositiveIntegerField(null=True, blank=True)
+    crop_right = models.PositiveIntegerField(null=True, blank=True)
+    crop_bottom = models.PositiveIntegerField(null=True, blank=True)
+    natural_width = models.PositiveIntegerField(null=True, blank=True)
+    natural_height = models.PositiveIntegerField(null=True, blank=True)
+
+    cropped_image = models.ImageField(
+        upload_to='repair_photos/crops/',
+        null=True,
+        blank=True,
+    )
+    created_by = models.ForeignKey(
+        'Technician',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='photo_crops',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = TenantManager()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['repair', 'source_field'],
+                name='uniq_photocrop_per_repair_field',
+            ),
+        ]
+
+    def __str__(self):
+        return f"Crop of {self.get_source_field_display().lower()} for repair #{self.repair_id}"
+
+
 # =============================================================================
 # REPLACEMENT MODEL
 # =============================================================================

@@ -419,7 +419,13 @@ def job_create(request):
 
     if request.method == 'POST':
         # request.FILES: the "More details" panel takes damage photos, so this
-        # form is multipart now.
+        # form is multipart now. HEIC is converted before the form sees the
+        # files, same as create_repair and the batch views.
+        from common.utils import convert_heic_to_jpeg
+        for _photo_field in ('damage_photo_before', 'damage_photo_after'):
+            if _photo_field in request.FILES:
+                request.FILES[_photo_field] = convert_heic_to_jpeg(
+                    request.FILES[_photo_field])
         form = QuickJobForm(
             request.POST, request.FILES, tenant=tenant, allowed_types=allowed_types,
         )
@@ -548,6 +554,14 @@ def job_create(request):
             if data['already_completed']:
                 service._skip_assignment_notifications = True
             service.save()
+
+            if data['service_type'] == 'repair':
+                from apps.technician_portal.services.photo_crops import (
+                    process_tap_coordinates,
+                )
+                process_tap_coordinates(
+                    service, request.POST, technician=technician,
+                )
 
             # Extra charges (trip fee etc.) ride along on the ticket and
             # invoice as their own lines. Must exist before complete/invoice

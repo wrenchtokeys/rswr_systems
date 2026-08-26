@@ -1,0 +1,156 @@
+"""
+Tap-to-crop for repair damage photos.
+
+The technician taps the break on the photo in the upload flow; the tap
+arrives as crop_x_<field>/crop_y_<field> POST values (percent of the
+displayed image, which browsers render EXIF-upright). This module crops a
+square around that point and stores it on a RepairPhotoCrop row alongside
+the untouched original.
+
+Everything here fails open: a crop must never block saving a job in the
+field. See docs/strategy/PHOTO_ML_SESSIONS.md for the arc this feeds
+(these crops are training data for a repairable-vs-not classifier).
+"""
+import logging
+from io import BytesIO
+
+from django.core.files.base import ContentFile
+
+from PIL import Image, ImageOps
+
+logger = logging.getLogger(__name__)
+
+# Square crop: side = CROP_FRACTION of the shorter image dimension, but at
+# least MIN_CROP_PX, clamped to the image. Generous on purpose — a loose
+# crop still trains; a tight one that misses the break doesn't.
+CROP_FRACTION = 0.35
+MIN_CROP_PX = 300
+CROP_JPEG_QUALITY = 90
+
+SOURCE_FIELDS = (
+    'damage_photo_before',
+    'damage_photo_after',
+    'customer_submitted_photo',
+)
+
+
+def process_tap_coordinates(repair, post_data, technician=None):
+    """Create crops for whichever crop_x_/crop_y_ pairs are in the POST.
+
+    Deliberately touches Pillow only when a tap was actually made, so photo
+    uploads without a tap never open the image server-side.
+    """
+    for source_field in SOURCE_FIELDS:
+        raw_x = post_data.get(f'crop_x_{source_field}', '')
+        raw_y = post_data.get(f'crop_y_{source_field}', '')
+        if raw_x == '' or raw_y == '':
+            continue
+        try:
+            center_x_pct = min(max(float(raw_x), 0.0), 100.0)
+            center_y_pct = min(max(float(raw_y), 0.0), 100.0)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Ignoring unparseable tap coords for repair %s %s: %r/%r",
+                repair.pk, source_field, raw_x, raw_y,
+            )
+            continue
+        try:
+            save_crop_for(
+                repair, source_field, center_x_pct, center_y_pct,
+                technician=technician,
+            )
+        except Exception:
+            logger.exception(
+                "Tap-to-crop failed for repair %s %s", repair.pk, source_field,
+            )
+
+
+def save_crop_for(repair, source_field, center_x_pct, center_y_pct,
+                  technician=None):
+    """Crop a square around the tap point and upsert the RepairPhotoCrop.
+
+    Re-tapping the same photo replaces the previous crop (latest wins —
+    history would only add noise to the dataset). Returns the crop row, or
+    None when there is no photo on the field.
+    """
+    from apps.technician_portal.models import RepairPhotoCrop
+
+    photo = getattr(repair, source_field, None)
+    if not photo:
+        return None
+
+    defaults = {
+        'tenant': repair.tenant,
+        'center_x_pct': center_x_pct,
+        'center_y_pct': center_y_pct,
+        'crop_left': None,
+        'crop_top': None,
+        'crop_right': None,
+        'crop_bottom': None,
+        'natural_width': None,
+        'natural_height': None,
+        'created_by': technician,
+    }
+
+    content = None
+    try:
+        with photo.open('rb'):
+            img = Image.open(photo)
+            # Browsers display per EXIF orientation and the tap happened on
+            # that upright rendering — measure and crop upright too.
+            img = ImageOps.exif_transpose(img)
+            width, height = img.size
+            box = _crop_box(width, height, center_x_pct, center_y_pct)
+            cropped = img.crop(box).convert('RGB')
+            buffer = BytesIO()
+            cropped.save(buffer, format='JPEG',
+                         quality=CROP_JPEG_QUALITY, optimize=True)
+            content = ContentFile(buffer.getvalue())
+            defaults.update({
+                'crop_left': box[0],
+                'crop_top': box[1],
+                'crop_right': box[2],
+                'crop_bottom': box[3],
+                'natural_width': width,
+                'natural_height': height,
+            })
+    except Exception:
+        # Unreadable image (fake test bytes, truncated upload, exotic
+        # format): keep the tap on record so the crop can be retried.
+        logger.exception(
+            "Could not crop %s of repair %s; recording tap only",
+            source_field, repair.pk,
+        )
+
+    crop, created = RepairPhotoCrop.objects.update_or_create(
+        repair=repair, source_field=source_field, defaults=defaults,
+    )
+    if not created and crop.cropped_image:
+        crop.cropped_image.delete(save=False)
+        crop.cropped_image = None
+    if content is not None:
+        crop.cropped_image.save(
+            f'repair{repair.pk}_{source_field}.jpg', content, save=True,
+        )
+    else:
+        crop.save(update_fields=['cropped_image'])
+    return crop
+
+
+def delete_crops_for(repair, source_field):
+    """Remove the crop (row and file) when its source photo is deleted."""
+    for crop in repair.photo_crops.filter(source_field=source_field):
+        if crop.cropped_image:
+            crop.cropped_image.delete(save=False)
+        crop.delete()
+
+
+def _crop_box(width, height, center_x_pct, center_y_pct):
+    """Square box around the tap, shifted (not shrunk) to stay in bounds."""
+    side = min(max(MIN_CROP_PX, int(CROP_FRACTION * min(width, height))),
+               min(width, height))
+    center_x = int(center_x_pct / 100.0 * width)
+    center_y = int(center_y_pct / 100.0 * height)
+    left = min(max(center_x - side // 2, 0), width - side)
+    top = min(max(center_y - side // 2, 0), height - side)
+    return (left, top, left + side, top + side)
