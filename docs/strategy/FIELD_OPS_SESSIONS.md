@@ -24,7 +24,7 @@ This file is the **work queue** for making field operations real: a technician f
 | S — Where and when | S7 · Drag to swap two appointments | M | DONE (2026-08-17, **PR #192**) |
 | S — Where and when | S8 · Technician working hours | M | DONE + DEPLOYED (2026-08-24, **PR #201**, live 2026-08-24 22:47) — built in two halves, see Notes |
 | S — Where and when | S9 · "Leave it blank" means unscheduled | S | **BUILT 2026-08-25** (branch `fix/fieldops-s9-blank-means-unscheduled`) — shipped as an opt-in attribute, not the deletion the spec called for; see Notes |
-| S — Where and when | S10 · Quick-add a job from the schedule | M | TODO |
+| S — Where and when | S10 · Quick-add a job from the schedule | M | **BUILT 2026-08-25** (branch `feat/fieldops-s10-quick-add`) — also fixes the REQUESTED-vanishing bug; see Notes |
 | S — Where and when | S11 · The move primitive + inline time/date edit | M | TODO |
 | S — Where and when | S12 · The ordered day list + drag to move | L | TODO |
 | S — Where and when | S13 · Schedule on the dashboard | S | TODO |
@@ -1611,7 +1611,7 @@ retired** — Drake's call, 2026-08-25.
   block runs exactly once.
 
 
-## S10 · Quick-add a job from the schedule — TODO
+## S10 · Quick-add a job from the schedule — BUILT 2026-08-25
 
 | Field | Value |
 |---|---|
@@ -1629,7 +1629,59 @@ retired** — Drake's call, 2026-08-25.
 | **Acceptance criteria** | From `/tech/schedule/`, an owner adds a brand-new individual and books them for tomorrow morning in one submit, and the row appears without a reload. The job is priced **identically** to one made through `/tech/jobs/new/` — asserted field-by-field on `cost`, `tax_amount` and `queue_status` against a form-created twin. A plan-limited tenant is refused as JSON with the usual upgrade copy. A duplicate name returns suggestions; a confirmed retry creates the second person. A read-only tenant's POST is caught by the content-type check, not a parse error. A non-manager is refused. |
 | **Tests** | New `tests/test_fieldops_s10.py`. **Plus, against a `main` baseline, the suites that guard the extracted logic:** `tests.test_unified_job_create`, `tests.test_job_form_parity`, `tests.test_quick_job_invoice`, `tests.test_auto_approve_shop_created`. Wrap POSTs in `captureOnCommitCallbacks` or the notification path silently does not run and the test passes anyway (S7's trap). |
 | **Deliberately not done** | Completing or invoicing from the modal (`job_create` keeps `send_and_invoice`). Photos, insurance, extra charges — the modal is who/what/when; everything else is the ticket's job. Editing an existing job from the modal. |
-| **Notes** | *(fill in when done)* |
+
+**Notes** *(2026-08-25)*
+
+- **What shipped matches the spec.** `services/quick_job.py` holds
+  `allowed_service_types`, `shop_tax_state`, `resolve_technician`,
+  `resolve_customer`, `build_job`, `save_extra_charges` and `create_job`;
+  `job_create` is a caller that translates `QuickJobError` back into
+  `messages` + redirect or the duplicate re-render. `POST
+  /tech/schedule/quick-job/` + `includes/quick_job_modal.html` +
+  `static/js/schedule_quick_add.js`.
+- **`_save_extra_charges` could not just move.** It has four callers outside
+  `views/jobs.py` (`views/repairs.py` twice, `apps/saas/views.py` twice) that
+  import it by name. It keeps its name and delegates to the service, because
+  the entire point of the extraction was to not have two copies.
+  `_resolve_technician_for_create` had no other callers and is gone.
+- **The extraction is the risk, so it is asserted directly.**
+  `test_priced_identically_to_the_form` creates the same job through
+  `/tech/jobs/new/` and through the endpoint and compares `cost`,
+  `tax_amount`, `tax_rate`, `queue_status`, `no_tax` and `technician_id`
+  field-by-field. If a future session changes one path, that test fails rather
+  than the shop discovering it on an invoice.
+- **The REQUESTED bug reversed an existing S3 test, and that was correct.**
+  `test_requested_jobs_never_on_the_sheet` used a fixture with
+  `status='REQUESTED'` **and** `scheduled=local_day_at(11)` — the exact
+  vanishing case. Its comment justified itself with "a customer request holds
+  … even a wished-for time", which was a pre-S4 belief: S4 moved the wish to
+  `preferred_date`/`preferred_window` and the customer portal never writes
+  `scheduled_for`. So that state can only mean somebody in the shop booked it.
+  The test is now split — `test_unscheduled_requested_jobs_are_not_on_the_sheet`
+  keeps S3's real rule, and `test_requested_job_with_a_booked_time_IS_on_the_sheet`
+  encodes the new one.
+- **Browser-verified, and it caught a defect the tests could not.** Added a
+  customer who did not exist onto an empty day (landed 8:00 AM–12:00 PM), then
+  a second for an existing fleet account (1:00–2:30 PM) — inserted in time
+  order with **no page reload**, proven by a marker set on `window` surviving.
+  The defect: the service-type buttons only got their selected styling on
+  click, so a freshly opened modal showed neither chosen while a repair was
+  what would be submitted. The selected classes now live in the markup.
+- **One deliberate fallback:** on an *empty* day there is no
+  `[data-swap-group]` container to insert into (the page is showing its empty
+  state), so the JS falls back to `UI.flash()` + reload. S12 removes the need
+  for it by giving the day a list container even when empty.
+- **Known thin spot for multi-tech shops:** the assignment notification is
+  suppressed (`notify_assignment=False`) so one motion sends one message, and
+  the booking notification carries the news. For a shop where the creator is
+  not the assignee, that message names the time but does not say "this is
+  yours". **S14 fixes it** by threading `when=` into
+  `notify_assignment_change`, which `apply_dispatch` already does.
+- Suite: 63 targeted tests green (S10's 16, S3, `test_unified_job_create`,
+  `test_job_form_parity`), plus S1/S4/S5/S7/S8, `test_quick_job_invoice`,
+  `test_auto_approve_shop_created`, the UI guards and the smoke set. No
+  migration. `app.css` rebuilt (new modal classes) and committed.
+
 
 ## S11 · The move primitive + inline time/date edit — TODO
 
@@ -1666,6 +1718,7 @@ retired** — Drake's call, 2026-08-25.
 | **The drop rule** *(Drake's choice: slot into the gap, keep its length)* | With `prev`/`next` the neighbouring rows, `end_of(r) = r.scheduled_window_end \|\| r.scheduled_for + 1h`, and `own` = the dragged job's own duration: **(1)** between two rows → `end_of(prev)` — butt up against the job above; **(2)** at the top → `next.scheduled_for − own` — finish when the next one starts, with no clamp to opening hours (this app flags, it never blocks, and `describe_outside_hours` will say so); **(3)** at the bottom → `end_of(prev)`, unbounded; **(4)** empty day → the tech's declared start (`working_hours.hours_on`), else 08:00 local. |
 | **…then clamp, then snap** | The server re-sorts by `(scheduled_for, pk)`, so the result must land **strictly between the neighbours' starts** or the row renders somewhere other than where it was dropped: `new_start = snap5(clamp(preferred, prev.start + 1min, next.start − 1min))`, skipping the 5-minute snap when the window is narrower than that. **No cascade** — nothing below moves; rewriting times the shop already promised customers is what S7 ruled out and nothing has changed. If `upper < lower` (two neighbours booked within a minute of each other) **refuse in the browser with the reason** — *"Those two are at the same time; there's no room between them. Set a time on this job instead."* — and open S11's inline editor on the dragged row. The one unsolvable geometry becomes a next action. |
 | **Where the arithmetic lives** | **The client computes the time; the server writes what it is told.** `move_appointment` stays a pure primitive with no knowledge of neighbours — same shape as `confirm_appointment`, and independently testable. A stale neighbour can at worst produce a slightly-off time, which the reconcile step then states truthfully in the toast; `expected` still guards the moved row. Accept that trade rather than making the primitive impure for a rounding error. |
+| **Use the house helpers, don't hand-roll** *(added 2026-08-25)* | `main` gained `static/js/optimistic.js` and `static/js/list-loading.js` with UI\_MAGIC S11 (PR #210) **after** this session was specced, and `CLAUDE.md` now documents both. Optimistic rows opt in with `data-optimistic-row="<type>-<id>"` (prefix the type — a repair and a replacement share ids), repaint their pill through `{% status_badge … optimistic=True %}`, and roll back via `Optimistic.rollback`, which restores saved `innerHTML` — **so a row's handlers must be inline `onclick` attributes, not `addEventListener` bindings**, or they die on rollback. List skeletons are traced, never authored: add `data-skeleton-list` to the row container on **both** breakpoint twins. Read that section of `CLAUDE.md` before writing the snapshot/revert code below; it may already be written. |
 | **Build — the feedback model** | New `static/js/schedule_move.js` (plain IIFE, `'use strict'`, event delegation, `window.UI` only — **`ui.js` is not modified**; S7 already established that an Undo toast means an interactive control inside an `aria-live` region). **(a) Show the target before the drop** — the caret prints the landing time, and turns red printing the reason when the drop is refused. This is the single biggest cure for "did anything happen?", because the answer is visible *before* the commit. **(b) `refuse()` runs on every dragover and again on drop**, so a near-miss gets a sentence instead of today's silence; a refused drop animates the row back over ~150ms so the refusal is *seen*, not just read. **(c) Optimistic move, then reconcile** — snapshot `{parent, nextSibling, timeHTML, dataset}`, move the node, mark `.schedule-row-pending`, POST; on success repaint the row's time from the response and **rewrite `data-scheduled-for`** (this is what keeps the next drag's `expected` honest), then repaint every row's conflict chips and the header capacity chip from `day.conflicts` / `day.load`. **No reload.** **(d) On refusal** restore from the snapshot and toast. **(e) On 409** restore, then `UI.confirm({title: "The schedule changed", confirmLabel: "Reload"})` — a 409 gets an *action* without touching shared `ui.js`. |
 | **Two carried-over defects to fix while here** | The in-flight guard becomes a **`Set` of job keys**, not the module-level `busy` flag that `schedule_swap.js` and `schedule_dispatch.js` both use — that one blocks a second quick drag on an unrelated row. And keep the **content-type check before `res.ok`**, verbatim (`schedule_swap.js:113-120`). |
 | **Progressive enhancement** | Nothing is drag-only. The time block stays S11's real control, so a JS failure degrades to inline editing rather than dead-ending. Handles stay visible (reveal-on-hover does not exist on a tablet) and 44px. |
