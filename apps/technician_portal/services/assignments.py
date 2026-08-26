@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 # Statuses in which telling a tech "this job is now yours" makes sense.
 NOTIFIABLE_STATUSES = ('PENDING', 'APPROVED', 'IN_PROGRESS')
 
+# The tail of every unassigned-queue alert. Batch de-duplication matches on
+# it, so the two must stay in step — see notify_needs_assignment.
+_WAITING_PHRASE = 'is waiting to be assigned'
+
 
 def _is_replacement(job):
     from apps.technician_portal.models import Replacement
@@ -401,6 +405,12 @@ def notify_assignment_from_signal(job, old_technician, old_status, created,
         return
     if getattr(job, '_skip_assignment_notifications', False):
         return
+    # A job in the Unassigned queue carries a provisional technician nobody
+    # chose.  Telling them "you have been assigned" would be a lie the
+    # manager then has to walk back — and the REQUESTED → APPROVED
+    # auto-accept below is exactly where that fired.  (CODE-279)
+    if getattr(job, 'needs_assignment', False):
+        return
 
     changed = (job.technician is not None
                and (old_technician is None
@@ -425,6 +435,62 @@ def notify_assignment_from_signal(job, old_technician, old_status, created,
         assigned_by=assigned_by,
         force_notify_new=accepted,
     )
+
+
+def notify_needs_assignment(job):
+    """Tell the shop's managers a job is sitting in the Unassigned queue.
+
+    The strategy declined to pick anyone, so the usual "you have been
+    assigned" notification is suppressed — which would leave the job with
+    nobody told at all.  Managers get a dashboard row linking to the job
+    instead, so Manual means "waiting on you", not "quietly lost".
+    (CODE-279)
+
+    Dashboard rows only: the bell/email path needs a NotificationTemplate
+    row, and there is no unassigned-queue template seeded yet.
+    """
+    from apps.technician_portal.models import Technician, TechnicianNotification
+
+    tenant = job.tenant
+    if not tenant:
+        return
+
+    # A six-break batch is one customer request, not six things to decide.
+    # Assigning any break assigns the batch, so the first row covers it —
+    # this mirrors notify_bulk_assignment's one-summary rule.
+    batch_id = getattr(job, 'repair_batch_id', None)
+    if batch_id is not None and TechnicianNotification.objects.filter(
+            repair_batch_id=batch_id, read=False,
+            message__contains=_WAITING_PHRASE).exists():
+        return
+
+    managers = Technician.objects.filter(
+        tenant=tenant, is_manager=True, is_active=True,
+    )
+
+    context = _assignment_context(job)
+    is_repair = not _is_replacement(job)
+    message = (
+        f"{_job_label(job)} #{job.pk} for {context['customer_name']} - "
+        f"Unit {context['unit_number']} {_WAITING_PHRASE}"
+    )
+
+    try:
+        TechnicianNotification.objects.bulk_create([
+            TechnicianNotification(
+                technician=manager,
+                message=message,
+                read=False,
+                repair=job if is_repair else None,
+                repair_batch_id=batch_id,
+            )
+            for manager in managers
+        ])
+    except Exception:
+        logger.exception(
+            "Failed to notify managers about unassigned %s #%s",
+            _job_label(job), job.pk,
+        )
 
 
 def notify_bulk_assignment(new_technician, jobs, *, assigned_by=None,
