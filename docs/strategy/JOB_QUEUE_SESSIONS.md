@@ -32,11 +32,11 @@ able to execute exactly one session using only §0 and that session's table.
 | Q — The queue exists | Q1 · Round robin that actually rotates (CODE-278) | S | DONE (2026-08-26, commit `6a199b84`, pushed — **no PR yet**) |
 | Q — The queue exists | Q2 · The Unassigned queue (CODE-279) | M | DONE (2026-08-26, commit `33be9b22`) |
 | R — The queue drains | Q3 · Approving a queued job takes it (CODE-280) | S | DONE (2026-08-26, commit `fbf27808`) |
-| R — The queue drains | Q4 · Telling managers outside the dashboard | S | TODO |
+| R — The queue drains | Q4 · Telling managers outside the dashboard (CODE-281) | S | DONE (2026-08-26, commit `c3f0e28e`) |
 | R — The queue drains | Q5 · Where managers actually live: board + aging | M | TODO |
 | R — The queue drains | Q6 · One provisional pick, in one place | S | TODO |
 
-**Suggested sequence:** Q4 → Q5 → Q6. Q3 went first because it was the only
+**Suggested sequence:** Q5 → Q6. Q3 went first because it was the only
 *correctness* gap rather than a reach gap — four code paths tested
 `if not job.technician` on a non-null FK, so they were dead branches that read
 as working code. Q4 before Q5 because a queue nobody is told about does not
@@ -44,10 +44,12 @@ drain no matter how good the board is. Q6 is cleanup and can slip.
 
 **Sizes:** S ≈ half a day · M ≈ 1–2 days · L ≈ 3–5 days.
 
-**Where we are (2026-08-26, after Q3):** Q1–Q3 are four commits on
+**Where we are (2026-08-26, after Q4):** Q1–Q3 are four commits on
 `fix/job-assignment-round-robin` (worktree `~/projects/rs_assign_wt`), rebased
-onto `main` at `f4c1a7ad` (PR #217, photoml P3). **No PR is open yet.** The
-whole arc is committed — nothing is left in a working tree.
+onto `main` at `f4c1a7ad` (PR #217, photoml P3), and open as **PR #220**. Q4 is
+one commit on `feat/jobqueue-q4-manager-alerts`, **stacked on that branch**
+because it needs Q2's `needs_assignment` column — merge #220 first. The whole
+arc is committed — nothing is left in a working tree.
 
 Verified on sqlite after the rebase: 27 CODE-279 tests, 13 CODE-280 tests, and
 the eight adjacent assignment regression modules (84 together); plus
@@ -143,8 +145,11 @@ assigned" notification — the guard is at the top of
 In its place `notify_needs_assignment(job)` writes a `TechnicianNotification`
 dashboard row to every active manager on the tenant, de-duplicated per
 `repair_batch_id` so a six-break request is one decision, not six alerts.
-**Dashboard rows only — no bell, no email**: that path needs a
-`NotificationTemplate`, and none is seeded for this event. That is Q4.
+It also sends the `needs_assignment` template through `NotificationService`
+— the bell, the email and the delivery log — to the same managers, gated by
+the *same* batch check, because an email cannot be unsent. Two writes on
+purpose: `TechnicianNotification` is the dashboard's unread list and nothing
+else. (CODE-281, Q4)
 
 **Where the flag is visible today.**
 
@@ -155,6 +160,7 @@ dashboard row to every active manager on the tenant, de-duplicated per
 | Repair detail | `repair_detail.html:408` | amber chip beside the technician name, tooltip explains the placeholder |
 | Dispatch board rows | `includes/schedule_row.html` | amber chip, manager-only (`can_assign`) |
 | Owner settings | `saas/owner_settings.html:287` | Manual and Primary-First descriptions now link to the queue |
+| Manager email + bell | `needs_assignment` template, core migration `0034` | the alert that reaches a manager who never opens the app (Q4) |
 | Manager dashboard | — | **nothing yet** (Q5) |
 
 **The dispatch board's confirm rule.** On a flagged job, submitting the
@@ -288,30 +294,88 @@ Each is now a comment saying why it went:
   dispatcher path deliberately costs two, and that is the whole point of the
   decision.
 
-## Q4 · Telling managers outside the dashboard — TODO
+## Q4 · Telling managers outside the dashboard — DONE (2026-08-26)
 
-Queued jobs currently produce a `TechnicianNotification` dashboard row and
-nothing else — no bell, no email — because `notify_needs_assignment` has no
-`NotificationTemplate` to render. A shop that doesn't open the dashboard on a
-given afternoon never learns a customer request is waiting.
+**Shipped:** commit `c3f0e28e`, CODE-281, 21 tests. Files: `core/migrations/0034_needs_assignment_template.py`,
+`core/management/commands/setup_notification_templates.py`,
+`templates/emails/notifications/needs_assignment.html` + `.txt`,
+`apps/technician_portal/services/assignments.py`, `tests/test_fieldops_n3.py`,
+`tests/bug_fixes/test_code281_needs_assignment_reach.py`.
 
-**Build:** seed a `needs_assignment` (name it for the event, not the audience)
-`NotificationTemplate` and route the alert through `NotificationService` like
-every other real event. **Read `FIELD_OPS_SESSIONS.md` §N1/N3 first** — the
-priority→channel map decides whether email is even possible: HIGH yields
-`['in_app','sms']` and no email ever; MEDIUM yields `['in_app','email']`;
-URGENT yields all three. Audience is decided by the call site, not the template
-name. `tests/test_fieldops_n3.py` guards the inventory table.
+Q2 gave the queue an alert that reached exactly one place: the dashboard's
+unread list. The setting promised "a manager must manually assign every
+repair"; what it delivered was "a manager must manually go looking". The
+alert now also goes through `NotificationService` on a seeded
+`needs_assignment` template — bell, email, delivery log.
 
-**Watch for:** one email per break, and the drain rule from Q3 — a
-notification that fires when the queue *empties* must treat it as a first
-assignment, not a reassignment (§0, `_cleared_needs_assignment`). The batch de-dup in Q2 is per-`repair_batch_id`
-and unread-scoped; the template path needs the same rule or a six-break request
-becomes six emails.
+**Priority HIGH with `channels_override: ['in_app', 'email']`.** HIGH alone
+maps to `['in_app', 'sms']` and SMS is dark until fieldops N2, so a HIGH
+template without an override renders an email body nothing can deliver —
+the trap N3 found in three other rows. SMS is left off rather than staged:
+adding it when N2 lands is one line, and `DeliverableChannelTests` will not
+let the row go stranded meanwhile.
 
-**Done when:** a queued job reaches a manager who never opened the app, exactly
-once per customer request, and `tests/test_fieldops_n3.py`'s inventory lists
-the new event.
+**Notes.**
+- **Two writes, one gate.** `TechnicianNotification` (dashboard) is written
+  first and `NotificationService` second, both behind the *same*
+  `repair_batch_id` check. That ordering is the point: a dashboard row can
+  be deleted and an email cannot be unsent, so the de-dup has to sit above
+  both rather than once per delivery path. The email send is split into
+  `_email_needs_assignment` and wrapped, so a missing or deactivated
+  template cannot cost us the dashboard row CODE-279 already had — asserted
+  by `TheDashboardRowSurvivesTest`.
+- **The email must not name the provisional technician.**
+  `_assignment_context` fills `technician_name` from whoever the non-null FK
+  forced onto the row; a manager alert carrying it reads as "assigned to
+  Marcus", which is the exact lie this arc exists to stop telling. The key
+  is stripped at the call site and the template has no technician row at
+  all. If you extend this context, strip it again.
+- **It says *why* it is queued.** `_queue_reason(job)` maps
+  `tenant.assignment_strategy` to one sentence. Without it "waiting to be
+  assigned" cannot distinguish deliberate shop policy (`manual` never
+  picks) from a shop that has deactivated every technician (`auto` /
+  `round_robin` decline only when the eligible pool is empty). Same event,
+  opposite responses.
+- **A replacement's email links; its dashboard row still does not.**
+  `Notification.repair` is a Repair-only FK, so replacements pass
+  `repair=None` and merge `job_display_context(job)` themselves — the split
+  that function documents. `action_url` is a plain string the sender
+  controls, so the email deep-links either way. The route is
+  `/tech/replacement/<pk>/`, **singular** — `_job_action_url` has it right.
+  The `TechnicianNotification` gap is still Q5's.
+- **Found while writing the tests:** core migration `0032` seeds
+  `replacement_request_submitted` (and every other replacement template)
+  with `action_url_template: '/tech/replacements/{{ replacement_id }}/'` —
+  **plural, and a 404**. `apps/saas/urls.py:120` is
+  `tech/replacement/<int:pk>/`. Every replacement notification's button has
+  been pointing at a dead URL since 0032. Left alone here because it is a
+  fieldops row and not this arc's, but it is a one-line seed fix and
+  somebody should take it.
+- The new template deliberately carries a blank `action_url_template` for
+  the same reason: one default would be right for repairs and a 404 for
+  replacements, so the sender passes the URL.
+- **A queued job's provisional tech does still get mail** — just not
+  assignment mail. `repair_request_submitted` goes to every technician in
+  the shop when a customer asks for work, and that is a different event
+  with a different meaning. The first draft of
+  `test_the_technician_nobody_picked_hears_nothing_about_assignment`
+  asserted an empty inbox and failed on exactly this; the assertion is now
+  scoped to assignment events. Worth knowing before you read a stray email
+  in a test as a regression.
+- The drain rule from Q3 needed nothing new: this notification fires when a
+  job *enters* the queue, and the one that fires when it leaves is
+  `notify_assignment_from_signal`, which `_cleared_needs_assignment`
+  already turns into a first assignment (§0).
+
+**Verified on sqlite:** 21 CODE-281 tests; `test_fieldops_n3` (28),
+`test_code279` (27), `test_code280` (13), `test_code278` (4) — 72 together;
+`test_email_chassis`, `test_notification_surfaces`, `test_fieldops_n1`,
+`test_tenant_email_branding`, `test_fieldops_s5` — 133 together;
+`test_unified_job_list`, `test_job_form_parity`, `test_fieldops_s9`,
+`test_fieldops_s10` — 75 together. All green.
+`manage.py makemigrations --check` is clean; `core/0034` depends on `0033`,
+which is `main`'s leaf, so there is no renumber to redo unless this branch
+sits while another core migration lands.
 
 ## Q5 · Where managers actually live: board + aging — TODO
 

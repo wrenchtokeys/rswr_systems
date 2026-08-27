@@ -299,6 +299,9 @@ class AudienceConsistencyTests(TestCase):
         'job_rescheduled', 'jobs_bulk_assigned', 'jobs_bulk_reassigned_away',
         'replacement_approved', 'replacement_denied',
         'replacement_request_submitted',
+        # Managers are technicians with is_manager set, so the queue alert
+        # is tech-portal-facing too (JOB_QUEUE_SESSIONS Q4).
+        'needs_assignment',
     ]
     CUSTOMER_FACING = [
         'repair_pending_approval', 'repair_in_progress', 'repair_completed',
