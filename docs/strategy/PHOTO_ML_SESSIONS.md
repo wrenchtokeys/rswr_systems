@@ -1055,6 +1055,29 @@ is already taken by the constant.
    improved. It has not improved — the *benchmark* was wrong. Update it with
    these real numbers rather than deleting it.
 
+**Correction to why the backfill was sold, 2026-08-27.** This document argued
+for P4a.1 on the grounds that "marking one of these 77 visibly improves a real
+customer's invoice", and that turns out to be **weak for the backlog
+specifically**. Of the 72 marked photos, only **12** are on jobs from the last
+60 days, and they touch **18 invoices, 13 still open**. The rest are on
+invoices that were sent, viewed and paid months ago; a better-framed photo
+helps there only if somebody revisits the link.
+
+What the backfill actually bought, in order of value:
+
+1. **The measurement** — the 72 marks produced the (41, 61) constant, which
+   improves **every unmarked photo forever, including all future ones and ones
+   nobody ever taps.** This was not the stated reason for doing it and is by
+   far the largest return.
+2. **70 positive-class training rows** — real, banked, and currently **inert**:
+   P4b still needs a negative class that this business has never once produced
+   (§The pause).
+3. **The customer-facing improvement on old invoices** — real but small, per
+   the numbers above.
+
+The lesson for the next session that wants an afternoon of somebody's time:
+**the honest payoff may not be the one in the pitch.** Say which it is.
+
 **Method note:** the marks were made **cold**, with no suggestion pre-placed,
 which is what makes this measurement clean — a pre-placed marker anchors the
 person correcting it and would have understated the error. That decision is
