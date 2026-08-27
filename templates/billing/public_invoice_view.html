@@ -52,6 +52,16 @@
            the middle of the frame, which is usually the middle of the glass
            and not the damage; a tap supplies object-position inline. */
         .photo-grid img { width: 100%; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; }
+        /* ...and when nobody marked it, aim where techs actually tap: (41%,
+           61%), left and low, because a chip is shot from the driver's seat.
+           Measured over 73 marks (P6.1); it halves the median framing error
+           against dead centre. Only on photos of the DAMAGE — `reframe` is
+           false for the after photo, whose blemish is not worth zooming.
+           Value authored in BLIND_FOCUS_POSITION
+           (apps/technician_portal/services/photo_crops.py); this page has its
+           own stylesheet and cannot import it, so
+           tests/test_photo_blind_focus.py keeps the copies honest. */
+        .photo-grid img.blind-focus { object-position: 41% 61%; }
         .photo-grid figcaption { font-size: 12px; color: #6b7280; margin-top: 4px; }
     </style>
 </head>
@@ -187,7 +197,7 @@
                         {% for photo in photos %}
                         <figure>
                             <a href="{{ photo.url }}" target="_blank" rel="noopener">
-                                <img src="{{ photo.url }}" alt="{{ photo.caption }}" loading="lazy"{% if photo.focus %} style="object-position: {{ photo.focus }}"{% endif %}>
+                                <img src="{{ photo.url }}" alt="{{ photo.caption }}" loading="lazy"{% if photo.reframe %} class="blind-focus"{% endif %}{% if photo.focus %} style="object-position: {{ photo.focus }}"{% endif %}>
                             </a>
                             <figcaption>{{ photo.caption }}</figcaption>
                         </figure>

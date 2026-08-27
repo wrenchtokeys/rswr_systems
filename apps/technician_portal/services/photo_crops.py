@@ -70,6 +70,30 @@ def _crop_fk(job):
 # itself, which is the thing worth looking at closely.
 UNZOOMED_SOURCE_FIELDS = ('damage_photo_after',)
 
+# Where a technician actually taps, when one does: (41%, 61%) — left of centre
+# and low, because a chip is photographed from the driver's seat. Measured in
+# P3.1 against 73 confirmed marks (see docs/strategy/PHOTO_ML_SESSIONS.md).
+# Leave-one-out cross-validated it HALVES the median framing error against the
+# browser default of `50% 50%` (9.3 vs 17.6) and wins on 65 of 72 photos, at
+# zero computation and without opening the image.
+#
+# This is the default for a photo nobody marked. A marked photo still wins:
+# every surface emits its tap as an inline `object-position`, which beats the
+# stylesheet. `focus_position()` deliberately still returns '' for an unmarked
+# photo — the marked/unmarked distinction is worth keeping in the data even
+# when both render.
+#
+# CAVEAT: 72 marks from ONE shop is not a universal constant. It is stable
+# within this corpus (first half (40.5, 59.3), second half (41.0, 63.3)), but
+# a second shop is the first real test. Re-derive as the corpus grows; do not
+# treat it as physics.
+#
+# Authored here, and repeated in two stylesheets that cannot import Python:
+#   static/css/src/input.css              (.photo-blind-focus, customer portal)
+#   templates/billing/public_invoice_view.html (.blind-focus, standalone page)
+# tests/test_photo_blind_focus.py fails if any copy drifts from this value.
+BLIND_FOCUS_POSITION = '41% 61%'
+
 
 def focus_position(crop):
     """CSS `object-position` for a marked break, or '' when nothing is marked.
