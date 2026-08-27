@@ -31,12 +31,12 @@ python manage.py migrate
 python manage.py collectstatic
 
 # Frontend CSS build — run after ANY template or static/js class change
-./scripts/build_css.sh   # compiles static/css/app.css (COMMIT this file)
+./scripts/build_css.sh   # assets/css/input.css -> static/css/app.css (COMMIT the output)
 ```
 
 ### Frontend CSS Rules
 - Tailwind is compiled via the standalone CLI (`scripts/build_css.sh` downloads `bin/tailwindcss`, gitignored). No node/npm anywhere.
-- `tailwind.config.js` is the single source of truth for the brand palette; `static/css/src/input.css` holds design tokens + `@layer components` (`.btn-*`, `.card*`, `.badge-*`, `.modal-*` — see `docs/development/UI_DESIGN_GUIDE.md`).
+- `tailwind.config.js` is the single source of truth for the brand palette; `assets/css/input.css` holds design tokens + `@layer components` (`.btn-*`, `.card*`, `.badge-*`, `.modal-*` — see `docs/development/UI_DESIGN_GUIDE.md`).
 - `static/css/app.css` is a build artifact but IS committed (EB deploys unchanged; manifest storage handles cache busting).
 - Classes composed dynamically (JS string concat, Django template vars like `grid-cols-{{ n }}`) must be safelisted in `tailwind.config.js` or the purge will drop them. Shared `@layer components` classes that no template uses *yet* are also purged — safelist them.
 
@@ -75,7 +75,7 @@ python manage.py collectstatic
 
 ### Touch / mobile rules
 This app is used one-handed in the field. The TOUCH / MOBILE block in
-`input.css` is gated on **`(pointer: coarse)`** — the input device, not the
+`assets/css/input.css` is gated on **`(pointer: coarse)`** — the input device, not the
 viewport width — so a narrow desktop window keeps the dense layout and a
 tablet gets the finger-sized one. `tests/test_mobile_touch_targets.py` guards
 the compiled output.
@@ -99,11 +99,11 @@ the compiled output.
 There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are vendored by
 `scripts/vendor_assets.sh` (idempotent, pinned; downloaded files ARE committed).
 - **Never reintroduce** `cdn.tailwindcss.com`, `fonts.googleapis.com`, `cdnjs.cloudflare.com`, or `cdn.jsdelivr.net`. They blocked first paint, leaked visitor IPs, and made a strict CSP impossible for an app that takes card payments. The only remaining third-party script is Cloudflare Turnstile (functional captcha on signup).
-- **Keep `url()` out of `static/css/src/input.css`.** collectstatic collects the Tailwind *source* as well as the built `app.css`, so a relative `url()` resolves differently from each location and manifest storage hard-fails the deploy. Font declarations live inline in `templates/includes/head_assets.html` via `{% static %}`.
+- **The Tailwind source lives in `assets/css/input.css`, deliberately outside `static/`.** `STATICFILES_DIRS` is `static/`, so anything under it is collected and served — the source used to sit at `static/css/src/input.css` and was public. It also meant a relative `url()` resolved against two directories (`css/` for the build, `css/src/` for the source) and manifest storage hard-failed the deploy, which is why the Inter `@font-face` was inlined in `head_assets.html` for two sessions. With one location, `url()` is relative to the built `static/css/app.css` — so `../fonts/…` is correct and the manifest rewrites it to the hashed name. Don't move the source back under `static/`; `tests/test_css_pipeline.py` guards this.
 - Verify before deploying: run `collectstatic` under `ForgivingManifestStaticFilesStorage`, not just dev storage — see `docs/strategy/UI_MAGIC_SESSIONS.md` for the settings shim.
 
 ### View Transitions
-- **`@view-transition { navigation: auto; }` must stay inline** in the `<style>` block of `templates/includes/head_assets.html`. Chrome ignores the opt-in from an external stylesheet, so moving it into `input.css` silently turns every page transition back into a hard swap with nothing in the console. `tests/test_view_transitions.py` guards it.
+- **`@view-transition { navigation: auto; }` must stay inline** in the `<style>` block of `templates/includes/head_assets.html`. Chrome ignores the opt-in from an external stylesheet, so moving it into `assets/css/input.css` silently turns every page transition back into a hard swap with nothing in the console. `tests/test_view_transitions.py` guards it.
 - List rows opt into the row→title morph with `data-vt-key="<detail url>"` + a `data-vt-hero` inside; the detail page's `<h1>` carries `.vt-hero`. Only pair them where the two texts are the same thing. `static/js/view-transitions.js` (loaded from `<head>`, not deferred — its `pagereveal` listener must exist before first render) does the naming.
 
 ### Skeletons and optimistic rows
@@ -325,7 +325,7 @@ All fire via `core.services.notification_service`. Per-user and per-customer pre
 
 **Tenant Email Branding**: `templates/emails/base.html` renders `{{ branding.company_name }}` in the header/footer/title. Always build that context with `EmailBrandingConfig.get_tenant_context(tenant)` (`core/models/email_branding.py`) — it keeps the platform singleton's visual identity but overrides identity fields with the tenant's name/contact/logo. Using the raw singleton (`get_instance().to_template_context()`) in tenant-scoped email is a bug: the singleton is platform-wide and its `company_name` is the platform-owner tenant. `NotificationService.create_notification` auto-injects `branding` (derived repair → customer → recipient) when the context doesn't include one.
 
-**Shop Branding (`Tenant.brand_color` + `Tenant.logo`)**: Owners configure branding in Owner Settings → General (Business Information card = logo/contact, Branding card = one brand color, `form_type='branding'`). `brand_color` overrides `primary_color`/`secondary_color` in `get_tenant_context`, drives `send_branded_email` header/buttons, and colors the invoice PDF — `InvoiceService._load_branding_config` reads colors + logo from the **tenant only**, never the `EmailBrandingConfig` singleton (the singleton leaked the platform owner's logo/colors onto every shop's invoices; migration `tenants/0020` copied them onto the platform-owner tenant). The customer portal's Tailwind `brand-*` palette reads `--brand-N` CSS variables (defaults in `static/css/src/input.css`, per-shop shades from `apps/tenants/branding.brand_shades` injected via `{% tenant_brand_css %}` in `base_customer.html`). Outgoing shop email uses `core.email_utils.shop_sender`: From = `"<Shop> via RS Systems" <notifications@rssystems.io>` (never the shop's own domain — SPF/DKIM alignment; the "via" pattern defuses display-name-spoof heuristics), Reply-To = `tenant.business_email`. No emoji, no bracketed subjects, no tracking pixel, no photo attachments in email (photos render on the public invoice page) — see `docs/operations/SES_OPERATIONS.md` before changing email content.
+**Shop Branding (`Tenant.brand_color` + `Tenant.logo`)**: Owners configure branding in Owner Settings → General (Business Information card = logo/contact, Branding card = one brand color, `form_type='branding'`). `brand_color` overrides `primary_color`/`secondary_color` in `get_tenant_context`, drives `send_branded_email` header/buttons, and colors the invoice PDF — `InvoiceService._load_branding_config` reads colors + logo from the **tenant only**, never the `EmailBrandingConfig` singleton (the singleton leaked the platform owner's logo/colors onto every shop's invoices; migration `tenants/0020` copied them onto the platform-owner tenant). The customer portal's Tailwind `brand-*` palette reads `--brand-N` CSS variables (defaults in `assets/css/input.css`, per-shop shades from `apps/tenants/branding.brand_shades` injected via `{% tenant_brand_css %}` in `base_customer.html`). Outgoing shop email uses `core.email_utils.shop_sender`: From = `"<Shop> via RS Systems" <notifications@rssystems.io>` (never the shop's own domain — SPF/DKIM alignment; the "via" pattern defuses display-name-spoof heuristics), Reply-To = `tenant.business_email`. No emoji, no bracketed subjects, no tracking pixel, no photo attachments in email (photos render on the public invoice page) — see `docs/operations/SES_OPERATIONS.md` before changing email content.
 
 **Customer Replacement Requests**: `/app/replacements/request/` (`request_replacement` in `apps/customer_portal/views.py`). Creates a `Replacement` with `queue_status='REQUESTED'` and no parts/labor pricing (cost stays 0, tax skipped) — the shop prices it, then the customer approves. `get_available_technician(tenant, service_type='replacement')` prefers `can_replace=True` techs but falls back to any active tech (new shops' auto-created owner tech has `can_replace=False`). The customer dashboard merges repairs + replacements into `recent_services` and `pending_approval_replacements`; the legacy repair-only context keys are preserved and asserted by `tests/bug_fixes/test_code141/149/159/168/262`.
 

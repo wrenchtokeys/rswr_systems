@@ -2,7 +2,7 @@
 Brand color helpers.
 
 A shop picks ONE brand color (Tenant.brand_color). The customer portal's
-Tailwind `brand-*` palette reads CSS variables (see static/css/src/input.css),
+Tailwind `brand-*` palette reads CSS variables (see assets/css/input.css),
 so we generate the full 50–900 shade scale from that single hex here and
 inject it as an inline <style> override (core/templatetags/branding_tags.py).
 """

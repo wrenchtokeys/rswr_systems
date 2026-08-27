@@ -23,12 +23,13 @@ UI_MAGIC_SESSIONS S13.
 Tailwind is **compiled**, not CDN-loaded. Run `./scripts/build_css.sh` after any
 template or `static/js` class change and commit the output `static/css/app.css`.
 Theme lives in `tailwind.config.js`; component classes and tokens in
-`static/css/src/input.css`. Never add `cdn.tailwindcss.com` or inline
+`assets/css/input.css` — the source lives outside `static/` so collectstatic
+never serves it (S17). Never add `cdn.tailwindcss.com` or inline
 `tailwind.config` blocks to templates.
 
 ### Semantic Button Hierarchy
 
-Use these classes (defined in `input.css` `@layer components`) instead of ad-hoc
+Use these classes (defined in `assets/css/input.css` `@layer components`) instead of ad-hoc
 color utilities. **The old 7-color button chaos is deprecated.**
 
 | Class | Role | Rule |
@@ -42,7 +43,7 @@ Sizes: add `.btn-sm` or `.btn-lg`.
 
 ### Design tokens (Aug 2026)
 
-Defined in `static/css/src/input.css`, consumed by the component layer.
+Defined in `assets/css/input.css`, consumed by the component layer.
 
 | Group | Tokens | Use |
 |---|---|---|

@@ -34,7 +34,9 @@ from apps.technician_portal.services.photo_crops import (
 
 BASE_DIR = Path(settings.BASE_DIR)
 APP_CSS = BASE_DIR / 'static' / 'css' / 'app.css'
-INPUT_CSS = BASE_DIR / 'static' / 'css' / 'src' / 'input.css'
+# The Tailwind source lives outside static/ (S17) so collectstatic cannot
+# serve it. `tests/test_css_pipeline.py` is what holds it there.
+INPUT_CSS = BASE_DIR / 'assets' / 'css' / 'input.css'
 INVOICE_PAGE = BASE_DIR / 'templates' / 'billing' / 'public_invoice_view.html'
 PORTAL_PAGE = (
     BASE_DIR / 'templates' / 'customer_portal' / 'repair_detail.html')
@@ -67,7 +69,7 @@ class BlindFocusConstantTests(SimpleTestCase):
         self.assertIn('.photo-blind-focus', css)
         self.assertTrue(
             any(v in css for v in _css_variants(BLIND_FOCUS_POSITION)),
-            f'static/css/src/input.css has .photo-blind-focus but not '
+            f'assets/css/input.css has .photo-blind-focus but not '
             f'{BLIND_FOCUS_POSITION!r} — it has drifted from '
             f'BLIND_FOCUS_POSITION in photo_crops.py.',
         )

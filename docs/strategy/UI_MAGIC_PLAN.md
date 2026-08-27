@@ -45,7 +45,7 @@ RS-Systems blue no matter what the shop picks.
 
 ### 3. Everything sits at the same depth
 
-`.card` is `bg-white rounded-xl border border-gray-200` (`static/css/src/input.css:77`).
+`.card` is `bg-white rounded-xl border border-gray-200` (`assets/css/input.css`).
 No shadow token, no hover state, no layering. Apple's premium feel is a strict material
 ladder — base / raised / floating / modal — each with its own soft, wide, low-opacity
 shadow. A 1px grey border is the flattest possible choice.
