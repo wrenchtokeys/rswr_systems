@@ -1,0 +1,35 @@
+# The one check that would have saved four PRs on 2026-08-27.
+#
+# Two sessions adding a migration to the same app on the same day get the
+# same number. Each branch is green alone; the collision only exists once
+# both are on main, and what it breaks is `manage.py migrate` entirely — so
+# the first thing to notice is the postdeploy hook, in production.
+#
+# It happened three times that day: the original duplicate 0060 (#219+#221),
+# then two independent fixes colliding as duplicate 0061s (#225+#226), then
+# two independent fixes for THAT deleting one merge node each (#228+#230)
+# and landing back on the duplicate 0060.
+#
+# tests/test_migration_graph.py reads the graph off disk — no database, no
+# secrets, no services, ~0.1s. This runs it on every PR so the answer arrives
+# before the merge instead of after.
+name: Migration graph
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  single-leaf-per-app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python manage.py test tests.test_migration_graph -v 2
+        env:
+          DJANGO_SETTINGS_MODULE: rs_systems.settings.development
