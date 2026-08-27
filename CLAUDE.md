@@ -45,11 +45,22 @@ python manage.py collectstatic
   Geometry lives in `core/icons.py`; the tag renders a 24×24 stroke-only SVG sized in `em`,
   so it drops into the slot the `<i>` occupied — same baseline, and `text-lg` on the parent
   still resizes it. Override with `{% icon 'trash' class="w-5 h-5 text-red-600" %}`.
-- **Font Awesome is still vendored and still correct on the ~1,300 surfaces using it.** The
+- **The chrome is already migrated** — both shells (`base_app.html`,
+  `customer_portal/base_customer.html`) and every `templates/includes/*` and
+  `templates/components/*`. If you are editing one of those, `{% icon %}` is the house
+  style there; putting an `<i class="fas">` back into a migrated file is a regression.
+- **Font Awesome is still vendored and still correct on the ~1,200 surfaces using it.** The
   tag shipped *before* the migration on purpose (UI_MAGIC S13): its job is to stop the count
   growing, not to force a sweep into whatever you are working on. Don't mass-convert a page
   you are only passing through — a half-converted *page* is the one bad outcome, a
   half-converted *app* is the plan.
+- **`{% load ui %}` goes AFTER `{% extends %}`, never above it.** Django requires `extends`
+  to be the first tag and 500s the page otherwise. In an include or component (no `extends`),
+  the `{% load %}` goes at the top. A `{% load %}` in a parent does NOT reach an include.
+- **An `<i class="fas">` cannot be responsively hidden.** `.fas { display: inline-block }`
+  ships in `fontawesome.min.css`, which is linked after `app.css`, so it beats Tailwind's
+  `hidden`/`sm:hidden` on equal specificity. If you need an icon to disappear at a
+  breakpoint, it has to be `{% icon %}` (or wrapped in a `<span>` that carries the class).
 - **An unknown name is a bug, not a fallback**: it raises under `DEBUG`. Add the icon to
   `core/icons.py` — 24×24, `stroke-width` 2, round caps, no fills, no hardcoded colour — or
   alias a Font Awesome spelling there. `tests/test_icon_tag.py` enforces those rules on every
