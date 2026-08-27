@@ -423,6 +423,18 @@ class GlassService(models.Model):
     
     # --- Core fields ---
     technician = models.ForeignKey(Technician, on_delete=models.CASCADE)
+    needs_assignment = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text=(
+            "Nobody has deliberately picked a technician for this job yet. "
+            "`technician` is NOT NULL, so a strategy that declines to assign "
+            "(Manual, or Primary Tech First with no primary tech) leaves the "
+            "caller's provisional pick on the row and raises this flag "
+            "instead. It is what the Unassigned queue lists, and why the "
+            "provisional tech is not notified."
+        ),
+    )
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True)
     vehicle = models.ForeignKey(
         'core.Vehicle', on_delete=models.SET_NULL,
@@ -603,6 +615,45 @@ class GlassService(models.Model):
 
     class Meta:
         abstract = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Whose job this was when the row was loaded — see
+        # _settle_needs_assignment.  Both subclasses' __init__ call up to
+        # here, so tracking it once covers Repair and Replacement.
+        self._loaded_technician_id = self.technician_id
+        # Did THIS save take the job out of the queue?  The assignment signal
+        # reads it — see _settle_needs_assignment.
+        self._cleared_needs_assignment = False
+
+    def _settle_needs_assignment(self, save_kwargs):
+        """Clear the unassigned flag when someone actually picks a tech.
+
+        Every assignment surface changes `technician` and saves: the job
+        form, the approve action, the Django admin, batch reassignment,
+        services.assignments.assign_job.  Settling the flag here means none
+        of them has to remember to — and none of them can forget.
+
+        Saves that pass `update_fields` get the column appended, or the
+        clear would be computed in memory and then never written.
+
+        `_cleared_needs_assignment` records that this particular save is the
+        one that drained the job out of the queue. The assignment signal needs
+        it because the flag is already False by the time the signal runs, and
+        without it the *provisional* technician gets told the job was
+        "reassigned away" from them — a job they were never told they had.
+        (CODE-280)
+        """
+        cleared = (self.pk is not None
+                   and self.needs_assignment
+                   and self.technician_id != self._loaded_technician_id)
+        if cleared:
+            self.needs_assignment = False
+            update_fields = save_kwargs.get('update_fields')
+            if update_fields is not None and 'needs_assignment' not in update_fields:
+                save_kwargs['update_fields'] = list(update_fields) + ['needs_assignment']
+        self._cleared_needs_assignment = cleared
+        self._loaded_technician_id = self.technician_id
 
     @property
     def has_warranty(self):
@@ -1083,6 +1134,8 @@ class Repair(GlassService):
         return cost + tax
 
     def save(self, *args, **kwargs):
+        self._settle_needs_assignment(kwargs)
+
         # D1: enforce the status state machine at the MODEL layer so the
         # admin, batch flows, and API paths can't bypass it (a view-only
         # check would). Applies only to real transitions on existing rows;
@@ -2060,6 +2113,8 @@ class Replacement(GlassService):
         return cost + tax
 
     def save(self, *args, **kwargs):
+        self._settle_needs_assignment(kwargs)
+
         # Ensure we have a customer
         if self.customer:
             is_new = self.pk is None

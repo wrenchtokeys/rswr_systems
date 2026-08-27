@@ -229,8 +229,11 @@ class AssignmentNotificationTests(TestCase):
         from apps.tenants.services.assignment_service import auto_assign_repair
         self.tenant.assignment_strategy = 'round_robin'
         self.tenant.save()
-        # Round-robin anchors on the last assigned tech (tech_a) and rotates
-        # to the next eligible one — deterministic: tech_b.
+        # Round-robin anchors on the last job it assigned — never on the one
+        # in hand (CODE-278) — so lay a prior job down for tech_a first. The
+        # new repair then rotates to the next eligible tech: deterministic
+        # tech_b, whichever tech it happens to be holding provisionally.
+        self._make_repair(self.tech_a, status='APPROVED')
         repair = self._make_repair(self.tech_a, status='APPROVED')
         self._reset()
 

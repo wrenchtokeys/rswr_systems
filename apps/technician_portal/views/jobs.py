@@ -148,7 +148,11 @@ def job_list(request):
             if assignment_filter == 'mine':
                 qs = qs.filter(technician=technician)
             elif assignment_filter == 'unassigned':
-                qs = qs.filter(technician__isnull=True)
+                # `technician` is NOT NULL, so this filter matched nothing at
+                # all until needs_assignment existed — the dropdown option was
+                # decorative. It now lists the jobs the shop's strategy
+                # declined to assign, waiting on a manager. (CODE-279)
+                qs = qs.filter(needs_assignment=True)
             elif assignment_filter == 'team' and technician.is_manager:
                 managed = list(technician.managed_technicians.values_list('id', flat=True))
                 qs = qs.filter(technician_id__in=managed)

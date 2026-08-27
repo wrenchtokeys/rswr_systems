@@ -23,6 +23,9 @@ from decimal import Decimal
 from django.db import transaction
 
 from apps.technician_portal.models import Replacement, Repair, Technician
+# The ability check lives in services.assignments because the approve path
+# needs the same rule (CODE-280); this module was its first caller.
+from apps.technician_portal.services.assignments import can_perform
 
 logger = logging.getLogger(__name__)
 
@@ -67,23 +70,43 @@ def shop_tax_state(tenant):
     return enabled, rate
 
 
-def resolve_technician(tenant, actor_user, service_type):
-    """The tech to assign a quick-created job to.
+def resolve_technician(tenant, actor_user, service_type, customer=None):
+    """The tech to assign a quick-created job to, and whether anyone chose them.
 
-    The actor's own profile, or (for admins without one) any active tech with
-    the matching ability. `technician` is NOT NULL on the model — there is no
-    unassigned state — so this never returns None without the caller having a
-    real problem to report.
+    Returns `(technician, needs_assignment)`. The order is:
+
+    1. The actor's own profile, if it can do this kind of work. A tech
+       logging the walk-in they just handled keeps it — rotating their own
+       job away to a colleague is never what the shop meant.
+    2. Otherwise the shop's `assignment_strategy` — the same decision the
+       customer portal makes, so a dispatcher creating a job in-app gets the
+       shop's configured behaviour instead of an arbitrary first row. This is
+       the half the setting used to skip entirely. (CODE-279)
+    3. Otherwise any active tech with the matching ability, flagged
+       `needs_assignment` — `technician` is NOT NULL, so somebody has to go
+       on the row; the flag says nobody picked them.
+
+    Returns `(None, True)` only for a shop with no technicians at all, which
+    is a real problem for the caller to report.
     """
+    from apps.tenants.services.assignment_service import select_technician
+
     tech = Technician.objects.filter(user=actor_user, tenant=tenant).first()
-    if tech:
-        return tech
+    if tech and can_perform(tech, service_type):
+        return tech, False
+
+    strategy_pick = select_technician(
+        tenant, customer=customer, service_type=service_type)
+    if strategy_pick:
+        return strategy_pick, False
+
     qs = Technician.objects.filter(tenant=tenant, is_active=True)
     ability_qs = (
         qs.filter(can_replace=True) if service_type == 'replacement'
         else qs.filter(can_repair=True)
     )
-    return ability_qs.first() or qs.first()
+    return (ability_qs.first() or qs.first()), True
+
 
 
 def resolve_customer(tenant, data, actor_user):
@@ -240,8 +263,11 @@ def create_job(*, tenant, actor_user, data, charges=None,
 
     # An explicit pick from "More details" wins; otherwise fall back to the
     # shop's assignment strategy.
-    technician = data.get('technician') or resolve_technician(
-        tenant, actor_user, data['service_type'])
+    technician = data.get('technician')
+    needs_assignment = False
+    if technician is None:
+        technician, needs_assignment = resolve_technician(
+            tenant, actor_user, data['service_type'], customer=customer)
     if technician is None:
         raise QuickJobError(
             'No active technician found for this shop. '
@@ -256,11 +282,19 @@ def create_job(*, tenant, actor_user, data, charges=None,
     )
 
     # Assignment signal: notify the assigned tech when someone else created
-    # the job for them — but not about their own creations.
+    # the job for them — but not about their own creations. A job nobody
+    # picked notifies the managers instead (see notify_needs_assignment).
+    service.needs_assignment = needs_assignment
     service._assignment_actor_user_id = actor_user.id
     if not notify_assignment:
         service._skip_assignment_notifications = True
     service.save()
+
+    if needs_assignment:
+        from apps.technician_portal.services.assignments import (
+            notify_needs_assignment,
+        )
+        notify_needs_assignment(service)
 
     if charges:
         save_extra_charges(

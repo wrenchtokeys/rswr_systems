@@ -21,7 +21,7 @@ from core.models import Customer
 from apps.technician_portal.forms import RepairForm
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
 from apps.technician_portal.services.assignments import (
-    assign_job, notify_bulk_assignment,
+    assign_job, can_perform, notify_bulk_assignment,
 )
 from common.auth import get_user_role
 from common.utils import convert_heic_to_jpeg
@@ -391,11 +391,14 @@ def create_repair(request):
                     if repair.queue_status == 'PENDING':
                         messages.warning(request, "This customer requires approval for field repairs. Repair submitted for customer approval.")
 
-                    # If no technician was explicitly set (shouldn't happen here
-                    # since we default to request.user.technician, but safety net)
-                    if not repair.technician_id:
-                        from apps.tenants.services.assignment_service import auto_assign_repair
-                        auto_assign_repair(repair)
+                    # A safety net for "no technician was set" used to live
+                    # here, testing `not repair.technician_id`. It could never
+                    # fire: _scoped_tech is assigned unconditionally above, and
+                    # the view has already returned if it is None. Removed in
+                    # CODE-280 rather than rewritten against needs_assignment —
+                    # a tech creating their own repair in the tech portal has
+                    # chosen the technician by definition, so there is nothing
+                    # for the shop's strategy to decide.
 
                 except AttributeError:
                     messages.error(request, "You don't have a technician profile to create repairs.")
@@ -514,8 +517,16 @@ def update_repair(request, repair_id):
             messages.error(request, "This repair is closed and cannot be edited. Contact a manager if photos need to be added.")
             return redirect('repair_detail', repair_id=repair.id)
 
-        if not repair.technician_id:
-            messages.error(request, "This repair has not been assigned yet and cannot be edited by technicians.")
+        # A job in the Needs-assignment queue carries a provisional technician
+        # nobody chose and who was never told it was theirs (CODE-279), so
+        # editing it as if it were yours is exactly what this gate was always
+        # meant to stop. It tested `not repair.technician_id` until CODE-280 —
+        # a non-null FK, so it never fired and its message described a state
+        # the schema could not hold. Managers are exempt, the same way they are
+        # exempt from the closed-job gate above: they are who the queue is
+        # waiting on.
+        if repair.needs_assignment and not user_is_manager:
+            messages.error(request, "This repair is waiting to be assigned and can't be edited yet. A manager needs to assign it first.")
             return redirect('repair_detail', repair_id=repair.id)
 
         # Use the tenant-scoped record computed above (_scoped_tech_ur) so that a
@@ -1216,9 +1227,22 @@ def bulk_repair_action(request):
 
         for repair in repairs:
             if action == 'approve':
-                # For REQUESTED repairs, assign to the acting technician (only if they have a
-                # Technician record — admin-only users may not have one).
-                if repair.queue_status == 'REQUESTED' and not repair.technician and technician:
+                # Approving a job that is waiting in the Needs-assignment
+                # queue takes it — but only if the approver can actually do
+                # this kind of work. In a one-person shop the owner approves
+                # and the job is theirs in one motion; in a shop where a
+                # dispatcher approves everything, taking every job would make
+                # the whole queue theirs, which is the opposite of what the
+                # Manual strategy is for. Such an approval leaves the job
+                # approved and still queued for a real pick.
+                #
+                # This tested `not repair.technician` until CODE-280. That is
+                # a non-null FK, so the branch was dead and REQUESTED jobs
+                # kept whatever provisional technician created them.
+                # needs_assignment is the state it meant to ask about, and
+                # Repair.save() clears the flag once the tech changes.
+                if (repair.needs_assignment
+                        and can_perform(technician, 'repair')):
                     repair.technician = technician
 
                 repair.queue_status = 'APPROVED'

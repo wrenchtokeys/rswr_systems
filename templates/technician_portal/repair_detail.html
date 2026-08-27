@@ -405,7 +405,7 @@
                                 </div>
                             </div>
                             {% endif %}
-                            <div><span class="font-medium text-gray-500">Technician:</span> <span class="text-gray-900">{% if repair.technician %}{{ repair.technician.user.get_full_name }}{% else %}<em class="text-gray-400">Unassigned</em>{% endif %}</span></div>
+                            <div><span class="font-medium text-gray-500">Technician:</span> <span class="text-gray-900">{% if repair.technician %}{{ repair.technician.user.get_full_name }}{% else %}<em class="text-gray-400">Unassigned</em>{% endif %}</span>{% if repair.needs_assignment %} <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800" title="The shop's assignment strategy did not pick anyone — this name is a placeholder and the tech has not been notified."><i class="fas fa-user-clock"></i> Needs assignment</span>{% endif %}</div>
                         </div>
                     </div>
 

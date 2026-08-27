@@ -201,8 +201,16 @@ def apply_dispatch(*, tenant, service_type, pk, technician_id=None,
         old_technician = anchor.technician
         reassigned = (new_technician is not None
                       and old_technician.pk != new_technician.pk)
+        # Submitting the picker unchanged on a job in the Unassigned queue is
+        # a decision, not a no-op: the name on the row is a placeholder the
+        # strategy declined to choose, and leaving it there IS choosing it.
+        # Without this the manager gets "nothing to change" and the badge
+        # never clears. (CODE-279)
+        confirmed = (new_technician is not None
+                     and not reassigned
+                     and anchor.needs_assignment)
 
-        if not reassigned and booking is None:
+        if not reassigned and not confirmed and booking is None:
             # The picker was submitted unchanged and no time came with it.
             # Say so rather than flashing a success for a write that did not
             # happen — the board reloads, and a green toast over an unchanged
@@ -268,6 +276,33 @@ def apply_dispatch(*, tenant, service_type, pk, technician_id=None,
 
             transaction.on_commit(_notify)
 
+        if confirmed:
+            for job in jobs:
+                if job.needs_assignment:
+                    job.needs_assignment = False
+                    job.save(update_fields=['needs_assignment'])
+
+            if booking is None:
+                # With a booking in the same submit, confirm_appointment's
+                # notification already tells the tech (notify=True above) —
+                # one motion, one message.  Old technician None: this is the
+                # first anyone has told them about the job, not a move away
+                # from themselves.
+                def _notify_confirmed(anchor=anchor,
+                                      new_technician=new_technician):
+                    try:
+                        notify_assignment_change(
+                            anchor, None, new_technician,
+                            assigned_by=actor_user, force_notify_new=True,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to send dispatch notification for %s#%s",
+                            service_type, anchor.pk,
+                        )
+
+                transaction.on_commit(_notify_confirmed)
+
     logger.info(
         "fieldops S5 dispatch: tenant=%s actor=%s %s#%s rows=%s tech=%s->%s "
         "booked=%s",
@@ -279,12 +314,14 @@ def apply_dispatch(*, tenant, service_type, pk, technician_id=None,
     )
 
     return {
-        'message': _message(anchor, jobs, reassigned, new_technician, booked),
+        'message': _message(anchor, jobs, reassigned or confirmed,
+                            new_technician, booked, confirmed=confirmed),
         'count': len(jobs),
     }
 
 
-def _message(anchor, jobs, reassigned, new_technician, booked):
+def _message(anchor, jobs, reassigned, new_technician, booked,
+             confirmed=False):
     """What the board flashes back. One sentence covering what changed."""
     name = anchor.customer.name if anchor.customer_id else 'Walk-in'
     if booked and reassigned:
@@ -294,4 +331,6 @@ def _message(anchor, jobs, reassigned, new_technician, booked):
     if booked:
         return booked['message']
     suffix = f" ({len(jobs)} breaks)" if len(jobs) > 1 else ''
-    return f"{name} moved to {_tech_name(new_technician)}{suffix}."
+    # "moved to" would be wrong for a job that was never really anyone's.
+    verb = 'assigned to' if confirmed else 'moved to'
+    return f"{name} {verb} {_tech_name(new_technician)}{suffix}."

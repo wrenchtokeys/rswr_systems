@@ -1256,15 +1256,15 @@ def replacement_create(request):
                     replacement, charges, tenant, taxable=not replacement.no_tax,
                 )
 
-            # Auto-assign technician if none was chosen
-            if not replacement.technician_id:
-                from apps.tenants.services.assignment_service import auto_assign_replacement
-                assigned_tech = auto_assign_replacement(replacement)
-                if assigned_tech:
-                    messages.info(
-                        request,
-                        f'Replacement auto-assigned to {assigned_tech.user.get_full_name()}.'
-                    )
+            # An "auto-assign if none was chosen" call used to live here,
+            # testing `not replacement.technician_id`. It could never fire:
+            # technician is a non-null FK and therefore a required field on
+            # ReplacementForm, so form.is_valid() already guarantees a pick.
+            # Removed in CODE-280. This form asks the shop who is doing the
+            # job and the shop answers — there is nothing for the assignment
+            # strategy to decide and nothing to queue. If it should ever offer
+            # "decide later", that is a new field on the form plus a
+            # needs_assignment write, not a resurrected dead branch.
 
             messages.success(request, 'Replacement created successfully!')
             return redirect('replacement_detail', pk=replacement.pk)
