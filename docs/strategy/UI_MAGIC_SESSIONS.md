@@ -927,7 +927,7 @@ must not 500 a page; it logs and renders the empty sized box so the layout does 
 It is now a mechanical sweep with a stable target instead of a race — which is what shipping
 the tag first bought.
 
-### S13b — the chrome, migrated 2026-08-27
+### S13b — the chrome, migrated 2026-08-27 (PR #227)
 
 The first migration sweep, scoped to **the chrome**: both app shells and every shared
 include and component. **101 call sites across 13 files**; `1,307 → 1,210` `fas`
