@@ -40,6 +40,28 @@ python manage.py collectstatic
 - `static/css/app.css` is a build artifact but IS committed (EB deploys unchanged; manifest storage handles cache busting).
 - Classes composed dynamically (JS string concat, Django template vars like `grid-cols-{{ n }}`) must be safelisted in `tailwind.config.js` or the purge will drop them. Shared `@layer components` classes that no template uses *yet* are also purged — safelist them.
 
+### Icons
+- **New markup uses `{% icon 'name' %}`** (`{% load ui %}`), not `<i class="fas fa-…">`.
+  Geometry lives in `core/icons.py`; the tag renders a 24×24 stroke-only SVG sized in `em`,
+  so it drops into the slot the `<i>` occupied — same baseline, and `text-lg` on the parent
+  still resizes it. Override with `{% icon 'trash' class="w-5 h-5 text-red-600" %}`.
+- **Font Awesome is still vendored and still correct on the ~1,300 surfaces using it.** The
+  tag shipped *before* the migration on purpose (UI_MAGIC S13): its job is to stop the count
+  growing, not to force a sweep into whatever you are working on. Don't mass-convert a page
+  you are only passing through — a half-converted *page* is the one bad outcome, a
+  half-converted *app* is the plan.
+- **An unknown name is a bug, not a fallback**: it raises under `DEBUG`. Add the icon to
+  `core/icons.py` — 24×24, `stroke-width` 2, round caps, no fills, no hardcoded colour — or
+  alias a Font Awesome spelling there. `tests/test_icon_tag.py` enforces those rules on every
+  entry. `fa-`-prefixed names and the usual FA spellings (`fa-times`, `envelope`, `cog`)
+  already resolve, so pasting an old class name works.
+- **Icons are decorative by default** (`aria-hidden="true"`). Pass `label=` only when the icon
+  is the only thing naming a control — an icon beside its own text label is noise to a screen
+  reader.
+- `.icon` is safelisted in `tailwind.config.js` because it is emitted from Python, where the
+  purge has no template token to anchor it to. Without it every icon renders 0×0 with
+  perfectly valid `<svg>` in the DOM.
+
 ### Touch / mobile rules
 This app is used one-handed in the field. The TOUCH / MOBILE block in
 `input.css` is gated on **`(pointer: coarse)`** — the input device, not the

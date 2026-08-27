@@ -361,6 +361,42 @@ class Command(BaseCommand):
                 'required_context': ['day', 'summary'],
             },
 
+            # 14. NEEDS ASSIGNMENT (Managers) — the Unassigned queue's only
+            # reach outside the dashboard. Named for the event, not the
+            # audience: the call site decides who hears it. Category
+            # 'assignment' reuses the existing technician opt-out; HIGH
+            # carries an explicit channels_override because HIGH alone maps
+            # to ['in_app', 'sms'] and SMS is dark until fieldops N2, which
+            # would leave the email body undeliverable.
+            {
+                'name': 'needs_assignment',
+                'description': (
+                    'Manager alert that a job is sitting in the Unassigned queue'
+                ),
+                'category': Notification.CATEGORY_ASSIGNMENT,
+                'default_priority': Notification.PRIORITY_HIGH,
+                'channels_override': ['in_app', 'email'],
+                'title_template': 'A {{ job_type|lower }} needs assigning',
+                'message_template': (
+                    '{{ customer_name }}\'s {{ job_type|lower }}'
+                    '{% if vehicle_identifier %} on {{ vehicle_identifier }}'
+                    '{% elif unit_number %} on Unit {{ unit_number }}{% endif %} '
+                    'is waiting to be assigned. Nobody has been told about it yet.'
+                ),
+                'email_subject_template': (
+                    'A {{ job_type|lower }} for {{ customer_name }} needs assigning'
+                ),
+                'email_html_template': 'emails/notifications/needs_assignment.html',
+                'email_text_template': 'emails/notifications/needs_assignment.txt',
+                'sms_template': '',
+                # Blank: repairs and replacements have different detail
+                # routes, so the call site passes action_url. A template
+                # default would be right for one job type and a 404 for
+                # the other.
+                'action_url_template': '',
+                'required_context': ['job_id', 'job_type', 'customer_name'],
+            },
+
             # ---- REPLACEMENTS -------------------------------------------
             # The shop's most valuable job had no lifecycle notifications at
             # all: every template above is repair_*, so a customer booking a
@@ -369,7 +405,7 @@ class Command(BaseCommand):
             # which notification_service.job_display_context() derives — an
             # individual's car is never called a "Unit".
 
-            # 14. REPLACEMENT REQUEST RECEIVED (Customer)
+            # 15. REPLACEMENT REQUEST RECEIVED (Customer)
             {
                 'name': 'replacement_request_received',
                 'description': 'Customer confirmation that a replacement request arrived',
@@ -390,7 +426,7 @@ class Command(BaseCommand):
                 'required_context': ['replacement_id', 'customer_name'],
             },
 
-            # 15. REPLACEMENT REQUEST SUBMITTED (Shop)
+            # 16. REPLACEMENT REQUEST SUBMITTED (Shop)
             {
                 'name': 'replacement_request_submitted',
                 'description': 'Shop notification that a customer wants a replacement',
@@ -412,7 +448,7 @@ class Command(BaseCommand):
                 'required_context': ['replacement_id', 'customer_name'],
             },
 
-            # 16. REPLACEMENT NEEDS APPROVAL (Customer)
+            # 17. REPLACEMENT NEEDS APPROVAL (Customer)
             {
                 'name': 'replacement_pending_approval',
                 'description': 'Customer approval needed for a priced replacement',
@@ -433,7 +469,7 @@ class Command(BaseCommand):
                 'required_context': ['replacement_id', 'customer_name'],
             },
 
-            # 17. REPLACEMENT APPROVED (Technician)
+            # 18. REPLACEMENT APPROVED (Technician)
             {
                 'name': 'replacement_approved',
                 'description': 'Technician notification when a replacement is approved',
@@ -454,7 +490,7 @@ class Command(BaseCommand):
                 'required_context': ['replacement_id', 'customer_name'],
             },
 
-            # 18. REPLACEMENT DECLINED (Technician)
+            # 19. REPLACEMENT DECLINED (Technician)
             {
                 'name': 'replacement_denied',
                 'description': 'Technician notification when a replacement is declined',
@@ -475,7 +511,7 @@ class Command(BaseCommand):
                 'required_context': ['replacement_id', 'customer_name'],
             },
 
-            # 19. REPLACEMENT IN PROGRESS (Customer)
+            # 20. REPLACEMENT IN PROGRESS (Customer)
             {
                 'name': 'replacement_in_progress',
                 'description': 'Customer notification that replacement work started',
@@ -496,7 +532,7 @@ class Command(BaseCommand):
                 'required_context': ['replacement_id', 'customer_name'],
             },
 
-            # 20. REPLACEMENT COMPLETED (Customer)
+            # 21. REPLACEMENT COMPLETED (Customer)
             {
                 'name': 'replacement_completed',
                 'description': 'Customer notification that a replacement is finished',

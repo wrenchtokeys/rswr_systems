@@ -29,10 +29,34 @@ logger = logging.getLogger(__name__)
 # Statuses in which telling a tech "this job is now yours" makes sense.
 NOTIFIABLE_STATUSES = ('PENDING', 'APPROVED', 'IN_PROGRESS')
 
+# The tail of every unassigned-queue alert. Batch de-duplication matches on
+# it, so the two must stay in step — see notify_needs_assignment.
+_WAITING_PHRASE = 'is waiting to be assigned'
+
 
 def _is_replacement(job):
     from apps.technician_portal.models import Replacement
     return isinstance(job, Replacement)
+
+
+def can_perform(technician, service_type):
+    """Is this technician allowed to do this kind of work?
+
+    An inactive profile, or one whose `can_repair`/`can_replace` is off,
+    cannot — assigning work to a deactivated tech or one who does not do
+    replacements makes the job invisible to the people who can do it (the
+    CODE-160 failure, from the other direction).
+
+    Callers use this to decide whether *they themselves* may take a job:
+    quick job creation (the actor keeps the walk-in they just handled) and
+    bulk approve (approving a queued job takes it, if you can do it).
+    A technician who cannot perform the work is not a failure — it just
+    means the shop's strategy decides instead, or the job stays queued.
+    """
+    if technician is None or not technician.is_active:
+        return False
+    return (technician.can_replace if service_type == 'replacement'
+            else technician.can_repair)
 
 
 def _job_action_url(job):
@@ -401,6 +425,20 @@ def notify_assignment_from_signal(job, old_technician, old_status, created,
         return
     if getattr(job, '_skip_assignment_notifications', False):
         return
+    # A job in the Unassigned queue carries a provisional technician nobody
+    # chose.  Telling them "you have been assigned" would be a lie the
+    # manager then has to walk back — and the REQUESTED → APPROVED
+    # auto-accept below is exactly where that fired.  (CODE-279)
+    if getattr(job, 'needs_assignment', False):
+        return
+
+    # Leaving the queue is a *first* assignment, not a reassignment. The
+    # provisional technician on the row was never told the job was theirs, so
+    # "reassigned away from you" would be the first and only thing they ever
+    # heard about it. Drop them, exactly as the dispatch board's confirm path
+    # does. (CODE-280)
+    if getattr(job, '_cleared_needs_assignment', False):
+        old_technician = None
 
     changed = (job.technician is not None
                and (old_technician is None
@@ -425,6 +463,143 @@ def notify_assignment_from_signal(job, old_technician, old_status, created,
         assigned_by=assigned_by,
         force_notify_new=accepted,
     )
+
+
+_QUEUE_REASONS = {
+    'manual': 'This shop assigns every job by hand.',
+    'primary_first': (
+        'This customer has no primary technician who can do this work, '
+        'so the shop\'s rule leaves the pick to you.'
+    ),
+    'auto': 'No technician was eligible for this job.',
+    'round_robin': 'No technician was eligible for this job.',
+}
+
+
+def _queue_reason(job):
+    """One sentence saying why nobody was picked, for the manager's alert.
+
+    The strategy is the whole answer: `manual` never picks, `primary_first`
+    picks only when the customer has an eligible primary, and the two
+    automatic strategies only decline when the eligible pool is empty. A
+    manager who reads "waiting to be assigned" with no reason cannot tell a
+    deliberate shop policy from a shop with every technician deactivated.
+    """
+    strategy = getattr(job.tenant, 'assignment_strategy', '') or ''
+    return _QUEUE_REASONS.get(strategy, 'Nobody has picked this job up yet.')
+
+
+def notify_needs_assignment(job):
+    """Tell the shop's managers a job is sitting in the Unassigned queue.
+
+    The strategy declined to pick anyone, so the usual "you have been
+    assigned" notification is suppressed — which would leave the job with
+    nobody told at all.  Managers get a dashboard row linking to the job,
+    plus the bell and an email, so Manual means "waiting on you", not
+    "quietly lost".  (CODE-279, reach added by CODE-281)
+
+    Two writes on purpose.  ``TechnicianNotification`` is the dashboard's
+    unread list and nothing else; ``NotificationService`` is the bell, the
+    email and the delivery log.  N1 kept both and N3 left them both alone,
+    so an alert that mattered enough to interrupt someone had to be in both
+    places.  A shop that does not open the dashboard on a given afternoon
+    was the whole reason this event had no reach.
+    """
+    from apps.technician_portal.models import Technician, TechnicianNotification
+
+    tenant = job.tenant
+    if not tenant:
+        return
+
+    # A six-break batch is one customer request, not six things to decide.
+    # Assigning any break assigns the batch, so the first row covers it —
+    # this mirrors notify_bulk_assignment's one-summary rule.  This is the
+    # ONE gate for both writes: an email cannot be unsent, so the dedup has
+    # to happen before either of them, not once per delivery path.
+    batch_id = getattr(job, 'repair_batch_id', None)
+    if batch_id is not None and TechnicianNotification.objects.filter(
+            repair_batch_id=batch_id, read=False,
+            message__contains=_WAITING_PHRASE).exists():
+        return
+
+    # Materialized: the dashboard rows and the email loop both walk it.
+    managers = list(Technician.objects.filter(
+        tenant=tenant, is_manager=True, is_active=True,
+    ).select_related('user'))
+
+    context = _assignment_context(job)
+    is_repair = not _is_replacement(job)
+    message = (
+        f"{_job_label(job)} #{job.pk} for {context['customer_name']} - "
+        f"Unit {context['unit_number']} {_WAITING_PHRASE}"
+    )
+
+    try:
+        TechnicianNotification.objects.bulk_create([
+            TechnicianNotification(
+                technician=manager,
+                message=message,
+                read=False,
+                repair=job if is_repair else None,
+                repair_batch_id=batch_id,
+            )
+            for manager in managers
+        ])
+    except Exception:
+        logger.exception(
+            "Failed to notify managers about unassigned %s #%s",
+            _job_label(job), job.pk,
+        )
+
+    _email_needs_assignment(managers, job, context, is_repair, batch_id)
+
+
+def _email_needs_assignment(managers, job, context, is_repair, batch_id):
+    """Send the `needs_assignment` template to each manager.
+
+    Split out so a template or delivery failure cannot take the dashboard
+    rows down with it — those are written first and are the floor this
+    event has always had.
+    """
+    from core.services.notification_service import (
+        NotificationService, job_display_context,
+    )
+
+    # The provisional technician is NOT in this context on purpose.
+    # `_assignment_context` fills `technician_name` with whoever the
+    # non-null FK forced onto the row, and a manager alert that named them
+    # would read as "assigned to Marcus" — the exact lie the queue exists
+    # to stop telling (JOB_QUEUE_SESSIONS §0).
+    email_context = {
+        k: v for k, v in context.items() if k != 'technician_name'
+    }
+    email_context['queue_reason'] = _queue_reason(job)
+    breaks = getattr(job, 'total_breaks_in_batch', None)
+    email_context['break_count'] = breaks if batch_id and breaks else ''
+    action_url = context['action_url']
+
+    # Notification.repair is a Repair-only FK, so a replacement cannot pass
+    # `repair=` and has to merge the job facts itself — the same split
+    # job_display_context() documents.
+    if not is_repair:
+        for key, value in job_display_context(job).items():
+            email_context.setdefault(key, value)
+
+    for manager in managers:
+        try:
+            NotificationService.create_notification(
+                recipient=manager,
+                template_name='needs_assignment',
+                context=dict(email_context),
+                repair=job if is_repair else None,
+                repair_batch_id=batch_id,
+                action_url=action_url,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to email manager %s about unassigned %s #%s",
+                manager.pk, _job_label(job), job.pk,
+            )
 
 
 def notify_bulk_assignment(new_technician, jobs, *, assigned_by=None,

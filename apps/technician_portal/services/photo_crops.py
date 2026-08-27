@@ -54,6 +54,61 @@ def _crop_fk(job):
     return {job_kind(job): job}
 
 
+# ---------------------------------------------------------------------------
+# Showing the mark (P6)
+# ---------------------------------------------------------------------------
+# A tap is worth a technician's fifteen seconds only if it does something the
+# customer can see. Every surface that shows a damage photo in a fixed-size
+# box already crops it — `object-fit: cover` centres on the middle of the
+# frame, which is usually the middle of the glass and not the break. These
+# two helpers turn a stored tap into the `object-position` that reframes it,
+# without touching the original file or the derived close-up.
+
+# The *after* photo of a repair is deliberately never reframed: a resin
+# repair leaves a visible blemish, so zooming it shows the customer the scar
+# instead of the fix. Before and customer-submitted photos are of the damage
+# itself, which is the thing worth looking at closely.
+UNZOOMED_SOURCE_FIELDS = ('damage_photo_after',)
+
+
+def focus_position(crop):
+    """CSS `object-position` for a marked break, or '' when nothing is marked.
+
+    With `object-fit: cover`, `object-position: X% Y%` lines the X% point of
+    the photo up with the X% point of the box, so a marked break is always in
+    frame instead of wherever the blind centre-crop happened to land.
+
+    This reads the tap coordinates only. A crop whose derived close-up failed
+    to render (unreadable original, null box) still reframes correctly, and
+    the file served is the untouched original either way.
+    """
+    if crop is None:
+        return ''
+    x, y = crop.center_x_pct, crop.center_y_pct
+    if x is None or y is None:
+        return ''
+    x = min(100.0, max(0.0, float(x)))
+    y = min(100.0, max(0.0, float(y)))
+    return f'{x:.2f}% {y:.2f}%'
+
+
+def focus_positions_for(job):
+    """{source_field: 'x% y%'} for one job's marked photos.
+
+    Fields nobody marked are absent, so a template's `{% if %}` degrades to
+    exactly today's rendering. Uses the job's prefetched `photo_crops`, so a
+    caller that prefetched pays no query per job.
+    """
+    positions = {}
+    for crop in job.photo_crops.all():
+        if crop.source_field in UNZOOMED_SOURCE_FIELDS:
+            continue
+        position = focus_position(crop)
+        if position:
+            positions[crop.source_field] = position
+    return positions
+
+
 def process_tap_coordinates(job, post_data, technician=None,
                             key_prefix='', key_suffix=''):
     """Create crops for whichever crop_x_/crop_y_ pairs are in the POST.

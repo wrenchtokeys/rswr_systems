@@ -432,6 +432,7 @@ everywhere until N2 lights the toll-free number up.
 | `job_rescheduled` | technician | in_app + email | yes |
 | `jobs_bulk_assigned` | technician | in_app + email + sms | yes |
 | `jobs_bulk_reassigned_away` | technician | in_app + email | yes |
+| `needs_assignment` | managers | in_app + email | yes |
 | `repair_approved` | technician | in_app + email + sms | yes |
 | `repair_assigned` | technician | in_app + email + sms | yes |
 | `repair_completed` | customer + owner + managers | in_app + email + sms | yes |
@@ -452,6 +453,13 @@ everywhere until N2 lights the toll-free number up.
 No event a technician must act on now lands only in the dashboard list, and no
 template has an email body that no channel delivers — both asserted by
 `DeliverableChannelTests`, so the next seeding migration cannot reopen it.
+
+**Added 2026-08-26 by JOB_QUEUE_SESSIONS Q4:** `needs_assignment` (core
+migration `0034`) — the Unassigned-queue alert, HIGH with
+`channels_override: ['in_app', 'email']` for the reason this section
+documents. It is the first row whose recipient is *managers* rather than a
+technician; the audience is the call site's choice, so the name is the
+event. SMS is deliberately left off until N2 lights the number up.
 
 ### The other findings
 

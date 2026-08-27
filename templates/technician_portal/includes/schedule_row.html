@@ -109,6 +109,20 @@ flags — see services/schedule_conflicts.py for what it deliberately doesn't.
         {% endwith %}
 
         {% comment %}
+        CODE-279: the shop's strategy declined to pick anyone, so the name on
+        this row is a placeholder — the tech was never told it was theirs.
+        Amber like the wish chip: nothing is broken, someone just has to
+        choose. Picking a tech in the control below clears it.
+        {% endcomment %}
+        {% if job.needs_assignment and can_assign %}
+        <div class="mt-1">
+            <span class="inline-flex items-center gap-1.5 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                <i class="fas fa-user-clock"></i>Needs assignment
+            </span>
+        </div>
+        {% endif %}
+
+        {% comment %}
         S5 conflict chips. Informational only — nothing here blocked the write
         that created them, because a shop with two people in a truck is
         allowed to double-book on purpose. Red rather than amber: unlike the

@@ -235,7 +235,7 @@
                             <select name="assignment" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
                                 <option value="all" {% if assignment_filter == 'all' %}selected{% endif %}>All Jobs</option>
                                 <option value="mine" {% if assignment_filter == 'mine' %}selected{% endif %}>My Jobs</option>
-                                <option value="unassigned" {% if assignment_filter == 'unassigned' %}selected{% endif %}>Unassigned</option>
+                                <option value="unassigned" {% if assignment_filter == 'unassigned' %}selected{% endif %}>Needs assignment</option>
                                 {% if technician.is_manager %}
                                 <option value="team" {% if assignment_filter == 'team' %}selected{% endif %}>My Team</option>
                                 {% endif %}
@@ -344,7 +344,11 @@
                         ${{ job.cost|floatformat:2 }}
                     </div>
                 </div>
-                {% if is_admin and job.technician %}
+                {% if is_admin and job.needs_assignment %}
+                <div class="text-xs text-amber-700 mt-1.5">
+                    <i class="fas fa-user-clock mr-1"></i>Needs assignment
+                </div>
+                {% elif is_admin and job.technician %}
                 <div class="text-xs text-gray-400 mt-1.5">
                     <i class="fas fa-user-cog mr-1"></i>{{ job.technician.user.get_full_name }}
                 </div>
@@ -457,7 +461,15 @@
                         </td>
                         {% if is_admin %}
                         <td class="px-4 py-3 text-sm text-gray-600">
-                            {% if job.technician %}
+                            {% comment %}
+                            needs_assignment, not a null technician: the row always
+                            carries a provisional tech, but nobody has picked one.
+                            {% endcomment %}
+                            {% if job.needs_assignment %}
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                                    <i class="fas fa-user-clock"></i> Needs assignment
+                                </span>
+                            {% elif job.technician %}
                                 {{ job.technician.user.get_full_name }}
                             {% else %}
                                 <span class="text-gray-300 italic">Unassigned</span>
