@@ -2,7 +2,7 @@
 Invoice/Payment status badge for a repair.
 Expects `repair` in context. Shows invoice status if the repair has been invoiced.
 {% endcomment %}
-{% load billing_tags %}
+{% load billing_tags ui %}
 {% get_invoice_status repair as inv_status %}
 {% if inv_status %}
 <div class="{% if badge_class %}{{ badge_class }}{% else %}mt-3 p-3 rounded-lg border{% endif %}
@@ -14,19 +14,19 @@ Expects `repair` in context. Shows invoice status if the repair has been invoice
     <div class="flex items-center justify-between">
         <div class="flex items-center space-x-2">
             {% if inv_status.status == 'PAID' %}
-            <i class="fas fa-check-circle text-green-600"></i>
+            {% icon 'check-circle' class="text-green-600" %}
             <span class="text-sm font-medium text-green-800">Paid</span>
             {% elif inv_status.status == 'OVERDUE' %}
-            <i class="fas fa-exclamation-circle text-red-600"></i>
+            {% icon 'exclamation-circle' class="text-red-600" %}
             <span class="text-sm font-medium text-red-800">Overdue</span>
             {% elif inv_status.status == 'PARTIAL' %}
-            <i class="fas fa-clock text-yellow-600"></i>
+            {% icon 'clock' class="text-yellow-600" %}
             <span class="text-sm font-medium text-yellow-800">Partially Paid</span>
             {% elif inv_status.status == 'SENT' %}
-            <i class="fas fa-paper-plane text-brand-600"></i>
+            {% icon 'paper-plane' class="text-brand-600" %}
             <span class="text-sm font-medium text-brand-800">Invoice Sent</span>
             {% elif inv_status.status == 'DRAFT' %}
-            <i class="fas fa-file text-gray-600"></i>
+            {% icon 'file' class="text-gray-600" %}
             <span class="text-sm font-medium text-gray-800">Invoice Draft</span>
             {% endif %}
             <span class="text-xs text-gray-500">{{ inv_status.invoice_number }}</span>
@@ -45,7 +45,7 @@ Expects `repair` in context. Shows invoice status if the repair has been invoice
     {% if inv_status.stripe_url and inv_status.amount_due > 0 %}
     <div class="mt-2">
         <a href="{{ inv_status.stripe_url }}" target="_blank" class="inline-flex items-center text-xs font-medium text-brand-600 hover:text-brand-800">
-            <i class="fas fa-credit-card mr-1"></i> Pay Online
+            {% icon 'credit-card' class="mr-1" %} Pay Online
         </a>
     </div>
     {% endif %}

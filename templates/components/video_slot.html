@@ -1,3 +1,4 @@
+{% load ui %}
 {% comment %}
 Video placeholder — a designed slot for walkthrough videos we'll record later.
 Usage: {% include "components/video_slot.html" with label="Watch: your first job (2 min)" %}
@@ -6,7 +7,7 @@ touching the pages that include it.
 {% endcomment %}
 <div class="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 p-6 sm:p-8 flex flex-col items-center justify-center text-center gap-2">
     <div class="w-12 h-12 bg-white border border-gray-200 rounded-full flex items-center justify-center shadow-sm">
-        <i class="fas fa-play text-gray-300 ml-0.5"></i>
+        {% icon 'play' class="text-gray-300 ml-0.5" %}
     </div>
     <p class="text-sm font-medium text-gray-500">{{ label|default:"Video walkthrough" }}</p>
     <p class="text-xs text-gray-400">Video coming soon — the written steps below cover everything.</p>

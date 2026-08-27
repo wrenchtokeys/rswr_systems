@@ -1,3 +1,4 @@
+{% load ui %}
 {% comment %}
 Pagination controls for a Django Page object.
 Params: page_obj (required). Preserves all other querystring params via {% querystring %}.
@@ -11,7 +12,7 @@ Usage: {% include "components/pagination.html" with page_obj=page_obj %}
     <div class="flex items-center gap-1">
         {% if page_obj.has_previous %}
         <a href="{% querystring page=page_obj.previous_page_number %}" class="btn-secondary btn-sm">
-            <i class="fas fa-chevron-left text-[10px]"></i> Prev
+            {% icon 'chevron-left' class="text-[10px]" %} Prev
         </a>
         {% endif %}
         <span class="px-3 py-1.5 text-sm font-medium text-gray-600 whitespace-nowrap">
@@ -19,7 +20,7 @@ Usage: {% include "components/pagination.html" with page_obj=page_obj %}
         </span>
         {% if page_obj.has_next %}
         <a href="{% querystring page=page_obj.next_page_number %}" class="btn-secondary btn-sm">
-            Next <i class="fas fa-chevron-right text-[10px]"></i>
+            Next {% icon 'chevron-right' class="text-[10px]" %}
         </a>
         {% endif %}
     </div>

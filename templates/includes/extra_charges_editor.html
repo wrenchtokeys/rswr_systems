@@ -1,3 +1,4 @@
+{% load ui %}
 {% comment %}
 Extra charges editor — additive one-off fees (trip charge, after-hours).
 Each becomes its own free-form line on the invoice.
@@ -10,7 +11,7 @@ Context:
 {% endcomment %}
 {% if charges_locked_invoice %}
 <div class="mt-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-600">
-    <i class="fas fa-lock mr-1"></i>
+    {% icon 'lock' class="mr-1" %}
     This job is on invoice <span class="font-semibold">{{ charges_locked_invoice }}</span> —
     add or change extra charges on that invoice (Add Line Item).
     {% if charge_rows %}
@@ -26,7 +27,7 @@ Context:
     <div class="flex items-center justify-between">
         <label class="block text-sm font-medium text-gray-700">Extra charges <span class="text-gray-400 font-normal">(optional)</span></label>
         <button type="button" onclick="addChargeRow()" class="inline-flex items-center min-h-11 -my-2 px-2 text-sm font-medium text-brand-600 hover:text-brand-800">
-            <i class="fas fa-plus text-xs mr-1"></i>Add charge
+            {% icon 'plus' class="text-xs mr-1" %}Add charge
         </button>
     </div>
     {% if fee_presets %}
@@ -34,7 +35,7 @@ Context:
         {% for preset in fee_presets %}
         <button type="button" onclick="addChargeRow('{{ preset.label|escapejs }}', '{{ preset.amount }}')"
             class="inline-flex items-center min-h-10 px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 rounded-full hover:bg-brand-100 hover:text-brand-700 transition-colors">
-            <i class="fas fa-plus text-[10px] mr-1 opacity-50"></i>{{ preset.label }} · ${{ preset.amount|floatformat:2 }}
+            {% icon 'plus' class="text-[10px] mr-1 opacity-50" %}{{ preset.label }} · ${{ preset.amount|floatformat:2 }}
         </button>
         {% endfor %}
     </div>
@@ -50,7 +51,7 @@ Context:
                     class="w-full pl-6 pr-2 py-2 border border-gray-300 rounded-lg shadow-sm text-sm text-right focus:ring-brand-500 focus:border-brand-500">
             </div>
             <button type="button" onclick="this.closest('.charge-row').remove()" class="tap-target shrink-0 inline-flex items-center justify-center w-9 h-9 text-gray-400 hover:text-red-600" aria-label="Remove charge">
-                <i class="fas fa-times"></i>
+                {% icon 'times' %}
             </button>
         </div>
         {% endfor %}
@@ -72,7 +73,7 @@ if (!window.addChargeRow) {
             ' class="w-full pl-6 pr-2 py-2 border border-gray-300 rounded-lg shadow-sm text-sm text-right focus:ring-brand-500 focus:border-brand-500">' +
             '</div>' +
             '<button type="button" onclick="this.closest(\'.charge-row\').remove()" class="tap-target shrink-0 inline-flex items-center justify-center w-9 h-9 text-gray-400 hover:text-red-600" aria-label="Remove charge">' +
-            '<i class="fas fa-times"></i></button>';
+            '{% icon "times" %}</button>';
         container.appendChild(row);
         const descInput = row.querySelector('input[name="charge_desc"]');
         const amountInput = row.querySelector('input[name="charge_amount"]');
