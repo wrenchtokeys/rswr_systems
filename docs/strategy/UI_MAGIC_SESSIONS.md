@@ -31,7 +31,7 @@ session with no memory of this work can pick exactly one up and finish it.
 | 3 | S13 · Icon language: Font Awesome solid → line-weight SVG sprite | TODO — debt now **1,303** and rising |
 | 4 | S14 · Landing: real product imagery instead of the fake mock | TODO |
 | 4 | S15 · Landing: trust bar rewrite | TODO |
-| 4 | S16 · Landing: rhythm, dark section, sharper promise | TODO — **the `[data-reveal]` half split out and DONE 2026-08-27 (S16a, PR #PRNUM)** |
+| 4 | S16 · Landing: rhythm, dark section, sharper promise | TODO — **the `[data-reveal]` half split out and DONE 2026-08-27 (S16a, PR #235)** |
 | — | S17 · Stop shipping the Tailwind source to production | TODO |
 | Out | Email + notification chassis, replacement lifecycle | **DONE** 2026-08-24 (PR #200) |
 | Out | Invoice email onto the chassis | **DONE** 2026-08-24 (PR #202, merged 12:15 CDT, deployed 22:48 CDT) |
@@ -1063,10 +1063,10 @@ Six identical centred-text stacked sections today. Alternate light/dark ground, 
 asymmetric split and one full-bleed moment. Sharpen "Manage your glass shop without the
 headache" into the specific thing nobody else does.
 
-~~**Delete the `[data-reveal]` scroll fade**~~ — **done 2026-08-27 as S16a, PR #PRNUM.**
+~~**Delete the `[data-reveal]` scroll fade**~~ — **done 2026-08-27 as S16a, PR #235.**
 See below. The redesign half of S16 is untouched and still open.
 
-### S16a — the scroll fade, deleted 2026-08-27 (PR #PRNUM)
+### S16a — the scroll fade, deleted 2026-08-27 (PR #235)
 
 Six `data-reveal` wrappers, three CSS rules, the `classList.add('js')` bootstrap and the
 IntersectionObserver: 33 lines out, 6 in. `templates/landing.html` is the only file that
@@ -1460,11 +1460,11 @@ Consequences worth acting on rather than just noting:
 | S13 | Icon migration | M | **The tag shipped 2026-08-26 (S13a, PR #223).** What is left is the sweep of ~1,300 `<i class="fas">` and then deleting the vendored FA files — mechanical, no longer a race |
 | S14 | Landing: real product imagery | M | Blocked on nothing, and its brief needed a correction this pass — the mock's drift changed shape on its own. See S14 |
 | S15 | Landing: trust bar rewrite | S | Copy, not code. Wants Drake's eye, like the `InAppCopy` sweep below |
-| S16 | Landing: rhythm + dark section | M | **The `[data-reveal]` half is done — S16a, PR #PRNUM.** What is left is the redesign, and it wants Drake on the promise copy |
+| S16 | Landing: rhythm + dark section | M | **The `[data-reveal]` half is done — S16a, PR #235.** What is left is the redesign, and it wants Drake on the promise copy |
 | S17 | Tailwind source out of the served tree | S | Self-contained. Unwinds the `@font-face` workaround S1 and S2 both had to route around |
 
 ~~**If you want the cheapest real win:** S17, or the `[data-reveal]` deletion split out of
-S16.~~ — **both taken 2026-08-27** (S17 is PR #233, the deletion is S16a / PR #PRNUM).
+S16.~~ — **both taken 2026-08-27** (S17 is PR #233, the deletion is S16a / PR #235).
 ~~If you want the one that stops getting more expensive: the `{% icon %}` tag.~~ —
 taken 2026-08-26, see S13a / PR #223. What is cheapest now is **the strict CSP**, which
 S17 unblocked by removing the last inline `<style>` that had to carry a font declaration.
