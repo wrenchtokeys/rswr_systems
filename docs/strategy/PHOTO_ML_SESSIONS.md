@@ -23,7 +23,9 @@ sessions this document only admitted to one of them:
 **The order matters and was wrong.** Written training-first, the arc gave a
 tech nothing in return for a tap: for four sessions the crop appeared on one
 internal page and fed a model that does not exist. The result, measured in
-production on 2026-08-26, is a marking rate of **1 photo out of 77**. Purpose
+production on 2026-08-26, was a marking rate of **1 photo out of 77** (fixed
+on 2026-08-27: **73**, once P6 gave the tap a payoff and P4a.1 gave it a
+queue). Purpose
 1 is what makes purpose 2 accumulate; a capture pipeline whose only payoff is
 a future model does not capture. P6 fixed the payoff; **P4a.1 is what will
 move the rate.** See §The pause.
@@ -52,24 +54,25 @@ without re-running the exploration that produced this doc.
 | P3 · Assist | Auto-suggest crops (local saliency detector; no photo leaves the server) | M | DONE (2026-08-25, branch `feat/photoml-p3-auto-suggest`) |
 | P4a · Both classes | Crops on replacements + dataset export + class/accuracy report | M | DONE (2026-08-26, PR #218 → **re-landed as PR #219, merged 2026-08-26**) |
 | P6 · Show the close-up | Put the marked point on surfaces customers already see — and fix three bugs there | M | DONE (PR #222, merged 2026-08-27) |
-| P4a.1 · Backfill | Mark the break on the photos we already have — one queue, not 77 jobs | S | DONE (PR #224, 2026-08-27) — **the tool; the 77 are still unmarked** |
-| **P3.1 · Validate** | **Run the suggester against the 77 real windshield photos we now have** | **S** | **TODO — DO THIS NEXT**; it composes with P4a.1's queue |
+| P4a.1 · Backfill | Mark the break on the photos we already have — one queue, not 77 jobs | S | DONE (PR #224) — **and RUN: 1 → 73 confirmed crops, 2026-08-27** |
+| P3.1 · Validate | Run the suggester against the 77 real windshield photos we now have | S | DONE (2026-08-27) — **it wins on real photos; but the (41,61) centroid beats it for free** |
+| **P6.1 · Free win** | **Default unmarked photos to (41%, 61%) instead of dead centre** | **XS** | **TODO — DO THIS NEXT**; one line, halves the error on every unmarked photo |
 | P5 · Negative class | Record the jobs we turn away — the only source of "not repairable" | M | TODO — **this is the actual gate on P4b** |
 | P4b · Payoff | Repairability classifier | L | BLOCKED on **P5** — see P4b and §The pause |
 
 **Suggested sequence, as revised 2026-08-26:**
-P1 → P2 → P3 → P4a → P6 → P4a.1 → **P3.1 → P5** → P4b. Every session up to
-and including P4a.1 is built and merged. **P3.1 is the cheap next one** — the
+P1 → P2 → P3 → P4a → P6 → P4a.1 → P3.1 → **P6.1 → P5** → P4b. Every session
+up to and including P3.1 is done. **P3.1 is the cheap next one** — the
 backfill queue is what finally produces real human marks to score the
 suggester against — but **P5 is the only thing that unblocks P4b**, and no
 amount of P3.1 changes that. Note that P3.1's method was revised on
 2026-08-27 by a dry run against production: **mark cold, score afterwards**,
 rather than sweeping first. See P3.1 for the numbers.
 
-**The one thing that is built but not done: the backfill has not been run.**
-P4a.1 delivered the tool. Marking the 77 is a sitting at a screen, and it is
-still the highest value per minute in this arc. Do not read the DONE on P4a.1
-as a burned-down backlog — see §Where we are.
+**The backfill is done.** Drake marked the whole backlog on production on
+2026-08-27: **73 confirmed crops**, up from 1. That unblocked P3.1, whose
+measurement is the most useful thing this arc has produced so far — see P3.1's
+Notes, and P6.1 for the one-line change it recommends.
 
 The original sequence (P1 → P2 → P3 → P4a → P4b) assumed the only thing
 standing between here and a classifier was volume. Two findings changed it:
@@ -79,41 +82,58 @@ before P4a.1** because backfilling 77 photos is worth an afternoon once each
 one visibly improves a real invoice, and is charity before that. **P5 before
 P4b** because P5 is the only negative-class source this business generates.
 
-**Where we are (2026-08-27 — every session through P4a.1 is merged, and the
-capture rate has not moved):**
+**Where we are (2026-08-27, end of day — the backlog is marked and the
+suggester has finally been measured):**
 
-The whole capture-and-payoff pipeline is now on `main`. P6 (#222) landed and
-a marked break reframes the photo on the public invoice tile and in the
-customer portal; P4a.1 (#224) landed and `/tech/photos/mark/` puts every
-unmarked damage photo in one queue — tap the break, Enter, next.
+**The rate went from 1 of 77 to 73.** Drake sat down with `/tech/photos/mark/`
+and marked the whole backlog on production. That is the number this arc exists
+to move, and it moved because a person spent twenty minutes — not because of
+anything built after P2.
 
-**And the number is still 1 of 77.** Nothing in this arc has moved the metric
-it exists to move, because the remaining step is not a code change: somebody
-has to sit down with the queue. Every session from here is worth less than
-that afternoon. Say so plainly rather than reading the DONE column as
-progress.
+What the 73 marks immediately bought, in one measurement (P3.1's Notes have
+the tables):
 
-**Deploy state is not what the merge state implies — check it before you
-believe it (2026-08-27).** Production is running `app-0fc1-260827_091149216354`,
-which is `feat/photoml-p4a1-backfill-queue` **deployed straight off the
-branch**, not off `main`. The consequences are exact and worth having in front
-of you:
+- **The suggester actually works on real windshields** — median 7.5% error
+  against 18.7% for the centre-guess, winning on 78% of the photos it speaks
+  about. P3 killed it on a *synthetic* benchmark, and the benchmark was wrong.
+- **But a constant beats it for free.** Technicians tap at **(41, 61)**, not
+  the middle — left and low, because a chip is shot from the driver's seat.
+  Leave-one-out cross-validated, that constant halves the error against dead
+  centre (9.3 vs 17.6) and wins on 90% of photos, with **zero computation.**
+  That is **P6.1**, a one-line change, and it is the next session.
+- **The score means something only above 0.8**, where it fires on 15% of
+  photos at 3.2% error. Everything below is noise, and `suggest_photo_crops`
+  currently gates on nothing.
 
-- Prod **has** P4a.1's queue at `/tech/photos/mark/` — the backfill can be
-  run right now.
-- Prod **does not have** P6. The close-up the queue page promises a technician
-  is not on the invoice in production yet. **A deploy of `main` is what makes
-  the queue's copy true**, and it has not happened.
-- Prod is also behind `main` on #220, #221 and #223, which have nothing to do
-  with this arc but ride along on the next deploy.
+**Deploy state still lags merge state — check it before you believe it.**
+Production is running `app-0fc1-260827_091149216354`, which is
+`feat/photoml-p4a1-backfill-queue` **deployed straight off the branch**, not
+off `main`:
 
-**`main` could not migrate at all** until PR #225. #219 (P4a) and #221 (job
-queue Q4) each merged a `technician_portal` migration numbered `0060` on
-`0059`, eight minutes apart; two leaf nodes make `manage.py migrate` refuse to
-run, and that command is the postdeploy hook. Prod never hit it only because
-prod was not running `main`. #225 adds the merge migration and
-`tests/test_migration_graph.py`, which fails a PR that does this again — the
-second occurrence, so it will be a third. **Land #225 before deploying.**
+- Prod **has** P4a.1's queue — which is how the backfill got done at all.
+- Prod **does not have P6**, so the 73 marks Drake just made are recorded and
+  their crops derived, but **not one of them reaches a customer's invoice
+  until `main` ships.** That deploy is now the highest-value action in the
+  arc, and it is blocked only on the migration graph (below).
+- Prod is also behind `main` on #220, #221, #223 and the S13b icon work.
+
+**`main` cannot migrate — check this first, it blocks the deploy.** Two arcs
+merged a `technician_portal` migration numbered `0060` on `0059` minutes
+apart (#219, #221). Two leaf nodes make `manage.py migrate` refuse to run at
+all, and that command is the postdeploy hook, so the deploy dies before the
+app serves. It then recurred twice more the same day — #225+#226 fixed it into
+duplicate `0061`s, and #228+#230 fixed *that* by each deleting one, leaving no
+merge node at all. **PR #231 restores it and adds CI.**
+
+**START HERE (state as of 2026-08-27, end of day):**
+
+| | |
+|---|---|
+| **#231 — open** | Restores the `0061` merge migration + the repo's first CI workflow. **Merge before deploying; nothing else works until this is in.** |
+| **#232 — open** | P3.1's results. **This document lives on that branch** — if `main`'s copy has no P6.1 section, you are reading a stale one. |
+| **Then** | `eb deploy` from `main`. That is what puts the 73 marks in front of customers; until then they are recorded and derived but invisible. |
+| **Then** | **P6.1** — the one-line `41% 61%` default. |
+| **Then** | **P5 is a decision, not a session** — see §The pause before building toward P4b. |
 
 
 **What is left, in one line:** run the queue, then P3.1 scores the suggester
@@ -955,7 +975,7 @@ removes the reason the rate was 1 of 77 — a tap now changes something a
 customer sees — but nobody has tapped since. **P4a.1 is what converts this
 into banked labels**, and it is now worth doing.
 
-# P3.1 · Validate the suggester against real photos — TODO · **DO THIS NEXT**
+# P3.1 · Validate the suggester against real photos — DONE (2026-08-27)
 
 | Field | Value |
 |---|---|
@@ -974,7 +994,108 @@ into banked labels**, and it is now worth doing.
 
 **Notes**
 
-# P4a.1 · Backfill the 77 — TOOL DONE (PR #224, 2026-08-27) · **THE 77 ARE STILL UNMARKED**
+**Notes — the measurement, 2026-08-27**
+
+Drake marked the backlog cold on production (73 confirmed crops, 72 of them
+before/customer photos). The suggester was then run over the same originals
+offline and compared to where he actually tapped. **Nothing was written**; the
+originals were opened read-only and the scratch script removed afterwards.
+
+**Finding 1 — P3's conclusion was wrong, and the synthetic benchmark is why.**
+P3 shipped `PHOTO_SUGGEST_ENABLED=false` because the detector lost to
+"guess the centre" on synthetic cluttered glass. On real windshields it wins
+clearly, on the photos it chooses to speak about:
+
+| On its own 27 picks | median | mean | p90 | worst |
+|---|---|---|---|---|
+| suggester | **7.5** | 11.2 | 20.7 | 41.3 |
+| centre (50,50) | 18.7 | 18.4 | 25.5 | 27.6 |
+
+It beats the centre on **21 of 27 (78%)**. The synthetic fixtures were
+misleading, not merely unrepresentative — **do not tune this detector against
+generated images again.**
+
+**Finding 2 — the big one, and it is not about the detector at all.**
+Technicians do not tap the middle. All 72 marks cluster at **(41, 61)** —
+left of centre and well below it — with a tight spread (stdev x 8.5, y 7.1;
+x spans 17–56, y spans 44–77). Physically obvious in hindsight: a chip is
+photographed from the driver's side, low on the glass.
+
+So the cheapest possible change beats the entire suggester. Leave-one-out
+cross-validated, therefore honest and out-of-sample:
+
+| Over all 72 | median | mean | p90 |
+|---|---|---|---|
+| **centroid (41, 61), LOO** | **9.3** | 9.8 | 15.7 |
+| centre (50,50) | 17.6 | 17.2 | 24.7 |
+
+**The centroid halves the error against the centre, beats it on 65 of 72
+(90%), and costs zero computation** — no Pillow, no flag, no per-photo work.
+It is stable across the corpus: first half (40.5, 59.3), second half
+(41.0, 63.3).
+
+**Finding 3 — the score is meaningful, but only at the top.**
+
+| score band | n | median error |
+|---|---|---|
+| 0.0–0.2 | 5 | 11.5 |
+| 0.2–0.4 | 3 | 18.1 |
+| 0.4–0.6 | 6 | 6.9 |
+| 0.6–0.8 | 2 | 24.3 |
+| **0.8–1.0** | **11** | **3.2** |
+
+A `>= 0.8` gate fires on 15% of photos at a median error of **3.2%**, which is
+very good. But blended against a centroid fallback for the rest it moves the
+overall median only from 9.3 to **8.1** — so the detector is a **refinement on
+top of the centroid, not a replacement for it**, and most of the available win
+is already taken by the constant.
+
+**What to do with this — recommendation**
+
+1. **Change the unmarked-photo default from `50% 50%` to `41% 61%`.** This is
+   the shippable result. Every unmarked photo on the invoice tile and the
+   portal improves immediately, with no computation and no feature flag. It is
+   a one-line change to the fallback in the P6 rendering path.
+2. **Turn the suggester on behind a `--min-score 0.8` gate** — worth the 15%
+   it fires on, and it wants that gate added to `suggest_photo_crops` first
+   (today score gates nothing; see P4a.1's Notes).
+3. **Do not tune the detector on synthetic images.** Any future work uses these
+   72 real marks as the benchmark. Re-derive the centroid as the corpus grows —
+   72 marks from one shop is not a universal constant, and a second shop is the
+   first real test of whether (41, 61) generalises.
+4. `test_clutter_defeats_the_suggester` was written to fail once the suggester
+   improved. It has not improved — the *benchmark* was wrong. Update it with
+   these real numbers rather than deleting it.
+
+**Correction to why the backfill was sold, 2026-08-27.** This document argued
+for P4a.1 on the grounds that "marking one of these 77 visibly improves a real
+customer's invoice", and that turns out to be **weak for the backlog
+specifically**. Of the 72 marked photos, only **12** are on jobs from the last
+60 days, and they touch **18 invoices, 13 still open**. The rest are on
+invoices that were sent, viewed and paid months ago; a better-framed photo
+helps there only if somebody revisits the link.
+
+What the backfill actually bought, in order of value:
+
+1. **The measurement** — the 72 marks produced the (41, 61) constant, which
+   improves **every unmarked photo forever, including all future ones and ones
+   nobody ever taps.** This was not the stated reason for doing it and is by
+   far the largest return.
+2. **70 positive-class training rows** — real, banked, and currently **inert**:
+   P4b still needs a negative class that this business has never once produced
+   (§The pause).
+3. **The customer-facing improvement on old invoices** — real but small, per
+   the numbers above.
+
+The lesson for the next session that wants an afternoon of somebody's time:
+**the honest payoff may not be the one in the pitch.** Say which it is.
+
+**Method note:** the marks were made **cold**, with no suggestion pre-placed,
+which is what makes this measurement clean — a pre-placed marker anchors the
+person correcting it and would have understated the error. That decision is
+the reason these numbers mean anything; keep it for any future scoring pass.
+
+# P4a.1 · Backfill the 77 — DONE and RUN (2026-08-27) · **1 → 73 crops**
 
 | Field | Value |
 |---|---|
@@ -983,7 +1104,7 @@ into banked labels**, and it is now worth doing.
 | **Depends on** | P2's detail-page endpoint, which already does this one photo at a time. |
 | **Why it matters** | 77 labeled positives are sitting in production requiring no new field work, no waiting and no business change. It is the largest single increment available to this arc and the only one not gated on something outside the code. **P6 is merged**, so marking one of these 77 visibly improves a real customer's invoice — the backfill is an afternoon with a product result rather than charity for a model that does not exist. |
 | **What shipped** | `/tech/photos/mark/` — one page, the whole worklist, tap and advance. Read the Notes below before touching it; the queue's membership rules are decisions, not implementation. |
-| **What did NOT ship** | **The marks.** This session built the burn-down and did not run it. Production still reads 1 of 77. The tool being DONE is not the backlog being done, and this row exists so a future session does not confuse the two. |
+| **Built vs run** | The session that built this did **not** run it, and the row here said so in capitals for a day. Drake ran it on 2026-08-27: **73 confirmed crops, up from 1.** Kept as a reminder that "the tool is DONE" and "the backlog is done" are different claims, and only the second one moves a number. |
 | **Considerations** | P2 deliberately left "a bulk backfill UI for hundreds of old photos" out of scope, *"do it only if the shop actually wants to label history."* The census makes the case that it does. Think about what the cheapest possible burn-down looks like: probably one page, one photo at a time, tap and auto-advance — not a new modal, not a queue model. The existing `save_photo_crop` endpoint is the whole backend. |
 | **Order it by value** | An unmarked photo on a completed repair is worth more than one on a cancelled job; a `damage_photo_before` is worth more than a `damage_photo_after` (which labels `not_applicable` anyway — do not spend human taps on after-photos). |
 | **Acceptance criteria** | A human can mark the whole backlog in one sitting without navigating job by job. `export_photo_dataset --stats-only` reports the new count. Originals untouched — assert it. |
@@ -1118,7 +1239,39 @@ suggester on, sweep the backlog with `suggest_photo_crops`, then run the queue
 correction distance. `export_photo_dataset` already prints the median. That is
 the honest measurement P3 could not make and it now costs one sitting.
 
-# P5 · Record the jobs we turn away — TODO · **the gate on P4b**
+# P6.1 · Aim the blind crop where people actually tap — TODO · **DO THIS NEXT**
+
+| Field | Value |
+|---|---|
+| **Goal** | An **unmarked** photo should centre on (41%, 61%) instead of (50%, 50%). |
+| **Size** | XS — a CSS default, not logic. |
+| **Depends on** | P6 (the rendering path) and P3.1 (the number). Both done. |
+| **Why it matters** | Measured, leave-one-out cross-validated on 72 real marks: the constant **halves** the median error against dead centre (9.3 vs 17.6) and wins on **65 of 72 (90%)** photos. It costs no computation, needs no flag, opens no image, and applies to every photo nobody ever marked — including all future ones. It is the single best return in the arc per line changed. |
+| **Where** | The two surfaces P6 wired: the invoice tile's CSS in `templates/billing/public_invoice_view.html` (the rule near `:51` that sets `object-fit: cover`) and the portal's `object-cover` image in `templates/customer_portal/repair_detail.html:295`. Both currently emit `object-position` **only** when `focus_position()` returned something, so an unmarked photo falls through to the CSS default of `50% 50%`. Change that default; do not touch the `{% if %}` — a marked photo must still win. |
+| **Do it in CSS, not in the helper** | Resist making `focus_position()` return `'41% 61%'` for a null crop. It is documented as "empty when nothing is marked", the templates branch on that emptiness, and a marked-vs-unmarked distinction is worth keeping in the data even when both render. A default belongs in the stylesheet. |
+| **Acceptance criteria** | An unmarked photo renders at `41% 61%`; a marked one still renders at its tap. A test asserting the default survives a Tailwind rebuild — the value is easy to lose in a purge if expressed as a utility class, so prefer plain CSS in the existing block. |
+| **Name the constant once** | Put it in one place with a comment pointing at P3.1's table, so the next person knows it is measured rather than taste, and knows to re-derive it as the corpus grows. |
+| **Caveat to write down** | 72 marks from **one shop** is not a universal constant. It is very stable within this corpus (first half (40.5, 59.3), second half (41.0, 63.3)), but a second shop is the first real test. Re-derive; do not treat (41, 61) as physics. |
+
+**Notes**
+
+
+# P5 · Record the jobs we turn away — TODO · **needs Drake's call before it is a session**
+
+**Ask before building (raised 2026-08-27).** P5 is the only negative-class
+source this business generates, and P4b cannot happen without it. But P4b's
+value is now a fair question rather than an assumption: P3.1 showed that the
+customer-facing half of this arc is close to finished for free — a measured
+constant already halves the framing error, and P6.1 spends one line on it.
+If the better photo was the point all along, the honest move is to **close P5
+and P4b out** rather than leave them as perpetual TODOs, and stop describing
+this as a classifier arc.
+
+So: **do not open this session on the strength of the document.** Ask whether
+the classifier is still wanted. If yes, the spec below is ready and its
+product case (below, "Considerations, product side") stands on its own without
+any ML. If no, mark both DROPPED with the reason and the arc ends at P6.1 —
+which would be a good ending, not a failed one.
 
 | Field | Value |
 |---|---|
@@ -1202,13 +1355,13 @@ and did not move the count.
   It reaches customers on the next deploy of `main`, which has not happened.
 - ~~**P4a.1 — build the queue.**~~ **Merged (#224),** and live in production
   at `/tech/photos/mark/`.
-- **Run the queue. This is the whole list.** Everything above is built and the
-  number is unchanged at 1 of 77, because marking photos is the one step no
-  session can do for you. It is an afternoon; it is the highest value per
-  minute left in the arc; and it is pure positive class, which is only half
-  useful until P5 exists — do it anyway, because it is perishable in the sense
-  that nobody remembers where the break was on a 2025 windshield. **Every
-  session below is worth less than this afternoon.**
+- ~~**Run the queue.**~~ **Done 2026-08-27 — 1 → 73 crops**, in about twenty
+  minutes, not the "afternoon" this document kept predicting. It was the
+  highest value per minute in the arc and it paid off somewhere unexpected:
+  see P3.1, whose measurement is worth more than the 70 training rows.
+- **P6.1** — cash out that measurement. One CSS default, `41% 61%`.
+- **P5 is the only thing left that is not code**, and it is a decision rather
+  than a session: see below.
 - **P3.1** — the suggester has never once been run on a real windshield photo,
   which P3 flagged as the first thing to fix. **There are now 77 of them.**
   This is the cheapest honest test in the arc, and P4a.1 composes with it:
@@ -1247,3 +1400,8 @@ and did not move the count.
 | 2026-08-26 | **P6 executed.** PR #219 merged, so `main` finally carries P4a. The marked break is now visible to customers: the public invoice tile and the portal's repair detail are framed on the tap (`object-position`) instead of the middle of the frame, replacements contribute photos at last, and no caption reads "Unit " with nothing after it. Shared helper `focus_positions_for` in the crop service; the served file is still the untouched original everywhere. Verified in a browser on a portrait photo, where the old tile showed a wiper and no break. **P4a.1 (burn down the 77) is next** — P6 is what makes it worth doing, and it is what will actually move the 1-of-77. |
 | 2026-08-26 | **Reframed by Drake.** Asked what a shop gets from cropping: nothing, today. The arc was built training-first and the capture rate proves the cost — **1 of 77**. Purpose statement rewritten around the customer-visible close-up as the *first* purpose and the training set as the second, with the note that percent coordinates serve both from one tap. **P6 added and sequenced next**, carrying three live bugs on the invoice photo path (blind centre-crop, replacements excluded, `Unit ` caption for individuals). Preservation audited and sound; collection is not. |
 | 2026-08-26 | **P4a.1 executed.** `/tech/photos/mark/` — the whole unmarked-photo backlog in one queue, tap the break and advance, entered from a link in the job list that hides itself when there is nothing waiting. No new endpoint, model or migration: it drives P2's `save_photo_crop`, and the worklist is recomputed on every load so a marked photo simply leaves it. Label rules and permission checks are shared with the export and the endpoint rather than copied (`label_for_photo`, `can_view_repair` / `_replacement_technician_access`), and the tap-to-percent conversion moved onto `PhotoCropModal.percentFromEvent` so the two tap surfaces cannot drift. **The tool exists; the 77 are still unmarked** — running it against production is the next thing that moves the number. |
+| 2026-08-27 | **#222 (P6) and #224 (P4a.1) merged.** Also found and fixed a break neither PR could see: #219 and #221 each added a `technician_portal` migration numbered `0060`, so `main` could not build its migration graph and any deploy would have died in the postdeploy hook. `tests/test_migration_graph.py` added as the guard. |
+| 2026-08-27 | **The migration race ran three rounds in one day** — #219+#221 gave duplicate `0060`s; #225+#226 (two independent fixes) gave duplicate `0061`s; #228+#230 (two more, one deletion each) left **no** `0061` at all, back to the start. The guard test caught every round and prevented none, because nothing ran it before a merge. **#231** restores the merge node and adds the repo's first CI workflow — one test, no database, no secrets, ~0.1s. |
+| 2026-08-27 | **THE BACKLOG WAS MARKED.** Drake ran `/tech/photos/mark/` against production: **1 → 73 confirmed crops**, in roughly twenty minutes. Marked **cold**, with no suggestions pre-placed, which is what made the next row possible. The metric this arc exists to move moved because a person spent twenty minutes, not because of anything built after P2. |
+| 2026-08-27 | **P3.1 executed, and it is the most useful result in the arc.** Scored the suggester against those 73 marks. (1) **P3's kill was wrong** — on real windshields it beats the centre-guess on 78% of the photos it speaks about, median 7.5% vs 18.7%; the synthetic benchmark was misleading, so never tune it on generated images again. (2) **The big one:** technicians tap at **(41, 61)**, not the middle — left and low, because a chip is shot from the driver's seat. Leave-one-out cross-validated, that constant **halves** the error against dead centre (9.3 vs 17.6) and wins on **65 of 72**, at zero computation. (3) The score is meaningful only **≥0.8** (fires on 15%, 3.2% error); blended it moves the median just 9.3→8.1, so the detector is a refinement on the constant, not a replacement. **P6.1 added and sequenced next.** |
+| 2026-08-27 | **Correction recorded:** P4a.1 was sold on "each mark visibly improves a real customer's invoice", and measured afterwards that is weak — only 12 of 72 marked photos are on jobs from the last 60 days, touching 18 invoices, 13 still open. The backfill's real return was **the measurement** (a constant that improves every future photo forever), not the old invoices and not yet the 70 training rows, which stay inert until P5. |
