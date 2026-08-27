@@ -51,15 +51,23 @@ without re-running the exploration that produced this doc.
 | P2 · Coverage | Detail-page crop/re-crop + retry queue + multi-break & customer-portal wiring | M | DONE (2026-08-25, branch `feat/photoml-p2-crop-coverage`) |
 | P3 · Assist | Auto-suggest crops (local saliency detector; no photo leaves the server) | M | DONE (2026-08-25, branch `feat/photoml-p3-auto-suggest`) |
 | P4a · Both classes | Crops on replacements + dataset export + class/accuracy report | M | DONE (2026-08-26, PR #218 → **re-landed as PR #219, merged 2026-08-26**) |
-| P6 · Show the close-up | Put the marked point on surfaces customers already see — and fix three bugs there | M | DONE (2026-08-26, branch `feat/photoml-p6-show-the-closeup`) |
-| P3.1 · Validate | Run the suggester against the 77 real windshield photos we now have | S | TODO — **unblocked as of 2026-08-26** |
-| **P4a.1 · Backfill** | **Mark the break on the 77 completed repairs that already carry a photo** | **S** | **TODO — DO THIS NEXT** |
+| P6 · Show the close-up | Put the marked point on surfaces customers already see — and fix three bugs there | M | DONE (PR #222, merged 2026-08-27) |
+| P4a.1 · Backfill | Mark the break on the photos we already have — one queue, not 77 jobs | S | DONE (PR #224, 2026-08-27) — **the tool; the 77 are still unmarked** |
+| **P3.1 · Validate** | **Run the suggester against the 77 real windshield photos we now have** | **S** | **TODO — DO THIS NEXT**; it composes with P4a.1's queue |
 | P5 · Negative class | Record the jobs we turn away — the only source of "not repairable" | M | TODO — **this is the actual gate on P4b** |
 | P4b · Payoff | Repairability classifier | L | BLOCKED on **P5** — see P4b and §The pause |
 
 **Suggested sequence, as revised 2026-08-26:**
-P1 → P2 → P3 → P4a → P6 → **P4a.1 → P5** → P4b, with P3.1 droppable in
-anywhere. Everything up to and including P6 is done.
+P1 → P2 → P3 → P4a → P6 → P4a.1 → **P3.1 → P5** → P4b. Every session up to
+and including P4a.1 is built and merged. **P3.1 is the cheap next one** — the
+backfill queue is what finally produces real human marks to score the
+suggester against — but **P5 is the only thing that unblocks P4b**, and no
+amount of P3.1 changes that.
+
+**The one thing that is built but not done: the backfill has not been run.**
+P4a.1 delivered the tool. Marking the 77 is a sitting at a screen, and it is
+still the highest value per minute in this arc. Do not read the DONE on P4a.1
+as a burned-down backlog — see §Where we are.
 
 The original sequence (P1 → P2 → P3 → P4a → P4b) assumed the only thing
 standing between here and a classifier was volume. Two findings changed it:
@@ -69,32 +77,66 @@ before P4a.1** because backfilling 77 photos is worth an afternoon once each
 one visibly improves a real invoice, and is charity before that. **P5 before
 P4b** because P5 is the only negative-class source this business generates.
 
-**Where we are (2026-08-26, end of day — the tap now shows up):**
+**Where we are (2026-08-27 — every session through P4a.1 is merged, and the
+capture rate has not moved):**
 
-**PR #219 is merged**; P4a is on `main` (squash commit `c8876d8e`). Note that
-the verification recipe the last session wrote — `git log
-origin/main..origin/<branch>` should be empty — gives a **false alarm under a
-squash merge**, because squashing rewrites the SHAs. Verify by content
-(`git ls-tree origin/main | grep photo_dataset`, or `git diff --stat
-origin/main origin/<branch>`) when the merge was a squash.
+The whole capture-and-payoff pipeline is now on `main`. P6 (#222) landed and
+a marked break reframes the photo on the public invoice tile and in the
+customer portal; P4a.1 (#224) landed and `/tech/photos/mark/` puts every
+unmarked damage photo in one queue — tap the break, Enter, next.
 
-**P6 is built** on `feat/photoml-p6-show-the-closeup`: the break a technician
-marks is now visible to the customer on the public invoice page and the
-customer-portal repair detail, and the three bugs on that path are fixed
-(blind centre-crop, replacements contributing no photos, `Unit  — Before`).
-Verified in a real browser against a portrait photo, which is where the old
-behaviour was worst: the unmarked tile showed a wiper and no break at all.
-See P6's Notes for what the measurement actually says about the size of the
-win — it depends on photo orientation, and that is worth knowing before
-promising anything.
+**And the number is still 1 of 77.** Nothing in this arc has moved the metric
+it exists to move, because the remaining step is not a code change: somebody
+has to sit down with the queue. Every session from here is worth less than
+that afternoon. Say so plainly rather than reading the DONE column as
+progress.
 
-**The capture rate is still the number that matters, and it is still 1 of
-77.** P6 removes the reason it was 1; it cannot by itself move it. **P4a.1 —
-burning down the 77 — is the next session**, and it is now a session with a
-product result rather than charity for a model that does not exist.
+**Deploy state is not what the merge state implies — check it before you
+believe it (2026-08-27).** Production is running `app-0fc1-260827_091149216354`,
+which is `feat/photoml-p4a1-backfill-queue` **deployed straight off the
+branch**, not off `main`. The consequences are exact and worth having in front
+of you:
 
-**The classifier is still gated on P5,** not on time; see §The pause for the
-census.
+- Prod **has** P4a.1's queue at `/tech/photos/mark/` — the backfill can be
+  run right now.
+- Prod **does not have** P6. The close-up the queue page promises a technician
+  is not on the invoice in production yet. **A deploy of `main` is what makes
+  the queue's copy true**, and it has not happened.
+- Prod is also behind `main` on #220, #221 and #223, which have nothing to do
+  with this arc but ride along on the next deploy.
+
+**`main` could not migrate at all** until PR #225. #219 (P4a) and #221 (job
+queue Q4) each merged a `technician_portal` migration numbered `0060` on
+`0059`, eight minutes apart; two leaf nodes make `manage.py migrate` refuse to
+run, and that command is the postdeploy hook. Prod never hit it only because
+prod was not running `main`. #225 adds the merge migration and
+`tests/test_migration_graph.py`, which fails a PR that does this again — the
+second occurrence, so it will be a third. **Land #225 before deploying.**
+
+
+**What is left, in one line:** run the queue, then P3.1 scores the suggester
+against what the queue produced, then P5 — which is still the only thing that
+unblocks the classifier, and is still gated on the business turning a job away
+rather than on any code. See §The pause for the census.
+
+**Verifying a merge in this arc.** Every PR here squashes, so the recipe an
+earlier session wrote — `git log origin/main..origin/<branch>` should be
+empty — **lies**: squashing rewrites the SHAs and the branch commits stay "not
+on main" forever. Verify by content instead
+(`git ls-tree -r --name-only origin/main | grep photo_backlog`, or
+`git diff --stat origin/main origin/<branch>` over the files you care about).
+
+**Where we were (2026-08-26, after P6):** P4a landed on `main` as squash
+commit `c8876d8e` (PR #219, after #218 merged into the wrong base). P6 was
+built on `feat/photoml-p6-show-the-closeup`: the break a technician marks
+became visible to the customer on the public invoice page and the
+customer-portal repair detail, and three bugs on that path were fixed (blind
+centre-crop, replacements contributing no photos at all, `Unit  — Before` on
+every individual's caption). Verified in a real browser against a portrait
+photo, which is where the old behaviour was worst — the unmarked tile showed a
+wiper and no break at all. See P6's Notes for what the measurement actually
+says about the size of the win; it depends on photo orientation, and that is
+worth knowing before promising anything.
 
 **Where we were (2026-08-26, after P4a):** P1 merged as PR #211, P2 as PR #215.
 P3 is PR #217, still open. **P4a stacks on P3's branch** — it needs P3's
@@ -269,6 +311,7 @@ training run can drop a rule it doesn't trust without re-deriving anything.
 | Customer portal request | `customer_portal/views.py` (~:1800) | yes | none | never — by decision, customers are not asked to tap; the shop marks their photo from the detail page |
 | Repair detail page | `views/repairs.py::save_photo_crop` | n/a | n/a | **P2** (crop or re-crop any photo already on the job) + **P3** (an unmarked photo opens on a suggested marker, via `suggest_photo_crop`) |
 | Replacement detail page `/tech/replacement/<pk>/` | same two views, `kind='replacement'` | n/a | n/a | **P4a**. Same partial, same JS, endpoints `/tech/replacements/<id>/photo-crop/[suggest/]`. Permission comes from `_replacement_technician_access`, not `can_view_repair`. The *after* photo is not markable — it is new glass |
+| **Backfill queue `/tech/photos/mark/`** | `views/photo_backfill.py::photo_backfill_queue` | n/a | n/a | **P4a.1** — every photo with no *human-confirmed* mark, repairs and replacements, in one list. Read-only itself; each tap POSTs to `save_photo_crop`. Membership rules live in `services/photo_backlog.py` |
 | Backlog sweep | `manage.py suggest_photo_crops` | n/a | n/a | **P3** (marks unmarked photos `confirmed_by_human=False`; never overwrites a tap, never touches an original); **P4a** adds `--kind` and sweeps replacements |
 | Dataset export | `manage.py export_photo_dataset` | n/a | n/a | **P4a** — read-only; images + JSONL, anonymised, with a class-balance and suggester-accuracy report every run |
 
@@ -309,7 +352,8 @@ fixed two blind spots: soft-deleted repairs and all Replacement photos).
 **Tests.** `tests/test_photo_tap_crop.py` (13, P1),
 `tests/test_photo_crop_coverage.py` (24, P2),
 `tests/test_photo_suggest.py` (39, P3),
-`tests/test_photo_dataset.py` (40, P4a). `real_jpeg()` there
+`tests/test_photo_dataset.py` (40, P4a),
+`tests/test_photo_backfill_queue.py` (37, P4a.1). `real_jpeg()` there
 builds actual decodable JPEGs (with optional EXIF orientation);
 `QuickJobForm` uses `forms.ImageField`, which rejects fake bytes at form
 validation — but model-level writes (multi-break, customer portal) don't, so
@@ -426,6 +470,25 @@ Postgres recipe when local auth fails: scratch cluster via
 - **`Repair` has no `created_at`** (2026-08-26) — the date field is
   `service_date`. A rate query written from habit raises `FieldError` listing
   every field on the model, which is at least a fast way to find that out.
+- **A backlog nobody can see is a backlog nobody burns down** (P4a.1). Every
+  photo in the 1-of-77 could already be marked from its job's detail page, and
+  had been able to since P2. The missing thing was never the ability; it was
+  that the app never once said "there are 77 of these". The fix was one link
+  in a summary line and one page that puts them in a row. **Before building a
+  better way to do a thing, check whether anyone knows the thing is waiting.**
+- **`{# … #}` is single-line only** (P4a.1) — CLAUDE.md says so, and I wrote a
+  three-line one anyway. It renders as visible prose on the page: in this case
+  a paragraph of implementation notes across the top of a technician's tap
+  surface. Use `{% comment %}…{% endcomment %}`.
+- **`Repair.vehicle_description` is a read-only property**, not a column
+  (P4a.1) — it is derived from `vehicle_year`/`vehicle_make`/`vehicle_model`,
+  and `vehicle_year` is an **IntegerField**, so `vehicle_year=''` dies too. A
+  fixture written from habit hits both in one line.
+- **A confirm that needs scrolling is not a confirm** (P4a.1). The queue's
+  first layout gave the photo `62vh` and pushed both buttons below the fold —
+  on a page whose entire design is tap, Enter, tap, Enter without moving. If a
+  surface is meant to be repeated dozens of times, measure it against one
+  screen before anything else.
 - **A squash merge makes the "did it land?" recipe lie** (P6). The check the
   census session wrote — `git log origin/main..origin/<branch>` should be
   empty — assumes a merge commit. Squashing rewrites the SHAs, so the branch
@@ -450,6 +513,16 @@ Postgres recipe when local auth fails: scratch cluster via
   model before inventing kwargs.
 - **`CustomerUser` has no `tenant` FK** (P6): it reaches the tenant through
   `customer`. A test that passes `tenant=` gets `TypeError`.
+- **Two branches, one migration number, and both merge green** (2026-08-27).
+  #219 (P4a) and #221 (an unrelated arc) each added `technician_portal` `0060`
+  on top of `0059` and merged eight minutes apart. Neither PR could have
+  noticed: the collision does not exist until both are on `main`, and what it
+  breaks is `manage.py migrate` **entirely** — two leaf nodes and Django
+  refuses to build a plan, so the postdeploy hook dies before the app serves.
+  This is the second occurrence (`0050_merge_20260810_1635` was the first).
+  **Before opening a PR that adds a migration, `git fetch && ls` the app's
+  migrations directory on `main`** — your number may have been taken while you
+  worked. `tests/test_migration_graph.py` (PR #225) now fails on it.
 - **`MEDIA_ROOT` is a real directory that survives between runs** (P3): dev
   and test share `media/`, and it accumulates crop files. Any test that
   counts or names files there must diff against what was already present.
@@ -773,7 +846,7 @@ own plan from P3: keep marking breaks during normal work, and re-run
 `export_photo_dataset --stats-only` every so often. When the minority class
 clears a few hundred rows, P4b has something to train on.
 
-# P6 · Show the close-up — DONE (2026-08-26)
+# P6 · Show the close-up — DONE (PR #222, merged 2026-08-27)
 
 | Field | Value |
 |---|---|
@@ -869,35 +942,165 @@ removes the reason the rate was 1 of 77 — a tap now changes something a
 customer sees — but nobody has tapped since. **P4a.1 is what converts this
 into banked labels**, and it is now worth doing.
 
-# P3.1 · Validate the suggester against real photos — TODO (newly unblocked)
+# P3.1 · Validate the suggester against real photos — TODO · **DO THIS NEXT**
 
 | Field | Value |
 |---|---|
 | **Goal** | Answer the question P3 could not: is the saliency suggester any good on photographs of actual windshields? |
 | **Size** | S |
-| **Depends on** | P3. **Unblocked 2026-08-26** — production holds 77 completed repairs carrying a real damage photo. Until now the only evidence was synthetic fixtures the author also designed. |
+| **Depends on** | P3, and — really — **on the backfill having been run**, not merely built. Production holds 77 completed repairs carrying a real damage photo and P4a.1 (#224) put them all in one queue, but as of 2026-08-27 exactly one is marked. Ground truth is what this session scores against, so **check `export_photo_dataset --stats-only` before starting**: if the confirmed-crop count is still ~1, this session has nothing to measure and the afternoon at the queue is the prerequisite. |
 | **Why it matters** | P3 ships `PHOTO_SUGGEST_ENABLED=false` on the strength of one synthetic benchmark where the detector lost to "guess the centre of the photo" on cluttered glass. That is either a correct kill or an unfair one, and nobody knows which. A suggester that works raises the capture rate everything downstream feeds on; one that doesn't should be deleted, not left dark. |
-| **How** | Pull the 77 originals (they are on S3 under `media/repair_photos/`; do NOT mutate them). Run `suggest_point` over each. There are no ground-truth marks yet — so either run this *after* P4a.1 and measure against the human taps it produces, or have a human tap first and treat P3.1 as the scoring pass. **Keep "guess the centre" in the table as the baseline; that is the lesson P3 paid for.** |
+| **How** | P4a.1's queue changed the cheapest shape of this session, and the two compose: **turn the suggester on** (`PHOTO_SUGGEST_ENABLED=true`), sweep the backlog with `manage.py suggest_photo_crops`, *then* run `/tech/photos/mark/`. Every photo then opens on the machine's guess with a human correcting it, `save_crop_for` keeps `suggested_x_pct`/`suggested_y_pct` on the row after the correction, and `export_photo_dataset` already prints the median correction distance. One sitting produces both the labels and the score. The alternative — pull the originals off S3 (`media/repair_photos/`, do NOT mutate them) and run `suggest_point` offline — measures the same thing but produces no labels, so prefer the sweep. **Keep "guess the centre" in the table as the baseline either way; that is the lesson P3 paid for.** |
+| **The trap in the compose** | A photo the suggester marked is `confirmed_by_human=False` until a person confirms it. Do not sweep, see 77 crops appear, and report the backlog burned down — the sweep produces *guesses*, and the dataset weights on the confirmed flag for exactly this reason. The number to watch is confirmed crops, not crops. |
 | **Acceptance criteria** | A table of median/worst error for detector vs centre-guess over real photos, plus the decline rate (how often it correctly returns None). A recommendation to tune `MAX_SPREAD`, keep the kill switch off, or remove the suggester. |
 | **Out of scope** | Building a better detector. This session measures; a rebuild is its own session and probably wants P4b's data anyway. |
 | **Note** | `test_clutter_defeats_the_suggester` is designed to fail once the suggester is fixed. If this session improves it, that test is the one to update — deliberately, with the new numbers in the message. |
 
 **Notes**
 
-# P4a.1 · Backfill the 77 — TODO · **DO THIS NEXT**
+# P4a.1 · Backfill the 77 — TOOL DONE (PR #224, 2026-08-27) · **THE 77 ARE STILL UNMARKED**
 
 | Field | Value |
 |---|---|
 | **Goal** | Every completed repair that already carries a photo gets its break marked. 77 photos, 1 marked. |
 | **Size** | S |
 | **Depends on** | P2's detail-page endpoint, which already does this one photo at a time. |
-| **Why it matters** | 77 labeled positives are sitting in production requiring no new field work, no waiting and no business change. It is the largest single increment available to this arc and the only one not gated on something outside the code. **P6 is done**, so marking one of these 77 now visibly improves a real customer's invoice — the backfill is an afternoon with a product result rather than charity for a model that does not exist. |
+| **Why it matters** | 77 labeled positives are sitting in production requiring no new field work, no waiting and no business change. It is the largest single increment available to this arc and the only one not gated on something outside the code. **P6 is merged**, so marking one of these 77 visibly improves a real customer's invoice — the backfill is an afternoon with a product result rather than charity for a model that does not exist. |
+| **What shipped** | `/tech/photos/mark/` — one page, the whole worklist, tap and advance. Read the Notes below before touching it; the queue's membership rules are decisions, not implementation. |
+| **What did NOT ship** | **The marks.** This session built the burn-down and did not run it. Production still reads 1 of 77. The tool being DONE is not the backlog being done, and this row exists so a future session does not confuse the two. |
 | **Considerations** | P2 deliberately left "a bulk backfill UI for hundreds of old photos" out of scope, *"do it only if the shop actually wants to label history."* The census makes the case that it does. Think about what the cheapest possible burn-down looks like: probably one page, one photo at a time, tap and auto-advance — not a new modal, not a queue model. The existing `save_photo_crop` endpoint is the whole backend. |
 | **Order it by value** | An unmarked photo on a completed repair is worth more than one on a cancelled job; a `damage_photo_before` is worth more than a `damage_photo_after` (which labels `not_applicable` anyway — do not spend human taps on after-photos). |
 | **Acceptance criteria** | A human can mark the whole backlog in one sitting without navigating job by job. `export_photo_dataset --stats-only` reports the new count. Originals untouched — assert it. |
-| **Out of scope** | Marking anything the machine suggested (the suggester is off, and unconfirmed rows are excluded from export by design). |
+| **Out of scope** | Turning the suggester on (that is P3.1's call). Running the backfill against production — the tool is the deliverable; the sitting is Drake's. |
+| **Revised in flight** | The original row here read *"out of scope: marking anything the machine suggested"*, meaning **do not let the machine mark things for you**. It does not mean a machine-guessed row should be hidden from a human — the opposite: an unconfirmed row is precisely what still needs a person, so the queue includes it, sorts it last, and opens on the guess. Confirming one is how the suggester finally gets scored. |
 
 **Notes**
+*(session run 2026-08-26, branch `feat/photoml-p4a1-backfill-queue`, 37 new tests)*
+
+### What shipped
+
+`/tech/photos/mark/` (`views/photo_backfill.py`, template
+`technician_portal/photo_backfill.html`, driver `static/js/photo_backfill.js`).
+The whole worklist is handed to the page as JSON at load, one photo fills the
+screen, a tap places a marker and **Save close-up / Enter** posts it and
+advances. Skip is `S`, `→`, or the button. Progress reads "*n* of *N*" with a
+bar, and the end card says how many were marked and how many skipped.
+
+Everything it writes goes through P2's `save_photo_crop` — **no new endpoint,
+no new model, no new migration, and no stored queue state.** The view itself
+is read-only.
+
+### The three decisions worth keeping
+
+1. **The worklist is a question, not a record.** It is recomputed on every
+   load from "which photos have no human-confirmed crop", so a marked photo
+   simply stops appearing. That is what makes the page safe to reload, to
+   run from two devices, to abandon halfway, and to hand to a second person.
+   A `BacklogItem` is a throwaway object; nothing is cached anywhere.
+2. **Two taps per photo, not one.** The obvious burn-down is tap-to-save-and-
+   advance, and it is wrong here: a mis-tap would silently write a wrong mark
+   onto a real customer's invoice with no undo on this page. Tap places the
+   marker, the confirm commits — and the confirm is where `Enter` lives,
+   which is what actually makes a desk session fast (tap, Enter, tap, Enter,
+   no mouse travel to a button).
+3. **The page is not the shared modal.** `PhotoCropModal` is right for a
+   surface that captures one tap; a modal opening and closing seventy-seven
+   times would be the worst part of the job. What *is* shared is the one
+   thing that must never drift — the tap-to-percent conversion, now
+   `PhotoCropModal.percentFromEvent(img, event)`, used by the modal's own
+   `placeMarker` and by this driver.
+
+### What is in the queue, and why
+
+`services/photo_backlog.py` owns membership. Three rules, all of them
+product decisions rather than filters:
+
+- **After-photos are never offered.** They label `not_applicable`, and P6
+  will not zoom them for a customer either (magnifying a resin repair's
+  blemish shows the scar, not the fix). A tap there is worth nothing at
+  *both* ends, which is a stronger reason than either one alone.
+- **"Marked" means marked by a human** — `confirmed_by_human=True`, not
+  merely "a crop row exists". A row the P3 sweep guessed at is excluded from
+  the dataset export by design, so it still needs a person. It stays in the
+  queue, sorted last, and **opens with the guess pre-placed**; confirming or
+  nudging it posts the guess back alongside the final mark. That is the pair
+  P3.1 needs and it now accrues as a side effect of the backfill.
+- **Completed jobs first.** Their label exists today (`repairable` /
+  `not_repairable`); an open job's photo is `unknown` until somebody finishes
+  the work. Tempered-glass replacements sort last — still worth a mark for
+  the customer's invoice, worth nothing to the dataset.
+
+Both repairs *and* replacements are in it. Leaving replacements out would
+have quietly rebuilt the exact sampling fault P4a existed to fix.
+
+### Two things deliberately not copied
+
+- **The label rules.** `photo_dataset.label_for(crop)` now delegates to a new
+  `label_for_photo(job, source_field)`, which is the same rule set reached
+  one step earlier — these photos have no crop row yet. A second copy would
+  have drifted, and `label_source` is only worth anything if a training run
+  can trust which rule fired.
+- **The permission check.** The queue filters with `can_view_repair` and
+  `_replacement_technician_access` — the crop endpoint's own gates — so it
+  can never offer a technician a job the save will refuse.
+  `test_everything_the_queue_offers_the_endpoint_accepts` states the
+  invariant directly: walk the whole queue, mark every entry, none may be
+  refused. **A queue that hands someone a 403 for doing what it asked is
+  worse than no queue.**
+
+### The entry point is one link, and it hides itself
+
+The job list's summary line gains "*n* photos to mark" when there is a
+backlog and nothing when there isn't. The nav has no room (it is documented
+as not fitting seven owner links already), and the arc's real problem was
+never that marking was hard — it was that **nobody knew the backlog existed**.
+The count runs the same permission-filtered query the queue does, capped at
+`QUEUE_LIMIT` (200), with the joins the page needs dropped (`detail=False`):
+a number that promises more than the page delivers is worse than no number.
+
+The query is bounded at the database, not in Python — completed-first, newest
+-first, sliced to the limit — so a shop with thousands of unmarked photos
+loads a page, not a history. On a backlog longer than the limit the tiering
+therefore sorts the newest 200 rather than everything, and the page says so.
+
+### Verified
+
+- **In a browser, end to end**, against seeded portrait (900×1200) and
+  landscape (1200×900) photos with a chip drawn at a known point. Three taps
+  landed at (50.1, 39.9), (35.0, 55.1) and (61.7, 17.0) against seeded chips
+  at (50, 40), (35, 55) and (62, 17) — **within 0.3 percentage points on both
+  orientations.** The crops wrote, `Skip` skipped, the marked ones dropped out
+  of the queue on reload, the end card read "2 breaks marked, 1 skipped", and
+  the empty state and the vanishing job-list link both behaved.
+- `export_photo_dataset --stats-only` afterwards saw all three with the right
+  labels and rules (`repair_completed` ×2, `replacement_completed_windshield`
+  ×1) — the loop from queue to dataset closes.
+- 37 new tests in `tests/test_photo_backfill_queue.py`; the P1–P4a suites
+  (117) and `test_unified_job_list` stay green. 184 tests in the combined run,
+  zero failures.
+
+### Traps hit this session
+
+- **The multi-line `{# … #}` comment**, which CLAUDE.md documents and which I
+  wrote anyway. It rendered as a paragraph of prose across the top of the tap
+  surface. Use `{% comment %}`.
+- **`Repair.vehicle_description` is a read-only property** derived from
+  `vehicle_year`/`make`/`model`, and `vehicle_year` is an **IntegerField** —
+  `vehicle_description='Silver Camry'` raises `AttributeError`, and
+  `vehicle_year=''` raises `ValueError`.
+- **The first layout put the buttons below the fold.** For a burn-down that is
+  fatal — confirming must never mean scrolling. The photo box is now a fixed
+  `52vh` with the image `max-height: 100%` inside it, so a landscape photo
+  letterboxes rather than losing its top and bottom (which on this page would
+  hide the very break being marked).
+
+### For P3.1
+
+The backfill is what makes P3.1 possible, and the two compose: turn the
+suggester on, sweep the backlog with `suggest_photo_crops`, then run the queue
+— every photo opens on the machine's guess and every confirm records the
+correction distance. `export_photo_dataset` already prints the median. That is
+the honest measurement P3 could not make and it now costs one sitting.
 
 # P5 · Record the jobs we turn away — TODO · **the gate on P4b**
 
@@ -977,18 +1180,25 @@ and did not move the count.
 
 ### What to do during the pause
 
-- ~~**P6 first.**~~ **Done (2026-08-26.)** A tap now visibly reframes the
-  photo on the customer's invoice and in their portal. That was the binding
-  constraint on everything below; it is lifted, though the rate itself is
-  still 1 of 77 until somebody taps.
-- **P4a.1 — now first.** Burn down the 77, each mark visibly improving a real
-  invoice. Highest value per minute available in this arc, and it is the only
-  thing that will actually move the capture number. It is pure positive class, which is only half
-  useful until P5 exists — do it anyway; it is perishable in the sense that
-  nobody remembers where the break was on a 2025 windshield.
+- ~~**P6 first.**~~ **Merged (#222).** A tap now visibly reframes the photo
+  on the customer's invoice and in their portal. That was the binding
+  constraint on everything below and it is lifted — **in the repository.**
+  It reaches customers on the next deploy of `main`, which has not happened.
+- ~~**P4a.1 — build the queue.**~~ **Merged (#224),** and live in production
+  at `/tech/photos/mark/`.
+- **Run the queue. This is the whole list.** Everything above is built and the
+  number is unchanged at 1 of 77, because marking photos is the one step no
+  session can do for you. It is an afternoon; it is the highest value per
+  minute left in the arc; and it is pure positive class, which is only half
+  useful until P5 exists — do it anyway, because it is perishable in the sense
+  that nobody remembers where the break was on a 2025 windshield. **Every
+  session below is worth less than this afternoon.**
 - **P3.1** — the suggester has never once been run on a real windshield photo,
   which P3 flagged as the first thing to fix. **There are now 77 of them.**
-  This is the cheapest honest test in the arc and it is newly possible.
+  This is the cheapest honest test in the arc, and P4a.1 composes with it:
+  sweep the backlog with the suggester on, then run the queue — every photo
+  opens on the machine's guess, every confirm records a correction distance,
+  and `export_photo_dataset` already prints the median.
 - **P5** — the real gate.
 - Re-run `export_photo_dataset --stats-only` after each, and believe the
   balance line over any narrative, this one included.
@@ -1020,3 +1230,4 @@ and did not move the count.
 | 2026-08-26 | **Census + pause.** Discovered P4a never reached `main` (stacked-merge race, #218 merged into an already-consumed branch; re-landed as #219). Production census: 77 banked positives, **0 replacements ever**. P4b re-gated from "blocked on data" to **blocked on P5**. Added P3.1 (suggester now testable on real photos), P4a.1 (backfill the 77), P5 (record declined work — the only negative-class source this business generates). |
 | 2026-08-26 | **P6 executed.** PR #219 merged, so `main` finally carries P4a. The marked break is now visible to customers: the public invoice tile and the portal's repair detail are framed on the tap (`object-position`) instead of the middle of the frame, replacements contribute photos at last, and no caption reads "Unit " with nothing after it. Shared helper `focus_positions_for` in the crop service; the served file is still the untouched original everywhere. Verified in a browser on a portrait photo, where the old tile showed a wiper and no break. **P4a.1 (burn down the 77) is next** — P6 is what makes it worth doing, and it is what will actually move the 1-of-77. |
 | 2026-08-26 | **Reframed by Drake.** Asked what a shop gets from cropping: nothing, today. The arc was built training-first and the capture rate proves the cost — **1 of 77**. Purpose statement rewritten around the customer-visible close-up as the *first* purpose and the training set as the second, with the note that percent coordinates serve both from one tap. **P6 added and sequenced next**, carrying three live bugs on the invoice photo path (blind centre-crop, replacements excluded, `Unit ` caption for individuals). Preservation audited and sound; collection is not. |
+| 2026-08-26 | **P4a.1 executed.** `/tech/photos/mark/` — the whole unmarked-photo backlog in one queue, tap the break and advance, entered from a link in the job list that hides itself when there is nothing waiting. No new endpoint, model or migration: it drives P2's `save_photo_crop`, and the worklist is recomputed on every load so a marked photo simply leaves it. Label rules and permission checks are shared with the export and the endpoint rather than copied (`label_for_photo`, `can_view_repair` / `_replacement_technician_access`), and the tap-to-percent conversion moved onto `PhotoCropModal.percentFromEvent` so the two tap surfaces cannot drift. **The tool exists; the 77 are still unmarked** — running it against production is the next thing that moves the number. |

@@ -238,11 +238,21 @@ def job_list(request):
         assignment_filter != 'all',
     ])
 
+    # How many damage photos still have no break marked on them (P4a.1).
+    # This is the only entry point to the burn-down queue — the nav has no
+    # room and the arc's whole problem was that nobody knew the backlog was
+    # there. Bounded by QUEUE_LIMIT, and it goes through the same permission
+    # filter the queue itself uses so the number can't promise more than the
+    # page will show.
+    from apps.technician_portal.services.photo_backlog import backlog_size
+    unmarked_photo_count = backlog_size(request, tenant)
+
     context = {
         'jobs': page_obj,
         'page_obj': page_obj,
         'total_jobs': total_jobs,
         'stats': stats,
+        'unmarked_photo_count': unmarked_photo_count,
         'type_filter': type_filter,
         'customer_search': customer_search,
         'customer_type_filter': customer_type_filter,
