@@ -986,6 +986,18 @@ bare `fa-` prefix but not the `fas ` weight prefix, so those need either a split
 call site or a wider `resolve()`. Exactly the shape of #206's `bg-yellow-200`: the
 template-only view of a template-and-Python problem.
 
+**The sweep flips string-matching tests, in both directions.** `tests/` has exactly
+three assertions on Font Awesome class names, and this PR moved one of them:
+`test_ux_fixes.test_wrench_icon_used_not_tools` asserts `/owner/settings/` contains
+`fa-wrench` and NOT `fa-tools`, and it **fails on `main`** — the FAB include on that page
+emits `fas fa-tools`. Migrating the FAB removed the string, so it now passes, and the
+page genuinely draws a wrench (`tools` aliases to `wrench`). But the same test will
+**break** the moment `owner_settings.html` itself is migrated: no `fa-` strings will
+remain and `assertIn('fa-wrench')` fails. **Rewrite those three against the rendered
+`{% icon %}` output as their page comes up in the sweep** — the other two are
+`test_ux_fixes:521` and `test_list_skeletons:100` (`assertNotIn('fa-spinner')`, which
+survives either way).
+
 **What is left of S13 after this:** the ~1,210 remaining call sites, page by page
 (`owner_settings.html` 116, `repair_form.html` 80, `repair_detail.html` 60,
 `owner_invoice_detail.html` 56 are the top four), the 17 Python-side names, and only then
