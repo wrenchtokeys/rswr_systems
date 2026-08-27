@@ -849,7 +849,7 @@ Dropped the marketing nav from the auth pages, made the split full-height, said 
   login stays blue), so it was left alone — but it is a raw hex-adjacent literal sitting
   where a token belongs, and worth revisiting with S14–S16.
 
-## S13 · Icon language: Font Awesome solid → line-weight SVG sprite
+## S13 · Icon language: Font Awesome solid → line-weight SVG — **tag DONE (PR #223), migration open**
 
 1,281 FA **solid** usages when this session was written. **Re-counted 2026-08-25 20:50 CDT:
 1,303** (`grep -rho 'fas fa-' --include='*.html' templates apps | wc -l`), plus 14 `far`.
@@ -873,6 +873,59 @@ inlined SVG sprite, migrate surface by surface, and only delete the vendored FA 
 the last `<i class="fa` is gone. S1 already removed the *CDN* risk, so there is no urgency
 here — this is purely aesthetic, which is exactly why it must not be rushed into a
 1,281-site find-and-replace.
+
+### S13a — the tag, shipped 2026-08-26 (PR #223)
+
+`{% icon 'name' %}` in `core/templatetags/ui.py`, geometry in `core/icons.py`
+(70 icons, ~40 aliases), `.icon` in `input.css`, `tests/test_icon_tag.py` (21 tests).
+**Nothing was migrated.** Font Awesome is untouched and still correct on all ~1,300 sites.
+Documented in `CLAUDE.md` and `UI_DESIGN_GUIDE.md` — which, per this doc's own finding, is
+the only reason the other arcs will ever see it.
+
+**The burn-up was still running while this was written.** `origin/main` held steady at
+1,303 `fas` overnight, but PRs #220 and #221 (job queue, an arc that has never opened this
+file) carried **eight more between them, unmerged**. That is the whole argument for shipping
+the tag first, observed live rather than inferred.
+
+**Not a sprite, and the brief was wrong to specify one.** A `<symbol>` sprite has to be
+injected into every shell — there are eight-plus here, plus standalone pages like
+`billing/public_invoice_view.html` and the `customer_portal/quick_*` confirmations that
+extend nothing — and a `<use>` in an HTMX-swapped fragment depends on a sprite that may not
+be in that document. Per-call inlining has none of those failure modes, and at this app's
+icons-per-page it is *smaller* than shipping a 70-icon sprite to a page that draws three.
+The repeated markup gzips to nothing. **The word "sprite" in a brief is an implementation
+guess; the requirement was "one place the geometry lives", and `core/icons.py` is that.**
+
+**Drop-in is the whole feature, and it is a CSS fact, not a wish.** `.icon` is `1em` square
+with Font Awesome's own `-0.125em` baseline offset. Verified the way this doc verifies
+anything — rendered side by side against the real vendored `fontawesome.min.css` at five
+font sizes: identical baseline, matching optical weight. Without that offset every migrated
+icon shifts a pixel and a two-line diff reads as a redesign.
+
+**Two icons had to be redrawn after looking at them, and no test would have caught either.**
+
+- `car` was a side view. `fa-car` is a *front* view, so every migrated surface would have
+  jumped, and the side view goes mushy at `text-sm` where list rows live. Redrawn front-on —
+  which is also the right subject for a glass shop. The side view survives as `car-side`,
+  which `fa-car-side` (4 uses) now resolves to instead of being aliased away.
+- `file-invoice` drew a `$` inside a document. At 24×24 with a 2px stroke the counters of
+  the S close up and it renders as a smudge at exactly the inline size invoices are listed
+  at. **There is no legible glyph-inside-a-container at this weight** — the container has to
+  carry the meaning. `file-invoice`, `file-invoice-dollar` (27 uses between them) and
+  `invoice` all resolve to `receipt`, which reads at 16px.
+
+**`.icon` is emitted from Python, so the purge cannot see it.** `tailwind.config.js` does
+scan `core/templatetags/*.py`, but the class is spelled `class="icon{extra}"` in a format
+string and the extractor is a plain-text regex. Safelisted, and pinned by a test that greps
+the *built* `app.css`. Same failure shape as #206's `bg-yellow-200`: markup stays perfectly
+valid while every icon renders 0×0.
+
+**An unknown name raises under `DEBUG` and degrades in production.** A typo in a decoration
+must not 500 a page; it logs and renders the empty sized box so the layout does not jump.
+
+**What is left of S13:** the migration itself, and only then deleting the vendored FA files.
+It is now a mechanical sweep with a stable target instead of a race — which is what shipping
+the tag first bought.
 
 ---
 
@@ -1270,15 +1323,16 @@ Consequences worth acting on rather than just noting:
 
 | # | Session | Size | Why it is still here |
 |---|---|---|---|
-| S13 | Icon sprite | L | Real work, and now racing three arcs. Ship the `{% icon %}` tag first — see S13's revised notes |
+| S13 | Icon migration | M | **The tag shipped 2026-08-26 (S13a, PR #223).** What is left is the sweep of ~1,300 `<i class="fas">` and then deleting the vendored FA files — mechanical, no longer a race |
 | S14 | Landing: real product imagery | M | Blocked on nothing, and its brief needed a correction this pass — the mock's drift changed shape on its own. See S14 |
 | S15 | Landing: trust bar rewrite | S | Copy, not code. Wants Drake's eye, like the `InAppCopy` sweep below |
 | S16 | Landing: rhythm + kill `[data-reveal]` | M | The fade-deletion half is small and strictly an improvement; it does not need the redesign half |
 | S17 | Tailwind source out of the served tree | S | Self-contained. Unwinds the `@font-face` workaround S1 and S2 both had to route around |
 
 **If you want the cheapest real win:** S17, or the `[data-reveal]` deletion split out of
-S16. **If you want the one that stops getting more expensive:** the `{% icon %}` tag.
-Phase 4 is the only chunk that is genuinely a project rather than a session.
+S16. ~~If you want the one that stops getting more expensive: the `{% icon %}` tag.~~ —
+taken 2026-08-26, see S13a / PR #223. Phase 4 is the only chunk that is genuinely a project rather
+than a session.
 
 ## Re-dating the Still-open list
 
@@ -1288,3 +1342,44 @@ half (still correct, still pinned by two suites), safe drive-away time (still Dr
 call, still do not add it without him), and emoji in the three staff-only surfaces. The
 fifth entry — #202's deploy — is closed and correct as written; leave it, it is the
 worked example this section's first half depends on.
+
+---
+
+# Where this stands — 2026-08-26, S13a (PR #223)
+
+Everything Phase 3 had open on 2026-08-25 is now merged: **#206** (14:09), **#209** (19:11),
+**#210** (22:19) and the state pass **#216** (2026-08-26 18:30). This arc had nothing open
+when this session started.
+
+## The thing the last pass predicted, happening
+
+#216 argued the icon count was a burn-up rather than a constant, and that the tag therefore
+had to ship before the migration. Checked at the top of this session: `origin/main` had not
+moved (1,303 `fas`, 14 `far`) — but **PRs #220 and #221 held eight more `fas` between them,
+unmerged**, from the job-queue arc. The prediction was right and it was right *within a day*.
+Worth keeping as a template: a debt claim is only actionable once you can point at the rate,
+and the rate lives in the open PRs, not in `main`.
+
+## What shipping-before-migrating actually bought
+
+Nothing in the app changed. That is the point, and it is the part that will look like an
+under-delivery to whoever reads the diff without the argument: 70 icons, a tag, a CSS rule,
+21 tests, two doc entries, and **zero** call sites converted. What it bought is that S13 is
+now a mechanical sweep against a target that has stopped moving, instead of a race against
+three arcs that have never opened this file.
+
+## Verify by looking, not by asserting
+
+Two of the seventy icons were wrong in ways no test could express, and both were found by
+putting them on a screen: `car` drawn from the wrong angle (and mushy at list-row size), and
+a `$` inside a document that dissolves into a smudge at 16px. **A test suite can hold an
+icon set to its rules; only a contact sheet can tell you an icon is unreadable.** Both
+sheets — the 70-icon grid and the side-by-side against the real vendored Font Awesome at
+five font sizes — are worth regenerating before the migration sweep, not just before this PR.
+
+## Still open, re-dated 2026-08-26
+
+Unchanged and still all open: the `InAppCopy` message-copy sweep, the invoice's Python-built
+plain-text half, safe drive-away time (still Drake's call), and emoji in the three staff-only
+surfaces. S14/S15/S16 and S17 are exactly where #216 left them; **S17 and the `[data-reveal]`
+deletion are still the two cheapest real wins on the board.**

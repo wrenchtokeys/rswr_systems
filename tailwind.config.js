@@ -38,6 +38,11 @@ module.exports = {
     // page that starts using `.sk-bar` in its own markup should not have to
     // discover that the purge already took it.
     { pattern: /^sk-(bar|lines|list)$/ },
+    // {% icon %} (S13). The class is emitted from core/templatetags/ui.py as
+    // `class="icon{extra}"` — the extractor is a plain-text regex and does not
+    // see a bare `icon` token in that string, so the one rule the whole icon
+    // vocabulary depends on would be purged. Pinned by tests/test_icon_tag.py.
+    'icon',
     { pattern: /^row-(pending|rollback)$/ },
     'paid-check',
   ],
