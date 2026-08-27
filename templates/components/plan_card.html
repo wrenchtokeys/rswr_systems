@@ -1,3 +1,4 @@
+{% load ui %}
 {% comment %}
 Shared plan card — the ONLY place plan facts are rendered as a card.
 Used by: landing.html (#pricing), saas/pricing.html, saas/billing.html.
@@ -22,13 +23,13 @@ benefit-first lines, no MB/API jargon, never promise nonexistent features.
     {% if mode == 'billing' and plan.slug == current_plan_slug %}
     <div class="absolute -top-3.5 left-1/2 -translate-x-1/2">
         <span class="inline-flex items-center gap-1.5 px-4 py-1 rounded-full text-xs font-bold bg-brand-600 text-white shadow-md whitespace-nowrap">
-            <i class="fas fa-check text-[10px]"></i> Your Plan
+            {% icon 'check' class="text-[10px]" %} Your Plan
         </span>
     </div>
     {% elif plan.slug == 'pro' %}
     <div class="absolute -top-3.5 left-1/2 -translate-x-1/2">
         <span class="inline-flex items-center gap-1.5 px-4 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-brand-600 to-brand-700 text-white shadow-md whitespace-nowrap">
-            <i class="fas fa-star text-[10px]"></i> Most Popular
+            {% icon 'star' class="text-[10px]" %} Most Popular
         </span>
     </div>
     {% elif mode == 'billing' and intended_plan and plan.slug == intended_plan %}
@@ -64,43 +65,43 @@ benefit-first lines, no MB/API jargon, never promise nonexistent features.
 
     <ul class="space-y-3 mb-8 flex-1 text-sm">
         <li class="flex items-start gap-2.5">
-            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            {% icon 'check' class="text-emerald-500 mt-0.5 text-xs flex-shrink-0" %}
             <span class="text-gray-700">{% if plan.max_repairs_per_month %}{{ plan.max_repairs_per_month }} jobs a month{% else %}<strong class="font-semibold">Unlimited</strong>&nbsp;jobs{% endif %}</span>
         </li>
         <li class="flex items-start gap-2.5">
-            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            {% icon 'check' class="text-emerald-500 mt-0.5 text-xs flex-shrink-0" %}
             <span class="text-gray-700">{% if plan.max_technicians %}Up to {{ plan.max_technicians }} technician{{ plan.max_technicians|pluralize }}{% else %}<strong class="font-semibold">Unlimited</strong>&nbsp;technicians{% endif %}</span>
         </li>
         <li class="flex items-start gap-2.5">
-            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            {% icon 'check' class="text-emerald-500 mt-0.5 text-xs flex-shrink-0" %}
             <span class="text-gray-700">{% if plan.max_customers %}Up to {{ plan.max_customers }} customers{% else %}<strong class="font-semibold">Unlimited</strong>&nbsp;customers{% endif %}</span>
         </li>
         {% if plan.features.customer_portal %}
         <li class="flex items-start gap-2.5">
-            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            {% icon 'check' class="text-emerald-500 mt-0.5 text-xs flex-shrink-0" %}
             <span class="text-gray-700">Customers approve &amp; pay online</span>
         </li>
         {% endif %}
         {% if plan.features.invoicing %}
         <li class="flex items-start gap-2.5">
-            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            {% icon 'check' class="text-emerald-500 mt-0.5 text-xs flex-shrink-0" %}
             <span class="text-gray-700">Professional invoices in one click</span>
         </li>
         {% endif %}
         {% if plan.features.rewards %}
         <li class="flex items-start gap-2.5">
-            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            {% icon 'check' class="text-emerald-500 mt-0.5 text-xs flex-shrink-0" %}
             <span class="text-gray-700">Loyalty rewards &amp; referrals</span>
         </li>
         {% endif %}
         {% if plan.features.custom_branding %}
         <li class="flex items-start gap-2.5">
-            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            {% icon 'check' class="text-emerald-500 mt-0.5 text-xs flex-shrink-0" %}
             <span class="text-gray-700">Your logo &amp; colors on everything</span>
         </li>
         {% endif %}
         <li class="flex items-start gap-2.5">
-            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            {% icon 'check' class="text-emerald-500 mt-0.5 text-xs flex-shrink-0" %}
             <span class="text-gray-700">{{ plan.features.support|default:"Email support" }}</span>
         </li>
     </ul>
@@ -108,13 +109,13 @@ benefit-first lines, no MB/API jargon, never promise nonexistent features.
     {% if hide_cta %}
         {% if mode == 'billing' and plan.slug == current_plan_slug %}
         <div class="w-full text-center py-3 text-sm font-semibold text-brand-700 bg-brand-50 rounded-xl">
-            <i class="fas fa-check mr-1"></i> Active
+            {% icon 'check' class="mr-1" %} Active
         </div>
         {% endif %}
     {% elif mode == 'billing' %}
         {% if plan.slug == current_plan_slug %}
         <div class="w-full text-center py-3 text-sm font-semibold text-brand-700 bg-brand-50 rounded-xl">
-            <i class="fas fa-check mr-1"></i> Active
+            {% icon 'check' class="mr-1" %} Active
         </div>
         {% else %}
         <form method="post" action="{% url 'billing_update_plan' %}">

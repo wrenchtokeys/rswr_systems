@@ -927,6 +927,70 @@ must not 500 a page; it logs and renders the empty sized box so the layout does 
 It is now a mechanical sweep with a stable target instead of a race — which is what shipping
 the tag first bought.
 
+### S13b — the chrome, migrated 2026-08-27
+
+The first migration sweep, scoped to **the chrome**: both app shells and every shared
+include and component. **101 call sites across 13 files**; `1,307 → 1,210` `fas`
+(`14 → 10` `far`). Seven icons had to be drawn to cover it (`menu`, `gauge`, `file`,
+`book-open`, `thumbs-up`, `thumbs-down`, plus the `hand-holding-usd` decision below).
+
+**Start with the chrome, not with the biggest file.** `owner_settings.html` has 116 icons
+and `repair_form.html` 80, but they are each one screen. The chrome is on *every* screen,
+so one before/after pass over four surfaces exercises the drop-in claim everywhere at
+once — and if `.icon` had been wrong about baselines or sizing, it would have been wrong
+in the header of every page in the app rather than in one form.
+
+**The drop-in claim held, and the way to know that is two servers.** `origin/main` and the
+branch running side by side on 8021/8022 against the *same* seeded SQLite file, driven by
+one CDP script that logs in and shoots the same six surfaces on each. Diffing two
+screenshots of the same page is the only check that can tell "the icon changed" from "the
+layout moved". Nothing moved.
+
+**`{% load %}` cannot go above `{% extends %}`, and only a render says so.** The sweep
+inserted `{% load ui %}` at the top of every file that did not already have a `{% load %}`
+line. Twelve of the thirteen were includes, where that is correct. The thirteenth,
+`support/base_topic.html`, extends `base_app.html`, and Django refuses:
+`<ExtendsNode> must be the first tag in the template` — a hard 500 on every help guide.
+No test in the suite renders that template. **A mechanical sweep over templates needs a
+render of each touched surface, not just a passing suite.**
+
+**Font Awesome has been silently defeating `hidden` this whole time.** Both shells hang a
+`chevron-down` off the avatar with `hidden sm:inline`, and both were visible on mobile
+anyway. `.fas { display: inline-block }` lives in `fontawesome.min.css`, which is linked
+*after* `app.css` in `head_assets.html`; same specificity, later wins, so **no
+`<i class="fas">` in this repo could ever be responsively hidden.** Migrating them fixed
+it — the chevrons now actually disappear below `sm`. Only two sites repo-wide, both in
+this sweep, but the mechanism applies to any display utility on an FA `<i>`.
+
+**`hand-holding-usd` has no line-weight form, and the reason is worth keeping.** Three
+attempts at an open palm with a coin above it were all drawn, rendered at 16/24/40px, and
+compared against `user`. A palm is a wide shallow curve; a disc above one **is** the
+person glyph. Breaking the symmetry with fingers makes it an illegible squiggle instead.
+Same answer as `file-invoice`: alias to the mark that reads (`dollar-sign`) and let the
+FAB's own "Receive Payment" label name the action. **The failure mode for an icon at this
+weight is not always "smudge" — it can be "you have accidentally drawn a different icon in
+the set."**
+
+**The contact sheet is a script now** — `scripts/icon_contact_sheet.py`. S13a's two sheets
+were built by hand and thrown away, and this session needed them again on day one. It
+emits the 70-icon grid *and* the side-by-side against the real vendored
+`fontawesome.min.css` at five font sizes. That is what caught `gauge` on its first draft:
+a semicircle of r=8 is optically half the weight of its neighbours in a nav row, which no
+assertion expresses. Same lesson S14 is waiting on — **regenerate by command, never
+re-author.**
+
+**The count the doc has been tracking was never the whole debt.** `grep` over `*.html`
+misses **17 icon names that live in Python** — `HELP_TOPICS` in `apps/support/views.py`
+stores `'icon': 'fas fa-tools'` and eleven other surfaces read it. `resolve()` tolerates a
+bare `fa-` prefix but not the `fas ` weight prefix, so those need either a split at the
+call site or a wider `resolve()`. Exactly the shape of #206's `bg-yellow-200`: the
+template-only view of a template-and-Python problem.
+
+**What is left of S13 after this:** the ~1,210 remaining call sites, page by page
+(`owner_settings.html` 116, `repair_form.html` 80, `repair_detail.html` 60,
+`owner_invoice_detail.html` 56 are the top four), the 17 Python-side names, and only then
+deleting the vendored FA files.
+
 ---
 
 # Phase 4 — The front door
