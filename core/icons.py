@@ -69,6 +69,15 @@ ICONS = {
     # never animates, so a static render (email, PDF, print) is still a shape.
     'loader': '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
 
+    'thumbs-up': (
+        '<path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0'
+        '-2-2.3z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>'
+    ),
+    'thumbs-down': (
+        '<path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0'
+        ' 2 2.3z"/><path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>'
+    ),
+
     # --- direction -----------------------------------------------------------
     'arrow-right': '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
     'arrow-left': '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
@@ -289,6 +298,24 @@ ICONS = {
         '<line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>'
         '<line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>'
     ),
+    'menu': (
+        '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/>'
+        '<line x1="3" y1="18" x2="21" y2="18"/>'
+    ),
+    # The "Dashboard" nav item in both shells. An open arc with a needle, not a
+    # closed dial: a dial face at 16px fills in and reads as a solid blob.
+    'gauge': (
+        '<path d="M5.4 19.4A9.2 9.2 0 1 1 18.6 19.4"/>'
+        '<line x1="12" y1="13" x2="16.2" y2="8.8"/>'
+    ),
+    'file': (
+        '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>'
+        '<polyline points="14 2 14 8 20 8"/>'
+    ),
+    'book-open': (
+        '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>'
+        '<path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>'
+    ),
     'note': (
         '<path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9.5L21 14.5V5a2 2 0 0 0-2-2z"/>'
         '<path d="M15 21v-5a1 1 0 0 1 1-1h5"/>'
@@ -355,6 +382,19 @@ ALIASES = {
     'usd': 'dollar-sign',
     'money': 'dollar-sign',
     'phone-alt': 'phone',
+    'bars': 'menu',
+    'tachometer-alt': 'gauge',
+    'tachometer': 'gauge',
+    'dashboard': 'gauge',
+    # `fa-hand-holding-usd` ("Receive Payment") has no line-weight form. A palm
+    # is a wide shallow curve; put a disc above one and you have drawn `user`,
+    # which is what all three attempts turned into at 16px — head over
+    # shoulders, indistinguishable in a nav row. Adding fingers to break the
+    # symmetry makes it a squiggle instead. Same shape of answer as
+    # `file-invoice`: the mark that reads wins, and the FAB's own "Receive
+    # Payment" label is what names the action.
+    'hand-holding-usd': 'dollar-sign',
+    'hand-holding-dollar': 'dollar-sign',
 }
 
 

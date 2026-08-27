@@ -1,3 +1,4 @@
+{% load ui %}
 {% comment %}
 Tax setup banner — shown to owners/managers until the shop explicitly answers
 "Do you charge sales tax?" (billing_config.tax_configured). Requires
@@ -7,7 +8,7 @@ billing_config in context. Answering here or in Settings → Billing dismisses i
 <div class="mb-5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
     <div class="flex items-center gap-3 min-w-0">
         <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
-            <i class="fas fa-percent text-amber-600 text-sm"></i>
+            {% icon 'percent' class="text-amber-600 text-sm" %}
         </div>
         <div class="min-w-0">
             <span class="font-semibold text-amber-800 text-sm">Set up sales tax</span>

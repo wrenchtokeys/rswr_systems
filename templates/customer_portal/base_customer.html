@@ -1,4 +1,4 @@
-{% load static branding_tags %}
+{% load static branding_tags ui %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -58,16 +58,16 @@
                 <!-- Center: Desktop nav -->
                 <div class="hidden md:flex items-center space-x-1">
                     <a href="{% url 'customer_dashboard' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if request.resolver_match.url_name == 'customer_dashboard' or request.resolver_match.url_name == 'customer_dashboard_alt' %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
-                        <i class="fas fa-home mr-1.5 text-xs"></i>Dashboard
+                        {% icon 'home' class="mr-1.5 text-xs" %}Dashboard
                     </a>
                     <a href="{% url 'customer_services' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if request.resolver_match.url_name == 'customer_services' or 'repair' in request.resolver_match.url_name and 'request' not in request.resolver_match.url_name or 'replacement' in request.resolver_match.url_name and 'request' not in request.resolver_match.url_name or 'batch' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
-                        <i class="fas fa-car-side mr-1.5 text-xs"></i>Services
+                        {% icon 'car-side' class="mr-1.5 text-xs" %}Services
                     </a>
                     <a href="{% url 'customer_invoices' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if 'invoice' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
-                        <i class="fas fa-file-invoice-dollar mr-1.5 text-xs"></i>Invoices
+                        {% icon 'file-invoice-dollar' class="mr-1.5 text-xs" %}Invoices
                     </a>
                     <a href="{% url 'customer_rewards' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if 'reward' in request.resolver_match.url_name or 'referral' in request.resolver_match.url_name or 'points' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
-                        <i class="fas fa-gift mr-1.5 text-xs"></i>Rewards
+                        {% icon 'gift' class="mr-1.5 text-xs" %}Rewards
                         {% if loyalty_points %}<span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-brand-100 text-brand-700">{{ loyalty_points }}</span>{% endif %}
                     </a>
                 </div>
@@ -82,12 +82,12 @@
                     {% if shop_unavailable_message %}
                         {% if request.tenant.business_phone %}
                         <a href="tel:{{ request.tenant.business_phone }}" class="btn-primary btn-sm hidden md:inline-flex mr-1">
-                            <i class="fas fa-phone"></i> Call the Shop
+                            {% icon 'phone' %} Call the Shop
                         </a>
                         {% endif %}
                     {% else %}
                     <a href="{% if shop_offers_repairs %}{% url 'customer_request_repair' %}{% else %}{% url 'customer_request_replacement' %}{% endif %}" class="btn-primary btn-sm hidden md:inline-flex mr-1">
-                        <i class="fas fa-plus"></i> Request Service
+                        {% icon 'plus' %} Request Service
                     </a>
                     {% endif %}
                     {% if request.user.is_authenticated %}
@@ -102,7 +102,7 @@
                                 <span class="text-brand-600 text-sm font-semibold">{{ request.user.first_name|default:request.user.username|first|upper }}</span>
                             </div>
                             <span class="text-sm font-medium hidden lg:inline">{{ request.user.first_name|default:request.user.username }}</span>
-                            <i class="fas fa-chevron-down text-[10px] hidden lg:inline"></i>
+                            {% icon 'chevron-down' class="text-[10px] hidden lg:inline" %}
                         </button>
                         <div id="customer-dropdown" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-200 py-1.5 z-50">
                             <div class="px-4 py-2 border-b border-gray-100">
@@ -110,22 +110,22 @@
                                 <p class="text-xs text-gray-500 truncate">{{ request.user.email }}</p>
                             </div>
                             <a href="{% url 'customer_team' %}" class="flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                                <i class="fas fa-users mr-3 w-4 text-gray-400"></i>Team
+                                {% icon 'users' class="mr-3 w-4 text-gray-400" %}Team
                             </a>
                             <a href="{% url 'customer_account_settings' %}" class="flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                                <i class="fas fa-cog mr-3 w-4 text-gray-400"></i>Account Settings
+                                {% icon 'cog' class="mr-3 w-4 text-gray-400" %}Account Settings
                             </a>
                             <a href="{% url 'customer_help' %}" class="flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                                <i class="far fa-question-circle mr-3 w-4 text-gray-400"></i>Help
+                                {% icon 'question-circle' class="mr-3 w-4 text-gray-400" %}Help
                             </a>
                             <a href="{% url 'customer_dashboard' %}" class="flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                                <i class="fas fa-tachometer-alt mr-3 w-4 text-gray-400"></i>Dashboard
+                                {% icon 'tachometer-alt' class="mr-3 w-4 text-gray-400" %}Dashboard
                             </a>
                             <div class="border-t border-gray-100 my-1"></div>
                             <form method="post" action="{% url 'logout' %}">
                                 {% csrf_token %}
                                 <button type="submit" class="flex items-center w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
-                                    <i class="fas fa-sign-out-alt mr-3 w-4"></i>Sign Out
+                                    {% icon 'sign-out-alt' class="mr-3 w-4" %}Sign Out
                                 </button>
                             </form>
                         </div>
@@ -147,7 +147,7 @@
     <div class="bg-amber-500 text-white">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5">
             <div class="flex items-center text-sm">
-                <i class="fas fa-info-circle mr-2 flex-shrink-0"></i>
+                {% icon 'info-circle' class="mr-2 flex-shrink-0" %}
                 <span>{{ shop_unavailable_message }}</span>
             </div>
         </div>
@@ -164,10 +164,10 @@
             {% elif message.tags == 'warning' %}bg-yellow-50 text-yellow-800 border border-yellow-200
             {% else %}bg-brand-50 text-brand-800 border border-brand-200{% endif %}">
             <div class="flex items-center">
-                {% if message.tags == 'success' %}<i class="fas fa-check-circle mr-2"></i>
-                {% elif message.tags == 'error' %}<i class="fas fa-exclamation-circle mr-2"></i>
-                {% elif message.tags == 'warning' %}<i class="fas fa-exclamation-triangle mr-2"></i>
-                {% else %}<i class="fas fa-info-circle mr-2"></i>{% endif %}
+                {% if message.tags == 'success' %}{% icon 'check-circle' class="mr-2" %}
+                {% elif message.tags == 'error' %}{% icon 'exclamation-circle' class="mr-2" %}
+                {% elif message.tags == 'warning' %}{% icon 'exclamation-triangle' class="mr-2" %}
+                {% else %}{% icon 'info-circle' class="mr-2" %}{% endif %}
                 <span>{{ message }}</span>
             </div>
             <button onclick="this.parentElement.remove()" class="text-current opacity-40 hover:opacity-100 ml-4 text-lg leading-none">&times;</button>
@@ -202,11 +202,11 @@
     <nav class="vt-tabbar md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 safe-area-bottom">
         <div class="grid grid-cols-5 h-16">
             <a href="{% url 'customer_dashboard' %}" class="flex flex-col items-center justify-center space-y-0.5 {% if request.resolver_match.url_name == 'customer_dashboard' or request.resolver_match.url_name == 'customer_dashboard_alt' %}text-brand-500{% else %}text-gray-400{% endif %}">
-                <i class="fas fa-home text-lg"></i>
+                {% icon 'home' class="text-lg" %}
                 <span class="text-[10px] font-medium">Home</span>
             </a>
             <a href="{% url 'customer_services' %}" class="flex flex-col items-center justify-center space-y-0.5 {% if request.resolver_match.url_name == 'customer_services' or 'repair_detail' in request.resolver_match.url_name or 'replacement_detail' in request.resolver_match.url_name or 'batch_detail' in request.resolver_match.url_name %}text-brand-500{% else %}text-gray-400{% endif %}">
-                <i class="fas fa-car-side text-lg"></i>
+                {% icon 'car-side' class="text-lg" %}
                 <span class="text-[10px] font-medium">Services</span>
             </a>
             {% comment %}
@@ -216,31 +216,31 @@
             {% if shop_unavailable_message %}
             <a href="{% if request.tenant.business_phone %}tel:{{ request.tenant.business_phone }}{% else %}{% url 'customer_help' %}{% endif %}" class="flex flex-col items-center justify-center -mt-4">
                 <div class="w-12 h-12 bg-brand-500 rounded-full flex items-center justify-center shadow-lg shadow-brand-500/30">
-                    <i class="fas fa-phone text-white text-lg"></i>
+                    {% icon 'phone' class="text-white text-lg" %}
                 </div>
                 <span class="text-[10px] font-medium text-brand-500 mt-0.5">Call</span>
             </a>
             {% elif shop_offers_repairs and shop_offers_replacements %}
             <button onclick="document.getElementById('requestTypeSheet').classList.remove('hidden')" class="flex flex-col items-center justify-center -mt-4">
                 <div class="w-12 h-12 bg-brand-500 rounded-full flex items-center justify-center shadow-lg shadow-brand-500/30">
-                    <i class="fas fa-plus text-white text-lg"></i>
+                    {% icon 'plus' class="text-white text-lg" %}
                 </div>
                 <span class="text-[10px] font-medium text-brand-500 mt-0.5">Request</span>
             </button>
             {% else %}
             <a href="{% if shop_offers_repairs %}{% url 'customer_request_repair' %}{% else %}{% url 'customer_request_replacement' %}{% endif %}" class="flex flex-col items-center justify-center -mt-4">
                 <div class="w-12 h-12 bg-brand-500 rounded-full flex items-center justify-center shadow-lg shadow-brand-500/30">
-                    <i class="fas fa-plus text-white text-lg"></i>
+                    {% icon 'plus' class="text-white text-lg" %}
                 </div>
                 <span class="text-[10px] font-medium text-brand-500 mt-0.5">Request</span>
             </a>
             {% endif %}
             <a href="{% url 'customer_invoices' %}" class="flex flex-col items-center justify-center space-y-0.5 {% if 'invoice' in request.resolver_match.url_name %}text-brand-500{% else %}text-gray-400{% endif %}">
-                <i class="fas fa-file-invoice-dollar text-lg"></i>
+                {% icon 'file-invoice-dollar' class="text-lg" %}
                 <span class="text-[10px] font-medium">Invoices</span>
             </a>
             <button onclick="document.getElementById('mobileDrawer').classList.remove('translate-x-full')" class="flex flex-col items-center justify-center space-y-0.5 text-gray-400">
-                <i class="fas fa-bars text-lg"></i>
+                {% icon 'bars' class="text-lg" %}
                 <span class="text-[10px] font-medium">More</span>
             </button>
         </div>
@@ -255,12 +255,12 @@
             <div class="space-y-2">
                 {% if shop_offers_repairs %}
                 <a href="{% url 'customer_request_repair' %}" class="flex items-center px-4 py-3.5 bg-brand-500 text-white text-sm font-semibold rounded-xl hover:bg-brand-600 transition-colors press">
-                    <i class="fas fa-tools mr-3"></i> Chip or Crack Repair
+                    {% icon 'tools' class="mr-3" %} Chip or Crack Repair
                 </a>
                 {% endif %}
                 {% if shop_offers_replacements %}
                 <a href="{% url 'customer_request_replacement' %}" class="flex items-center px-4 py-3.5 bg-brand-500 text-white text-sm font-semibold rounded-xl hover:bg-brand-600 transition-colors press">
-                    <i class="fas fa-car mr-3"></i> Full Glass Replacement
+                    {% icon 'car' class="mr-3" %} Full Glass Replacement
                 </a>
                 {% endif %}
             </div>
@@ -279,33 +279,33 @@
                     <p class="text-xs text-gray-500">{{ request.user.email }}</p>
                 </div>
                 <button onclick="document.getElementById('mobileDrawer').classList.add('translate-x-full')" class="tap-target w-11 h-11 -mr-2 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400">
-                    <i class="fas fa-times"></i>
+                    {% icon 'times' label="Close menu" %}
                 </button>
             </div>
             <div class="flex-1 overflow-y-auto py-2">
                 <a href="{% url 'customer_rewards' %}" class="flex items-center px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    <i class="fas fa-gift w-6 text-gray-400"></i>
+                    {% icon 'gift' class="w-6 text-gray-400" %}
                     <span class="ml-3">Rewards</span>
                     {% if loyalty_points %}<span class="ml-auto inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-brand-100 text-brand-700">{{ loyalty_points }} pts</span>{% endif %}
                 </a>
                 <a href="{% url 'customer_team' %}" class="flex items-center px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    <i class="fas fa-users w-6 text-gray-400"></i>
+                    {% icon 'users' class="w-6 text-gray-400" %}
                     <span class="ml-3">Team</span>
                 </a>
                 <div class="border-t border-gray-100 my-2"></div>
                 <a href="{% url 'customer_account_settings' %}" class="flex items-center px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    <i class="fas fa-cog w-6 text-gray-400"></i>
+                    {% icon 'cog' class="w-6 text-gray-400" %}
                     <span class="ml-3">Account Settings</span>
                 </a>
                 <a href="{% url 'customer_help' %}" class="flex items-center px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    <i class="far fa-question-circle w-6 text-gray-400"></i>
+                    {% icon 'question-circle' class="w-6 text-gray-400" %}
                     <span class="ml-3">Help</span>
                 </a>
                 <div class="border-t border-gray-100 my-2"></div>
                 <form method="post" action="{% url 'logout' %}">
                     {% csrf_token %}
                     <button type="submit" class="flex items-center w-full px-5 py-3 text-sm font-medium text-red-600 hover:bg-red-50">
-                        <i class="fas fa-sign-out-alt w-6"></i>
+                        {% icon 'sign-out-alt' class="w-6" %}
                         <span class="ml-3">Sign Out</span>
                     </button>
                 </form>

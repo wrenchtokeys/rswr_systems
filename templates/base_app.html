@@ -1,4 +1,4 @@
-{% load static branding_tags %}
+{% load static branding_tags ui %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -107,7 +107,7 @@
                       class="{% if is_owner_or_manager %}hidden lg:block{% else %}hidden md:block{% endif %} flex-1 min-w-0 max-w-xs ml-auto" role="search">
                     <label for="global-search" class="sr-only">Search jobs, customers and invoices</label>
                     <div class="relative">
-                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+                        {% icon 'search' class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none" %}
                         <input type="search" name="q" id="global-search"
                                value="{{ request.GET.q|default:'' }}"
                                placeholder="Search jobs, customers, invoices"
@@ -120,16 +120,16 @@
                 <div class="flex items-center gap-3 shrink-0 ml-auto">
                     {# -mr/-my keep the 44px hit area from widening the bar. #}
                     <button aria-label="Open menu" class="{% if is_owner_or_manager %}lg:hidden{% else %}md:hidden{% endif %} inline-flex items-center justify-center w-11 h-11 -mx-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100" onclick="document.getElementById('mobile-nav').classList.toggle('hidden')">
-                        <i class="fas fa-bars text-lg"></i>
+                        {% icon 'bars' class="text-lg" %}
                     </button>
 
                     <div class="relative">
                         <button aria-label="Account menu" class="flex items-center gap-2 min-h-11 py-1 text-gray-600 hover:text-gray-900" onclick="document.getElementById('app-dropdown').classList.toggle('hidden')">
                             <div class="w-9 h-9 bg-gray-200 rounded-full flex items-center justify-center">
-                                <i class="fas fa-user text-gray-600 text-sm"></i>
+                                {% icon 'user' class="text-gray-600 text-sm" %}
                             </div>
                             <span class="text-sm font-medium hidden sm:inline">{{ request.user.first_name|default:request.user.username }}</span>
-                            <i class="fas fa-chevron-down text-xs hidden sm:inline"></i>
+                            {% icon 'chevron-down' class="text-xs hidden sm:inline" %}
                         </button>
                         <div id="app-dropdown" class="hidden absolute right-0 mt-2 w-56 surface-float motion-rise py-1 z-50">
                             {% comment %}
@@ -157,24 +157,24 @@
                             {% endif %}
                             {% if is_owner_or_manager %}
                             <a href="{% url 'owner_dashboard' %}" class="flex items-center min-h-11 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                <i class="fas fa-tachometer-alt mr-2 w-4"></i>Dashboard
+                                {% icon 'tachometer-alt' class="mr-2 w-4" %}Dashboard
                             </a>
                             <a href="{% url 'owner_settings' %}" class="flex items-center min-h-11 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                <i class="fas fa-cog mr-2 w-4"></i>Settings
+                                {% icon 'cog' class="mr-2 w-4" %}Settings
                             </a>
                             {% else %}
                             <a href="{% url 'technician_profile' %}" class="flex items-center min-h-11 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                <i class="fas fa-user-cog mr-2 w-4"></i>Profile
+                                {% icon 'user-cog' class="mr-2 w-4" %}Profile
                             </a>
                             {% endif %}
                             <a href="{% url 'help_home' %}" class="flex items-center min-h-11 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                <i class="fas fa-question-circle mr-2 w-4"></i>Help
+                                {% icon 'question-circle' class="mr-2 w-4" %}Help
                             </a>
                             <div class="border-t border-gray-200 my-1"></div>
                             <form method="post" action="{% url 'logout' %}">
                                 {% csrf_token %}
                                 <button type="submit" class="flex items-center w-full text-left min-h-11 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                    <i class="fas fa-sign-out-alt mr-2 w-4"></i>Logout
+                                    {% icon 'sign-out-alt' class="mr-2 w-4" %}Logout
                                 </button>
                             </form>
                         </div>
@@ -187,7 +187,7 @@
                 <form method="get" action="{% url 'global_search' %}" class="pb-3" role="search">
                     <label for="global-search-mobile" class="sr-only">Search jobs, customers and invoices</label>
                     <div class="relative">
-                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+                        {% icon 'search' class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none" %}
                         <input type="search" name="q" id="global-search-mobile"
                                value="{{ request.GET.q|default:'' }}"
                                placeholder="Search jobs, customers, invoices"
