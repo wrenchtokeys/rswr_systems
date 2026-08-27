@@ -523,6 +523,17 @@ Postgres recipe when local auth fails: scratch cluster via
   **Before opening a PR that adds a migration, `git fetch && ls` the app's
   migrations directory on `main`** — your number may have been taken while you
   worked. `tests/test_migration_graph.py` (PR #225) now fails on it.
+- **…and then it happened to the fix, twenty-four seconds later** (2026-08-27).
+  Two sessions independently noticed the duplicate `0060` and each opened a
+  PR adding the merge migration; #225 and #226 merged within half a minute of
+  each other, and `main` had **two `0061` merge nodes** — two leaves again,
+  identical dependencies, identical (empty) operations. A merge migration is
+  a migration; it collides like one. The guard test added in #225 is what
+  caught it, on `main`, immediately, which is the entire argument for the
+  guard. Resolution is a deletion, not a third merge: both files were empty
+  merges of the same two parents and neither had been applied anywhere, so
+  one is simply removed. **Check whether the fix has already been fixed
+  before you write it** — `git fetch && gh pr list` costs nothing.
 - **`MEDIA_ROOT` is a real directory that survives between runs** (P3): dev
   and test share `media/`, and it accumulates crop files. Any test that
   counts or names files there must diff against what was already present.
