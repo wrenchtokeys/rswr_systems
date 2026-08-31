@@ -630,26 +630,64 @@ def _resolve_public_invoice(invoice_id, token, request=None, record_view=True):
     return invoice
 
 
-from apps.technician_portal.services.photo_crops import focus_positions_for
+from apps.technician_portal.services.photo_crops import (
+    UNZOOMED_SOURCE_FIELDS, focus_positions_for,
+)
+
+
+# The language a before/after pair is captioned in, by service kind. A
+# repair's pair is the whole sales pitch — the chip, then the same glass with
+# the chip gone. A replacement's is not "before and after the repair": nothing
+# was repaired, the glass was replaced, so it reads as the damage and the new
+# glass. Labelling both with repair language would print a small lie on the
+# invoice for the most expensive job the shop does.
+PAIR_LANGUAGE = {
+    'repair': {
+        'labels': ('Before', 'After'),
+        'phrase': 'before and after the repair',
+    },
+    'replacement': {
+        'labels': ('Damage', 'New glass'),
+        'phrase': 'the damage, and the new glass',
+    },
+}
 
 
 def _public_invoice_photos(invoice):
-    """Photo tiles for the public invoice page — repairs AND replacements.
+    """Photo exhibits for the public invoice page: ``(pairs, tiles)``.
 
-    Replacements used to be excluded outright, which took the photos off
-    exactly the invoices where a close-up of the damage matters most: the
-    expensive ones, and the ones a customer asks "why couldn't you just
-    repair it?" about.
+    Repairs AND replacements. Replacements used to be excluded outright,
+    which took the photos off exactly the invoices where a close-up of the
+    damage matters most: the expensive ones, and the ones a customer asks
+    "why couldn't you just repair it?" about.
+
+    **A job with both a before and an after photo returns one pair, not two
+    tiles (P6.2).** A glass repair's product is invisible when the work is
+    good — the customer drives away with a faint blemish and nothing to show
+    anyone. The two photos already existed and already rendered here, side by
+    side in a flat grid that never said they were the same spot on the same
+    glass an hour apart. Making them one exhibit is what turns them into
+    proof of work: the thing a fleet manager forwards to their boss, and the
+    only payback a technician gets for photographing (and tapping) at all.
+
+    Everything else is unchanged and deliberately so: a job with one photo
+    yields one tile, captioned exactly as before. There is **no placeholder
+    for a missing after photo** — an empty "After" slot shames the shop on
+    its own invoice.
 
     Captions go through `get_vehicle_label()` because an individual has no
     unit number — the raw column printed "Unit  — Before" on every retail
-    invoice (the individual-vs-fleet trap in CLAUDE.md).
+    invoice (the individual-vs-fleet trap in CLAUDE.md). A pair is captioned
+    once for the two photos, not once per photo (one row, one mention).
 
-    `focus` reframes the tile on the break a technician marked; it is ''
-    for anything unmarked, and the template then renders exactly as it
-    always has. The file served is the original in every case.
+    `focus` reframes a tile on the break a technician marked; it is '' for
+    anything unmarked, and `reframe` then lets the stylesheet aim it at the
+    measured blind default (P6.1). **The after photo is never reframed** —
+    zooming a resin repair shows the customer the scar instead of the fix —
+    so it carries neither. The file served is the original in every case.
     """
-    photos = []
+    pairs = []
+    tiles = []
     try:
         items = (
             invoice.line_items
@@ -663,35 +701,74 @@ def _public_invoice_photos(invoice):
             job = item.repair or item.replacement
             if job is None:
                 continue
-            key = ('repair' if item.repair_id else 'replacement', job.pk)
+            kind = 'replacement' if item.replacement_id else 'repair'
+            key = (kind, job.pk)
             if key in seen:  # a job billed on two lines is still one job
                 continue
             seen.add(key)
 
             focus_positions = focus_positions_for(job)
             vehicle = job.get_vehicle_label()
-            for source_field, label in (
-                ('damage_photo_before', 'Before'),
-                ('damage_photo_after', 'After'),
-                ('customer_submitted_photo', 'Customer submitted'),
-            ):
+
+            def shot(source_field, label, job=job, vehicle=vehicle,
+                     focus_positions=focus_positions):
+                """One photo dict, or None when the job has not got it."""
                 field = getattr(job, source_field, None)
                 if not field:
-                    continue
+                    return None
                 try:
                     url = field.url
                 except Exception:
-                    continue
-                photos.append({
+                    return None
+                return {
                     'url': url,
                     'label': label,
                     'caption': f'{vehicle} — {label}' if vehicle else label,
                     'focus': focus_positions.get(source_field, ''),
+                    # An unmarked photo of the DAMAGE is aimed at (41%, 61%)
+                    # by .blind-focus rather than dead centre (P6.1). The
+                    # after photo is excluded for the same reason it is never
+                    # reframed on a tap.
+                    'reframe': source_field not in UNZOOMED_SOURCE_FIELDS,
+                }
+
+            before = shot('damage_photo_before', 'Before')
+            after = shot('damage_photo_after', 'After')
+            submitted = shot('customer_submitted_photo', 'Customer submitted')
+
+            if before and after:
+                language = PAIR_LANGUAGE[kind]
+                phrase = language['phrase']
+                for photo, label in zip((before, after), language['labels']):
+                    photo['label'] = label
+                    # This one is only ever the alt text: the pair itself is
+                    # captioned once, under both photos, not once per photo.
+                    photo['caption'] = (
+                        f'{vehicle} — {label}' if vehicle else label)
+                pairs.append({
+                    # `photos` is what the template iterates (a Django
+                    # `{% for %}` takes one sequence, not two names);
+                    # `before`/`after` name the same two dicts for anything
+                    # that needs to reason about which is which.
+                    'photos': (before, after),
+                    'before': before,
+                    'after': after,
+                    'caption': (f'{vehicle} — {phrase}' if vehicle
+                                else phrase[0].upper() + phrase[1:]),
                 })
+            else:
+                tiles.extend(photo for photo in (before, after) if photo)
+
+            # The customer's own photo is its own exhibit, never half of a
+            # pair: it is a different camera on a different day, and on a
+            # replacement it is the shot that answers "why couldn't you just
+            # repair it?".
+            if submitted:
+                tiles.append(submitted)
     except Exception as e:
         logger.warning(
             f"Could not load photos for public invoice {invoice.pk}: {e}")
-    return photos
+    return pairs, tiles
 
 
 def public_view_invoice(request, invoice_id, token):
@@ -718,7 +795,7 @@ def public_view_invoice(request, invoice_id, token):
 
     # Photos of the work live here, not as email attachments — multi-MB photo
     # payloads get invoice emails quarantined at corporate mail gateways.
-    photos = _public_invoice_photos(invoice)
+    photo_pairs, photos = _public_invoice_photos(invoice)
 
     # First-party SMS opt-in (toll-free registration requires consent from
     # the customer's own screen, not shop attestation). Offered to every
@@ -741,6 +818,7 @@ def public_view_invoice(request, invoice_id, token):
         'can_pay': can_pay,
         'pay_url': f"/pay/{invoice.id}/{token}/",
         'pdf_url': f"/invoice/{invoice.id}/{token}/pdf/",
+        'photo_pairs': photo_pairs,
         'photos': photos,
         'sms_optin_offered': customer is not None,
         'sms_optin_phone_last4': sms_phone[-4:] if sms_phone else '',
