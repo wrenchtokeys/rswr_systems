@@ -191,6 +191,25 @@
 }
 
 @layer components {
+  /* ---- Blind crop default (PHOTO_ML P6.1) -------------------------------
+     `object-fit: cover` on a damage photo crops to the middle of the frame,
+     which is the middle of the glass and not the break. Technicians who DO
+     mark a break tap at (41%, 61%) — left and low, because a chip is shot
+     from the driver's seat — and that constant halves the median framing
+     error against dead centre. So aim the unmarked ones there too.
+
+     A marked photo still wins: its tap ships as an inline `object-position`.
+     Never put this on an AFTER photo — a resin repair leaves a blemish, and
+     zooming it shows the customer the scar instead of the fix.
+
+     The value is authored in BLIND_FOCUS_POSITION
+     (apps/technician_portal/services/photo_crops.py); this is a copy because
+     a stylesheet cannot import Python. tests/test_photo_blind_focus.py fails
+     if the two drift. */
+  .photo-blind-focus {
+    object-position: 41% 61%;
+  }
+
   /* ---- Type scale (UI_MAGIC_PLAN R3) -----------------------------------
      Seven steps. Weight tops out at 600 — at tight tracking that reads more
      expensive than 700/800 — and letter-spacing tightens as size grows, which

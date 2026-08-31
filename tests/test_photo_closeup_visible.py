@@ -123,7 +123,13 @@ class FocusPositionTests(TapCropTestCase):
 class InvoicePhotoFramingTests(PhotoInvoiceTestCase):
     """Bug 1: the tile was cropped on the middle of the frame."""
 
-    def test_an_unmarked_photo_renders_exactly_as_before(self):
+    def test_an_unmarked_photo_falls_back_to_the_measured_default(self):
+        """No tap means no inline position — but not dead centre either.
+
+        P6.1: an unmarked tile is aimed at (41%, 61%) by `.blind-focus`,
+        because that is where technicians who DO mark actually tap. The data
+        still records the photo as unmarked (`focus` stays '').
+        """
         repair = self.make_repair(damage_photo_before=real_jpeg())
         invoice = self.make_invoice()
         self.add_line(invoice, repair)
@@ -131,12 +137,13 @@ class InvoicePhotoFramingTests(PhotoInvoiceTestCase):
         photos = _public_invoice_photos(invoice)
         self.assertEqual(len(photos), 1)
         self.assertEqual(photos[0]['focus'], '')
+        self.assertTrue(photos[0]['reframe'])
 
         html = self.get_public_invoice(invoice).content.decode()
         self.assertIn(repair.damage_photo_before.url, html)
-        # The stylesheet's own comment names the property; the tile must not
-        # carry the attribute.
+        # No tap, so no inline attribute — the default comes from the sheet.
         self.assertNotIn('style="object-position', html)
+        self.assertIn('class="blind-focus"', html)
 
     def test_a_marked_photo_is_framed_on_the_break(self):
         repair = self.make_repair(damage_photo_before=real_jpeg())
@@ -332,8 +339,11 @@ class PortalRepairDetailFramingTests(PhotoInvoiceTestCase):
         html = self.portal_get(repair).content.decode()
         self.assertIn('style="object-position: 25.00% 75.00%', html)
 
-    def test_an_unmarked_portal_photo_is_unchanged(self):
+    def test_an_unmarked_portal_photo_falls_back_to_the_measured_default(self):
+        """Same as the invoice tile: no tap, no inline style, but the box is
+        aimed at (41%, 61%) by `.photo-blind-focus` rather than dead centre."""
         repair = self.make_repair(damage_photo_before=real_jpeg())
         html = self.portal_get(repair).content.decode()
         self.assertIn(repair.damage_photo_before.url, html)
         self.assertNotIn('style="object-position', html)
+        self.assertIn('photo-blind-focus', html)

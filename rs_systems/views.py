@@ -630,7 +630,9 @@ def _resolve_public_invoice(invoice_id, token, request=None, record_view=True):
     return invoice
 
 
-from apps.technician_portal.services.photo_crops import focus_positions_for
+from apps.technician_portal.services.photo_crops import (
+    UNZOOMED_SOURCE_FIELDS, focus_positions_for,
+)
 
 
 def _public_invoice_photos(invoice):
@@ -687,6 +689,12 @@ def _public_invoice_photos(invoice):
                     'label': label,
                     'caption': f'{vehicle} — {label}' if vehicle else label,
                     'focus': focus_positions.get(source_field, ''),
+                    # An unmarked photo of the DAMAGE is aimed at (41%, 61%)
+                    # by .blind-focus rather than dead centre (P6.1). The
+                    # after photo is excluded for the same reason it is never
+                    # reframed on a tap: zooming a resin repair shows the
+                    # customer the scar instead of the fix.
+                    'reframe': source_field not in UNZOOMED_SOURCE_FIELDS,
                 })
     except Exception as e:
         logger.warning(
