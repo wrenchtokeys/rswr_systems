@@ -57,16 +57,15 @@ without re-running the exploration that produced this doc.
 | P4a.1 · Backfill | Mark the break on the photos we already have — one queue, not 77 jobs | S | DONE (PR #224) — **and RUN: 1 → 73 confirmed crops, 2026-08-27** |
 | P3.1 · Validate | Run the suggester against the 77 real windshield photos we now have | S | DONE (2026-08-27) — **it wins on real photos; but the (41,61) centroid beats it for free** |
 | P6.1 · Free win | Default unmarked photos to (41%, 61%) instead of dead centre | XS | DONE (2026-08-27, branch `feat/photoml-p61-blind-crop-default`) — halves the framing error on every photo nobody marked, forever |
-| **P6.2 · Proof of work** | **Before/after pair on the public invoice page — one exhibit, not two tiles** | **S** | **TODO — the next code session** (added 2026-08-27) |
+| P6.2 · Proof of work | Before/after pair on the public invoice page — one exhibit, not two tiles | S | DONE (2026-08-31, branch `docs/photoml-p62-before-after-pair`) — **and the census says the pairs are already there: 76 of 82 photographed jobs have both** |
 | P5 · Negative class | Record the jobs we turn away — the only source of "not repairable" | M | TODO — **this is the actual gate on P4b** |
 | P4b · Payoff | Repairability classifier | L | BLOCKED on **P5** — see P4b and §The pause |
 
 **Suggested sequence, as revised 2026-08-26:**
-P1 → P2 → P3 → P4a → P6 → P4a.1 → P3.1 → P6.1 → **P6.2 → P5** → P4b. Every
-code session through P6.1 is done; **P6.2 — the before/after pair — is the
-next one** (added 2026-08-27; see its section). After it, what is left is not
-a session: **P5 is a decision** (see §The pause), and P4b is blocked behind
-it. Note that P3.1's
+P1 → P2 → P3 → P4a → P6 → P4a.1 → P3.1 → P6.1 → P6.2 → **P5** → P4b. **Every
+code session in the arc is now done, P6.2 included.** What is left is not a
+session: **P5 is a decision** (see §The pause), and P4b is blocked behind it.
+Note that P3.1's
 method was revised on 2026-08-27 by a dry run against production: **mark
 cold, score afterwards**, rather than sweeping first. See P3.1 for the
 numbers.
@@ -167,7 +166,7 @@ branches and this was a deploy-time choice.
 | ~~#232~~ | **Merged.** P3.1's results. |
 | ~~P6.1~~ | **Done** on `feat/photoml-p61-blind-crop-default` — the measured `41% 61%` default for unmarked photos. See its section. |
 | **→ DEPLOY `main`** | **The one thing standing between all of this and a customer.** `main` is correct and migrates cleanly; production is still on a feature-branch commit from before P6. Nothing in this arc is visible to anyone until this happens. |
-| **Then** | **P6.2 — the before/after pair** on the public invoice page. The spec is in its section; it is the arc's next code session and needs no decision to start. |
+| ~~Then~~ | ~~P6.2 — the before/after pair~~ **Done (2026-08-31).** Like P6 and P6.1 it is in the repository and reaches nobody until `main` deploys. |
 | **Then** | **P5 is a decision, not a session** — see §The pause before building toward P4b. **Ask Drake whether the classifier is still wanted**; if it is not, close P5 and P4b as DROPPED and the arc ends here, which would be a good ending. |
 
 **How to deploy this, exactly** — the 19:24 failure was caused by getting
@@ -1364,7 +1363,7 @@ it is meant to fail loudly when someone changes it, so the change is made
 together with P3.1's table and a recorded sample size.
 
 
-# P6.2 · Before/after pair on the invoice — TODO · **the next code session**
+# P6.2 · Before/after pair on the invoice — DONE (2026-08-31)
 
 **Why the arc reopened (2026-08-27).** The question that reopened it: what
 does a shop that is not ours get out of any of this? A technician at another
@@ -1397,6 +1396,73 @@ the corpus gets for free.
 | **Out of scope** | Photos in email or the PDF. Prompting for the after photo at completion (P6.3 if wanted). Reusing before coordinates on the after image — never. Anything classifier-shaped. |
 
 **Notes**
+
+**Executed 2026-08-31.** `_public_invoice_photos` returns `(pairs, tiles)`
+instead of a flat list: a job with both photos becomes one `.photo-pair`
+figure — two labelled shots side by side, captioned once — and everything
+else stays the tile it always was, in the same grid, with the same caption.
+Verified in a real browser at phone and desktop width against a seeded
+invoice carrying two pairs and a single-photo invoice beside it. 19 new
+tests; the 22 P6/P6.1 tests in that file still pass, along with the
+invoice-page suites that neighbour them (201 photo-arc tests, plus 68 in
+`test_invoice_view_tracking` / `test_invoice_send_polish` / `test_fieldops_n4`
+/ `test_migration_graph`). No migration, no model change, no new query — the
+grouping happens inside the loop that already ran.
+
+**The census contradicted the spec's own fear, and this is the finding worth
+keeping.** The spec assumed the after photo would be the binding constraint
+and told the session to measure it before building. Measured against
+production (read-only, 2026-08-31):
+
+| | count |
+|---|---|
+| Repairs with any photo | 82 |
+| ...with a before **and** an after | **76 (93%)** |
+| Completed repairs | 134, of which 74 carry the pair |
+| Replacements, ever | 0 |
+| Invoices with repair line items | 47 |
+| ...carrying at least one pair | **20** |
+| ...with a before and no after anywhere on them | **1** |
+
+So there is no missing-after-photo problem: technicians here already shoot
+both, and have all along. **P6.3 (prompting for the after photo at
+completion) is not worth building** — it would solve a problem the data says
+does not exist. The real limiter on this exhibit is that 27 of 47 invoices
+have no job photos at all, which is a different question (whether a tech
+photographs the job) and not one a completion prompt fixes either.
+
+**What was decided while building, beyond the spec:**
+
+- **The after photo still is not reframed, in a pair either.** The spec left
+  this open ("a pair changes the calculus") and v1 keeps it closed. A tap on
+  the after photo IS collected at capture and remains unused by every
+  renderer; matched framing must come from that tap and never from the before
+  photo's coordinates, which describe a different shot from a different
+  angle. `test_the_after_photo_is_never_reframed_in_a_pair_either` pins it.
+- **The pair stays side by side at every width**, including a phone. Stacking
+  it at a narrow breakpoint is the one layout that destroys the comparison,
+  and a phone is where an invoice link gets opened.
+- **A replacement's pair does not speak repair language.** Nothing was
+  repaired, so it reads *Damage* → *New glass*, captioned "…— the damage, and
+  the new glass". `PAIR_LANGUAGE` in `rs_systems/views.py` is the one place
+  that decides, keyed by service kind.
+- **The customer-submitted photo is never half of a pair** — different
+  camera, different day. It stays its own tile beside the exhibit.
+- **No placeholder for a missing after photo**, as specified: an empty
+  "After" slot would shame the shop on its own invoice for a photo nobody
+  took.
+- The visible caption is shared by both halves; each `<img>` keeps its own
+  `alt` ("Unit #4521 — Before"), because a shared caption tells a screen
+  reader nothing about which image is which.
+
+**Depended on P6.1, which had not merged.** `feat/photoml-p61-blind-crop-default`
+(#234) was still open, and P6.2 rewrites the exact lines it touches — so this
+branch **merges #234 rather than racing it**. Merging this PR lands both.
+Given this arc's history with stacked branches (#218 into a consumed base,
+three rounds of duplicate migrations), that is deliberate: **do not
+squash-merge #234 separately first**, or this branch will conflict on every
+file the two share. There is no migration in either, so the graph is not at
+risk this time.
 
 
 # P5 · Record the jobs we turn away — TODO · **needs Drake's call before it is a session**
@@ -1557,3 +1623,4 @@ and did not move the count.
 | 2026-08-27 | **The deploy failed, and the code was not at fault.** `eb deploy` was run from the feature branch instead of `main`. `.elasticbeanstalk/config.yml` sets `sc: git`, so the EB CLI ships **the current branch's HEAD commit** — that branch predated #231, so the already-fixed duplicate-`0060` graph went to production and `01_migrate` refused to run. Round four of the migration saga was not a duplicate migration at all; it was deploying the wrong commit, which no CI check can catch. Nothing was damaged — `migrate` fails at graph-load time, so nothing partially applied and the running version kept serving 200. **`git checkout main && git pull` before every `eb deploy`.** |
 | 2026-08-27 | **P6.1 executed — the arc's code is finished.** Unmarked photos are now aimed at the measured (41%, 61%) instead of dead centre, on both surfaces P6 wired. `BLIND_FOCUS_POSITION` is authored once in `photo_crops.py` and copied into two stylesheets that cannot import Python (the portal's Tailwind build, the standalone invoice page); `tests/test_photo_blind_focus.py` fails if any copy drifts, and asserts the rule survived the Tailwind purge into the committed `app.css`. **Caught a bug the spec would have shipped:** the invoice rule was specified for `.photo-grid img`, which also renders the *after* photo — aiming the blind crop there would frame the resin blemish instead of the fix, so a `reframe` flag now excludes it. Two tests that passed while describing behaviour that was no longer true were renamed and re-pointed. **Everything buildable in this arc is now built; what remains is P5, which is Drake's decision, and a deploy.** |
 | 2026-08-27 | **The arc reopens: P6.2 added.** Asked how tap-to-crop justifies itself to a shop that is not ours — the modal explains what to do but never why, and shows no proof — Drake picked the **before/after pair on the invoice** from the proposed options. The "natural ending" note is revised: the customer-facing half has one more session in it. The framing decision (after photo stays unzoomed in v1; matched framing only ever from the after photo's own tap) and the data census (how many jobs have both photos) are written into the spec. P5/P4b remain exactly where they were: a decision, then a gate. |
+| 2026-08-31 | **P6.2 executed — the arc's code is finished, again.** A job with both photos is now one exhibit on the public invoice page: two labelled shots side by side, captioned once, framed on the tap (or on P6.1's measured default) with the after photo still deliberately unzoomed. Replacements get their own language. **The census the spec asked for came back the opposite way round:** 76 of 82 photographed repairs already have both photos (20 of 47 invoices carry a pair, exactly 1 has a before and no after), so **P6.3 — prompting for the after photo — should not be built**; the constraint is jobs with no photos at all, not missing after shots. This branch **carries #234 (P6.1) by merge** because it rewrites the same lines; merging it lands both. |

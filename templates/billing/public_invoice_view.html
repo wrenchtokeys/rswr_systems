@@ -61,8 +61,20 @@
            (apps/technician_portal/services/photo_crops.py); this page has its
            own stylesheet and cannot import it, so
            tests/test_photo_blind_focus.py keeps the copies honest. */
-        .photo-grid img.blind-focus { object-position: 41% 61%; }
+        .photo-grid img.blind-focus,
+        .photo-pair-shot img.blind-focus { object-position: 41% 61%; }
         .photo-grid figcaption { font-size: 12px; color: #6b7280; margin-top: 4px; }
+        /* The before/after pair (P6.2). A glass repair is invisible when it
+           goes well, so the two photos ARE the proof of work — but only when
+           they are shown as one exhibit. Side by side at every width on
+           purpose: stacking them at a narrow breakpoint is the one layout
+           that destroys the comparison, and a phone is where this is read. */
+        .photo-pair { margin: 0 0 16px; }
+        .photo-pair-frames { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .photo-pair-shot { position: relative; margin: 0; }
+        .photo-pair-shot img { display: block; width: 100%; height: 150px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; }
+        .photo-pair-label { position: absolute; left: 8px; bottom: 8px; padding: 3px 8px; border-radius: 999px; background: rgba(17, 24, 39, 0.78); color: #fff; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+        .photo-pair figcaption { font-size: 12px; color: #6b7280; margin-top: 6px; }
     </style>
 </head>
 <body>
@@ -190,9 +202,31 @@
                     {% endif %}
                 {% endif %}
 
-                {% if photos %}
+                {% if photo_pairs or photos %}
                 <div class="photos">
                     <h2>Photos</h2>
+                    {% comment %}
+                    A job with both photos is one exhibit, captioned once —
+                    the same glass, an hour apart. A job with one photo is a
+                    tile in the grid below, exactly as it has always been;
+                    there is deliberately no empty "After" placeholder.
+                    {% endcomment %}
+                    {% for pair in photo_pairs %}
+                    <figure class="photo-pair">
+                        <div class="photo-pair-frames">
+                            {% for photo in pair.photos %}
+                            <div class="photo-pair-shot">
+                                <a href="{{ photo.url }}" target="_blank" rel="noopener">
+                                    <img src="{{ photo.url }}" alt="{{ photo.caption }}" loading="lazy"{% if photo.reframe %} class="blind-focus"{% endif %}{% if photo.focus %} style="object-position: {{ photo.focus }}"{% endif %}>
+                                </a>
+                                <span class="photo-pair-label">{{ photo.label }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <figcaption>{{ pair.caption }}</figcaption>
+                    </figure>
+                    {% endfor %}
+                    {% if photos %}
                     <div class="photo-grid">
                         {% for photo in photos %}
                         <figure>
@@ -203,6 +237,7 @@
                         </figure>
                         {% endfor %}
                     </div>
+                    {% endif %}
                 </div>
                 {% endif %}
 

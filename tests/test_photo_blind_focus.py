@@ -96,6 +96,13 @@ class BlindFocusConstantTests(SimpleTestCase):
         """That page has no access to app.css — it is a standalone document."""
         html = INVOICE_PAGE.read_text()
         self.assertIn('.photo-grid img.blind-focus', html)
+        self.assertIn(
+            '.photo-pair-shot img.blind-focus', html,
+            'P6.2 moved a job with both photos out of .photo-grid and into '
+            'a before/after pair. If the pair is not in this selector, every '
+            'unmarked pair silently goes back to being centre-cropped and '
+            'nothing anywhere reports it.',
+        )
         self.assertTrue(
             any(v in html for v in _css_variants(BLIND_FOCUS_POSITION)),
             f'public_invoice_view.html has .blind-focus but not '
