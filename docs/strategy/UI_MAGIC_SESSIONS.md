@@ -26,13 +26,14 @@ session with no memory of this work can pick exactly one up and finish it.
 | 2 | S8 · Retire the second accent everywhere else (FAB, black pills) | **DONE** 2026-08-10 |
 | 3 | S9 · Motion primitives: press feedback + enter/exit | **DONE** 2026-08-10 |
 | 3 | S10 · View Transitions for list → detail continuity | **DONE** 2026-08-11 |
-| 3 | S11 · Skeletons and optimistic status changes | **DONE** 2026-08-25 (PR #210) — merged, **not yet on prod** |
-| 3 | S12 · Auth pages: one brand mention, full-height, no marketing nav | **DONE** 2026-08-25 (PR #209) — merged, **not yet on prod** |
-| 3 | S13 · Icon language: Font Awesome solid → line-weight SVG sprite | TODO — debt now **1,303** and rising |
+| 3 | S11 · Skeletons and optimistic status changes | **DONE** 2026-08-25 (PR #210) — **on prod** since the 2026-08-27 cut |
+| 3 | S12 · Auth pages: one brand mention, full-height, no marketing nav | **DONE** 2026-08-25 (PR #209) — **on prod** since the 2026-08-27 cut |
+| 3 | S13 · Icon language: Font Awesome solid → line-weight SVG sprite | **S13a DONE** 2026-08-26 (PR #223, the `{% icon %}` tag, on prod) · **S13b DONE** 2026-08-27 (PR #229, the chrome) · **sweep TODO** — **1,217** call sites left, and the count has stopped rising |
 | 4 | S14 · Landing: real product imagery instead of the fake mock | TODO |
 | 4 | S15 · Landing: trust bar rewrite | TODO |
 | 4 | S16 · Landing: rhythm, dark section, sharper promise | TODO — **the `[data-reveal]` half split out and DONE 2026-08-27 (S16a, PR #235, merged 2026-08-31)** |
 | — | S17 · Stop shipping the Tailwind source to production | **DONE** 2026-08-27, merged 2026-08-31 (PR #233) |
+| — | S18 · Strict Content-Security-Policy | **TODO — the next one.** Unblocked by S1 + S17. **Not the S the old note claimed** — the hosts are trivial, `'unsafe-inline'` is the work: 55 inline `<script>`, 34 `<style>`, 173 `on*` handlers. See S18 |
 | Out | Email + notification chassis, replacement lifecycle | **DONE** 2026-08-24 (PR #200) |
 | Out | Invoice email onto the chassis | **DONE** 2026-08-24 (PR #202, merged 12:15 CDT, deployed 22:48 CDT) |
 | Out | In-app surfaces: notification bell + notification history | **DONE** 2026-08-25 (PR #206) |
@@ -1066,7 +1067,7 @@ headache" into the specific thing nobody else does.
 ~~**Delete the `[data-reveal]` scroll fade**~~ — **done 2026-08-27 as S16a, PR #235.**
 See below. The redesign half of S16 is untouched and still open.
 
-### S16a — the scroll fade, deleted 2026-08-27 (PR #235)
+### S16a — the scroll fade, deleted 2026-08-27 (PR #235, merged 2026-08-31)
 
 Six `data-reveal` wrappers, three CSS rules, the `classList.add('js')` bootstrap and the
 IntersectionObserver: 33 lines out, 6 in. `templates/landing.html` is the only file that
@@ -1118,7 +1119,7 @@ stayed was a day the pricing page introduced itself as a blank rectangle.
 
 # Housekeeping
 
-## S17 · Stop shipping the Tailwind source to production ✅ DONE 2026-08-27
+## S17 · Stop shipping the Tailwind source to production ✅ DONE 2026-08-27, merged 2026-08-31 (PR #233)
 
 `static/css/src/input.css` was collected and served publicly, and its presence forced the
 `@font-face` workaround in S1/S2. The source moved to `assets/css/input.css`, outside
@@ -1199,11 +1200,59 @@ declaration lived in an inline `<style>`, because the `@font-face` had to be re-
 every page. What is left inline is one `@view-transition` rule and it is static — a hash in
 the `style-src` allowlist covers it.
 
-## Follow-on once Phase 1 has soaked
+## S18 · Strict Content-Security-Policy — the Phase 1 dividend
 
-Add a strict **Content-Security-Policy**. S1 removed every third-party asset host, so the
-allowlist is now small: self + Stripe + Cloudflare Turnstile. This was impossible before
-and is the main security dividend of Phase 1 — don't leave it on the table.
+Add a strict **Content-Security-Policy**. S1 removed every third-party asset host and S17
+removed the last inline `<style>` that had to carry a font declaration, so this is finally
+possible. It is the main security dividend of Phase 1 — don't leave it on the table.
+
+**The host allowlist is genuinely small.** Every `https://` in `templates/` on `2356f2a3`:
+
+| host | count | why |
+|---|---|---|
+| `rssystems.io` | 5 | our own canonical/OG URLs — not a fetch |
+| `challenges.cloudflare.com` | 2 | Turnstile, on signup |
+| `stripe.com` | 1 | a marketing link, not the SDK |
+| `search.google.com`, `schema.org` | 2 | `ld+json` metadata, not a fetch |
+
+There is **no `js.stripe.com` or `api.stripe.com` in any template** — Stripe is server-side
+here. So `default-src 'self'` plus Turnstile's frame/script is close to the whole policy.
+
+**Sizing: this is not S. The hosts are easy; `'unsafe-inline'` is the session.** Counted on
+`2356f2a3`, across 61 templates:
+
+```
+55 inline <script> blocks · 34 <style> blocks · 173 inline on* handlers
+```
+
+Worst offenders: `saas/owner_invoice_detail.html` (5 scripts, 31 handlers),
+`technician_portal/job_form.html` (4), `saas/owner_settings.html` (17 handlers),
+`base_app.html` and `customer_portal/base_customer.html` (both shells).
+
+**And one of those is load-bearing by design.** `CLAUDE.md:123` requires optimistic rows to
+use **inline `onclick`, not `addEventListener`** — because `Optimistic.rollback` restores a
+row's saved `innerHTML`, which throws away any listener bound to the old nodes. A nonce
+does **not** cover inline event handlers; only `unsafe-hashes` or deleting them does. So a
+strict `script-src` and S11's rollback design are in direct conflict, and that conflict has
+to be resolved before the policy can drop `'unsafe-inline'`, not after.
+
+**Therefore stage it, and say so in the PR:**
+
+1. `Content-Security-Policy-Report-Only` first, with a report endpoint, on production. The
+   value of report-only is that it tells you what you missed; ship nothing enforcing until
+   it is quiet.
+2. Lock down the directives that cost nothing today — `img-src`, `font-src`, `connect-src`,
+   `frame-ancestors 'none'`, `base-uri 'self'`, `form-action 'self'`. These are already
+   true and cannot break a page.
+3. `style-src` and `script-src` with a per-request nonce, still report-only, which handles
+   the 55 `<script>` and 34 `<style>` blocks.
+4. The 173 `on*` handlers last, as their own session, with the S11 rollback question
+   answered first (event delegation on a stable ancestor is the obvious answer — it
+   survives `innerHTML` replacement, which is precisely why the inline rule exists).
+
+**Verify with the recipe's step 2 and read the "forgiving storage" note first** — the
+policy is delivered by middleware, but a `url()` that fails to collect takes the page down
+in a way that looks like a CSP violation and is not.
 
 ---
 
@@ -1587,8 +1636,9 @@ five font sizes — are worth regenerating before the migration sweep, not just 
 
 Unchanged and still all open: the `InAppCopy` message-copy sweep, the invoice's Python-built
 plain-text half, safe drive-away time (still Drake's call), and emoji in the three staff-only
-surfaces. S14/S15/S16 and S17 are exactly where #216 left them; **S17 and the `[data-reveal]`
-deletion are still the two cheapest real wins on the board.**
+surfaces. S14/S15/S16 and S17 are exactly where #216 left them; ~~**S17 and the `[data-reveal]`
+deletion are still the two cheapest real wins on the board.**~~ — **both shipped and merged
+2026-08-31** (#233 and #235). The cheapest is now the strict CSP.
 
 ---
 
@@ -1605,7 +1655,7 @@ landed the photo-ML work. S17 was the smallest thing on the board and it is done
 | S13 | Icon migration sweep | M | The tag shipped (S13a, #223) and the chrome went with S13b (#229). What is left is the ~1,300-call-site sweep and deleting the vendored FA files |
 | S14 | Landing: real product imagery | M | Unblocked, unstarted |
 | S15 | Landing: trust bar rewrite | S | Copy. Wants Drake's eye |
-| S16 | Landing: rhythm + kill `[data-reveal]` | M | **The `[data-reveal]` deletion is now the cheapest real win on the board** — small, strictly an improvement, does not need the redesign half |
+| S16 | Landing: rhythm + kill `[data-reveal]` | M | ~~**The `[data-reveal]` deletion is now the cheapest real win on the board**~~ — taken the same day as S16a (#235). The redesign half is what remains |
 | — | Strict CSP | S–M | Newly unblocked in full; see the S17 section |
 
 ## Two things this session found that nobody was looking for
@@ -1630,3 +1680,101 @@ All four unchanged and still open: the `InAppCopy` message-copy sweep (still wan
 wording), the invoice's Python-built plain-text half (still correct, still pinned by two
 suites), safe drive-away time (still Drake's call, still do not add it without him), and
 emoji in the three staff-only surfaces.
+
+---
+
+# Where this stands — 2026-08-31, the arc is clear
+
+**`origin/main` is at `2356f2a3` and this arc has nothing open.** #235 (S16a) merged at
+`190fe228` and #233 (S17) at `2356f2a3`, both on 2026-08-31. The photo-ML arc landed
+#236 (P6.2, carrying #234) at `fb4f8b98` in between, and #234 was closed as superseded.
+
+Verified on `main` itself rather than from the merge log — **squash merges rewrite SHAs, so
+`git log` is not evidence in this repo**; check content:
+
+```bash
+git ls-tree -r origin/main --name-only | grep input.css   # assets/css/input.css, and only that
+git show origin/main:assets/css/input.css | grep '41% 61%'        # the measured constant survived the move
+git show origin/main:templates/includes/head_assets.html | grep -c '@font-face'   # 0
+git show origin/main:templates/landing.html | grep -c 'data-reveal'               # 0
+```
+
+56 guard tests green against `main` in a throwaway worktree (`test_css_pipeline`,
+`test_photo_blind_focus`, `test_landing_visibility`, `test_migration_graph`,
+`test_view_transitions`, `test_mobile_touch_targets`, `test_icon_tag`), and
+`./scripts/build_css.sh` on a clean `main` now produces **byte-identical** output to the
+committed `static/css/app.css` — the drift S17 found is closed, not just fixed once.
+
+## What landing S17 after P6 actually taught
+
+S17 was written on 2026-08-27 against a `main` that no longer existed by the time it could
+merge, and it did not fail the way a stale PR usually fails.
+
+**A rebase can be textually clean and still be wrong.** `assets/css/input.css` auto-merged
+without a conflict — git had no opinion about it. The danger was elsewhere: P6.1 had added
+`.photo-blind-focus { object-position: 41% 61% }` to the *old* path, and
+`tests/test_photo_blind_focus.py` reads that path through an **absolute** `Path`, so the
+rename turned the one guard holding three copies of a measured constant together into an
+error. **When a PR renames a file, grep the whole repo for the old path — the compiler and
+git will both stay silent about a string.** Three live pointers needed the fix (the test,
+the comment block above `BLIND_FOCUS_POSITION`, and a table row in `PHOTO_ML_SESSIONS.md`);
+the rest of the hits were history and were left alone.
+
+**Resolve a committed build artifact by rebuilding, then diff it rule-by-rule.**
+`static/css/app.css` conflicted outright. Hand-merging minified CSS is not a thing anyone
+should do; `./scripts/build_css.sh` is the resolution. The check that it worked is a
+*rule-level* diff against `origin/main`'s build, not a text diff of one minified line:
+
+```
+main: 1,154 rules · branch: 1,155 rules · dropped: 0 · added: 1 (this PR's @font-face)
+```
+
+That is the shape to reproduce. A minified single-line diff tells you nothing; a rule count
+plus the set difference tells you whether a Tailwind purge quietly ate something.
+
+**The summary table had rotted, and in the direction that flatters.** S11 and S12 were
+still marked *"merged, **not yet on prod**"* — written 2026-08-25 and true then. The
+2026-08-27 cut shipped both, so the table was carrying a warning that had been false for
+four days, and S13's row still said *"debt now 1,303 and rising"* after S13a and S13b had
+between them shipped the tag and taken the count to 1,217 and flat. **A deploy-state note
+in a strategy doc is a snapshot with no expiry date on it.** Re-derive it — `eb status`
+for what is live, then `git cat-file -e <deployed-sha>:<a file the session added>` for what
+that actually contains — rather than reading the last person's sentence.
+
+**A merge order existed and it mattered.** P6 first, then S16a (it trial-merged clean and
+touches nothing the photo work touches), then S17 last because only S17 needed the other
+two to already be there. Nothing was lost and nothing needed reverting.
+
+## The backlog — what a fresh session should pick from
+
+| # | Session | Size | Where it stands |
+|---|---|---|---|
+| **S18** | **Strict Content-Security-Policy** | **M** | **The one this arc has been building toward**, and the brief is now written from a real count rather than an estimate. The host allowlist is four entries and one of them is Turnstile; the work is the 55 inline `<script>`, 34 `<style>` and **173 `on*` handlers** — and S11's rollback *requires* inline `onclick`, which a nonce cannot cover. Stage it report-only. See S18 |
+| S13 | Icon migration sweep | M | The tag (S13a, #223) and the chrome (S13b, #229) shipped. What is left is **~1,217 call sites page by page** — `owner_settings.html` 116, `repair_form.html` 80, `repair_detail.html` 60, `owner_invoice_detail.html` 56 — then the 17 Python-side names in `HELP_TOPICS`, then deleting the vendored FA files. Mechanical, and against a target that has stopped moving |
+| S14 | Landing: real product imagery | M | Unblocked, unstarted. Whatever it ships must be **regenerable by a command**, or the drift note gets written a third time |
+| S15 | Landing: trust bar rewrite | S | Copy, not code. Wants Drake's eye |
+| S16 | Landing: rhythm + dark section | M | The `[data-reveal]` half is gone (S16a). The redesign half wants Drake on the promise copy |
+
+**Three `fa-*` assertions must be rewritten as their page comes up in the S13 sweep:**
+`test_ux_fixes.test_wrench_icon_used_not_tools` and `test_ux_fixes:521` both assert on
+Font Awesome class names in `owner_settings.html`, and `test_list_skeletons:100`
+(`assertNotIn('fa-spinner')`) survives either way.
+
+## Still open, re-dated 2026-08-31
+
+All four unchanged: the `InAppCopy` message-copy sweep (still wants Drake's wording), the
+invoice's Python-built plain-text half (still correct, still pinned by two suites), safe
+drive-away time (still Drake's call, **still do not add it without him**), and emoji in the
+three staff-only surfaces.
+
+## Not this arc's, but it is the highest-value action on the repo
+
+**Production runs pre-P6 code.** Verified 2026-08-31: `eb status rs-systems-production`
+reports `Deployed Version: app-d88f7-260827_125012793353`, environment Ready/Green, last
+updated 2026-08-30 — and `d88f70d5` is *"Measured the suggester on prod"*, a commit on a
+feature branch that predates even #232. Everything merged
+since — S13b's chrome, S16a's landing fix, S17's static pipeline, and the whole photo-ML
+customer-facing half — reaches nobody until `main` is deployed. `eb deploy` ships the
+current branch's HEAD, so it is `git checkout main && git pull` **first**, from
+`~/projects/rs_systems_branch2` (worktrees are not eb-initialized). Confirm with
+`eb status rs-systems-production | grep 'Deployed Version'` before and after.
