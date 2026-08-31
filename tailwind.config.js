@@ -51,7 +51,7 @@ module.exports = {
       colors: {
         // Canonical brand palette. Reads CSS variables so a shop's own
         // brand color (Tenant.brand_color) can retheme the customer portal
-        // at runtime — defaults in static/css/src/input.css are Tailwind
+        // at runtime — defaults in assets/css/input.css are Tailwind
         // blue (#3b82f6 at 500), so nothing changes for shops without one.
         // Channels are space-separated RGB ("59 130 246") to keep Tailwind's
         // opacity modifiers (e.g. bg-brand-500/50) working.

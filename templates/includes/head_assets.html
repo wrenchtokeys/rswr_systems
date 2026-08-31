@@ -28,18 +28,9 @@ inputs on coarse pointers, see the TOUCH / MOBILE block in app.css.
 {# the browser can start it during HTML parse instead of after a DNS+TLS hop. #}
 <link rel="preload" href="{% static 'fonts/inter-variable-latin.woff2' %}" as="font" type="font/woff2" crossorigin>
 
-{# Declared here rather than in input.css: collectstatic collects the Tailwind #}
-{# source as well as the built app.css, and a relative url() would resolve to  #}
-{# a different path from each location. {% static %} always resolves correctly.#}
+{# The Inter @font-face lives in assets/css/input.css and ships in app.css (S17). #}
+{# Only the view-transition opt-in has to be inline — see below. #}
 <style>
-  @font-face {
-    font-family: 'Inter';
-    font-style: normal;
-    font-weight: 300 800;
-    font-display: swap;
-    src: url("{% static 'fonts/inter-variable-latin.woff2' %}") format('woff2');
-  }
-
   {% comment %}
   Cross-document View Transitions opt-in (S10). Everything else about the
   transition — the timing, the named navbar, the list-row hero — lives in
@@ -49,7 +40,7 @@ inputs on coarse pointers, see the TOUCH / MOBILE block in app.css.
   an external stylesheet, even one that is render-blocking, fully loaded,
   applying its other rules, and present in document.styleSheets as a real
   CSSViewTransitionRule (verified against this app and against a two-file
-  reduction of it). Move this into input.css and every navigation silently
+  reduction of it). Move this into assets/css/input.css and every navigation silently
   goes back to a hard page swap, with nothing in the console to explain it.
   {% endcomment %}
   @view-transition {

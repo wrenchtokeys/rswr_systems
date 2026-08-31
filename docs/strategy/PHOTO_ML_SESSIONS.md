@@ -1313,7 +1313,7 @@ while the public invoice page is a standalone document with its own inline
 
 | Surface | Mechanism |
 |---|---|
-| Customer portal (`customer_portal/repair_detail.html`) | `.photo-blind-focus` in `static/css/src/input.css` `@layer components` |
+| Customer portal (`customer_portal/repair_detail.html`) | `.photo-blind-focus` in `assets/css/input.css` `@layer components` (was `static/css/src/`; moved by UI_MAGIC S17, PR #233) |
 | Public invoice (`billing/public_invoice_view.html`) | `.photo-grid img.blind-focus` in that page's own `<style>` block |
 
 `tests/test_photo_blind_focus.py` is what keeps those three copies honest: it

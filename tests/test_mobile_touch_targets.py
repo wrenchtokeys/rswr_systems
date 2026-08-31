@@ -6,8 +6,8 @@ their viewport zoomed into a corner.
 
 The compiled `static/css/app.css` is the artifact that actually ships (it is
 committed — see CLAUDE.md), so these read it rather than the Tailwind source.
-A rule present in `src/input.css` but purged out of `app.css` is exactly the
-bug worth catching.
+A rule present in `assets/css/input.css` but purged out of `app.css` is
+exactly the bug worth catching.
 """
 
 import re
@@ -18,7 +18,7 @@ from django.test import TestCase
 
 BASE_DIR = Path(settings.BASE_DIR)
 APP_CSS = BASE_DIR / 'static' / 'css' / 'app.css'
-INPUT_CSS = BASE_DIR / 'static' / 'css' / 'src' / 'input.css'
+INPUT_CSS = BASE_DIR / 'assets' / 'css' / 'input.css'
 HEAD_ASSETS = BASE_DIR / 'templates' / 'includes' / 'head_assets.html'
 
 

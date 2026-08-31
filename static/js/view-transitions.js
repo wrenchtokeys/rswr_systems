@@ -1,7 +1,8 @@
 /*
  * List -> detail continuity (UI_MAGIC_SESSIONS S10, UI_MAGIC_PLAN R4 #3).
  *
- * The animation itself is pure CSS (`@view-transition` in input.css). The only
+ * The animation itself is pure CSS (`@view-transition` in head_assets.html; the
+ * rest in assets/css/input.css). The only
  * thing that needs script is WHICH row flies into the detail page's title:
  * `view-transition-name` has to be unique in the document, so the twenty rows
  * on a list page cannot all be named `vt-hero` up front — a duplicate name

@@ -89,7 +89,7 @@ UNZOOMED_SOURCE_FIELDS = ('damage_photo_after',)
 # treat it as physics.
 #
 # Authored here, and repeated in two stylesheets that cannot import Python:
-#   static/css/src/input.css              (.photo-blind-focus, customer portal)
+#   assets/css/input.css                  (.photo-blind-focus, customer portal)
 #   templates/billing/public_invoice_view.html (.blind-focus, standalone page)
 # tests/test_photo_blind_focus.py fails if any copy drifts from this value.
 BLIND_FOCUS_POSITION = '41% 61%'

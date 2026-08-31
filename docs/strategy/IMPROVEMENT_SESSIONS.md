@@ -144,7 +144,7 @@ treatments, no logic. "New Job" is blue on `/tech/jobs/`; "New Customer" is gree
 this is a large part of why.
 
 **Verified current state.**
-- A component layer exists: `static/css/src/input.css:58–73` defines `.btn-primary`,
+- A component layer exists: `assets/css/input.css` (was `static/css/src/`, moved in S17) defines `.btn-primary`,
   `.btn-secondary`, `.btn-danger`, `.btn-ghost`, `.btn-sm`, `.btn-lg`. There is **no**
   `.btn-success` — yet green buttons are everywhere, built ad-hoc.
 - Usage across `templates/`: `btn-primary` ×67, `btn-secondary` ×51, `btn-danger` ×9 — but

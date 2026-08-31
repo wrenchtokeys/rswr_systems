@@ -6,7 +6,7 @@ page swaps and nobody notices for a month.
 
 1. The `@view-transition` opt-in must be INLINE in the document. Chrome ignores
    it when it arrives in an external stylesheet (verified against Chrome 151),
-   so the obvious "tidy-up" of moving it into input.css silently kills the
+   so the obvious "tidy-up" of moving it into assets/css/input.css silently kills the
    whole feature.
 2. A row that carries `data-vt-key` must contain a `data-vt-hero`, and the page
    it links to must render `.vt-hero`. Miss either half and the row fades

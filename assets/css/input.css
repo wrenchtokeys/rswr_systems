@@ -2,12 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
-/* NOTE: no url() references belong in this file. collectstatic collects the
-   Tailwind SOURCE (static/css/src/input.css) as well as the built app.css, and
-   a relative url() resolves against each file's own directory — so the same
-   path would break from one of the two locations. The Inter @font-face lives
-   inline in templates/includes/head_assets.html, where {% static %} resolves
-   it correctly under ManifestStaticFilesStorage. */
+/* This file is the Tailwind SOURCE and it lives outside static/ on purpose:
+   collectstatic collects everything under static/, so while it sat at
+   static/css/src/input.css the uncompiled source was served publicly AND a
+   relative url() resolved against two different directories — which is why
+   the Inter @font-face had to live inline in head_assets.html for a while.
+   With one location, url() is relative to the BUILT file (static/css/app.css),
+   so ../fonts/... is correct and ManifestStaticFilesStorage rewrites it to the
+   hashed name at collectstatic time. Never move this back under static/. */
+
+/* Inter, self-hosted (scripts/vendor_assets.sh). Never reintroduce
+   fonts.googleapis.com — see templates/includes/head_assets.html.
+   The preload hint for this file stays in head_assets.html: the browser has to
+   start the download during HTML parse, not after app.css arrives. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url('../fonts/inter-variable-latin.woff2') format('woff2');
+}
 
 /* Design tokens (kept in sync with tailwind.config.js). These back the
    legacy rules in static/css/style.css and are available everywhere. */

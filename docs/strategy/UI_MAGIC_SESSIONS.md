@@ -31,8 +31,8 @@ session with no memory of this work can pick exactly one up and finish it.
 | 3 | S13 · Icon language: Font Awesome solid → line-weight SVG sprite | TODO — debt now **1,303** and rising |
 | 4 | S14 · Landing: real product imagery instead of the fake mock | TODO |
 | 4 | S15 · Landing: trust bar rewrite | TODO |
-| 4 | S16 · Landing: rhythm, dark section, sharper promise | TODO — **the `[data-reveal]` half split out and DONE 2026-08-27 (S16a, PR #235)** |
-| — | S17 · Stop shipping the Tailwind source to production | TODO |
+| 4 | S16 · Landing: rhythm, dark section, sharper promise | TODO — **the `[data-reveal]` half split out and DONE 2026-08-27 (S16a, PR #235, merged 2026-08-31)** |
+| — | S17 · Stop shipping the Tailwind source to production | **DONE** 2026-08-27, merged 2026-08-31 (PR #233) |
 | Out | Email + notification chassis, replacement lifecycle | **DONE** 2026-08-24 (PR #200) |
 | Out | Invoice email onto the chassis | **DONE** 2026-08-24 (PR #202, merged 12:15 CDT, deployed 22:48 CDT) |
 | Out | In-app surfaces: notification bell + notification history | **DONE** 2026-08-25 (PR #206) |
@@ -109,11 +109,11 @@ Replaying only the failing modules takes ~7 min instead of another full hour.
 
 - **`{# … #}` is single-line only.** A multi-line `{# … #}` renders as *visible text at the
   top of every page*. Use `{% comment %}…{% endcomment %}`. Cost: one round of screenshots.
-- **`collectstatic` collects the Tailwind source too.** `static/css/src/input.css` is
-  collected alongside the built `app.css`, so a relative `url()` resolves differently from
-  each location and manifest storage hard-fails. Keep `url()` out of `input.css`
-  entirely — put font declarations inline in `head_assets.html` with `{% static %}`.
-  (See S17 for the real fix.)
+- ~~**`collectstatic` collects the Tailwind source too.**~~ **Fixed in S17.** The source
+  is now `assets/css/input.css`, outside `STATICFILES_DIRS`, so `url()` resolves against
+  exactly one directory — the built `static/css/app.css` — and `../fonts/…` is correct.
+  The rule that replaces it: **never put the Tailwind source back under `static/`.**
+  `tests/test_css_pipeline.py` fails if you do.
 - **Never blanket-convert colour classes.** Blue is both the brand colour *and* the
   semantic "in progress / sent" status colour. See S3 notes.
 - **Tailwind purges `@layer components` rules that no template uses yet.** New shared
@@ -1118,15 +1118,86 @@ stayed was a day the pricing page introduced itself as a blank rectangle.
 
 # Housekeeping
 
-## S17 · Stop shipping the Tailwind source to production
+## S17 · Stop shipping the Tailwind source to production ✅ DONE 2026-08-27
 
-`static/css/src/input.css` is collected and served publicly, and its presence forced the
-`@font-face` workaround in S1/S2. Move the build source out of the served tree
-(e.g. `assets/css/input.css`), update `scripts/build_css.sh`, `CLAUDE.md`, and
-`docs/development/UI_DESIGN_GUIDE.md`, then move the `@font-face` back into the stylesheet
-where it belongs.
+`static/css/src/input.css` was collected and served publicly, and its presence forced the
+`@font-face` workaround in S1/S2. The source moved to `assets/css/input.css`, outside
+`STATICFILES_DIRS`; `scripts/build_css.sh`, `CLAUDE.md`, `docs/development/UI_DESIGN_GUIDE.md`
+and the rest of the path references followed; and the Inter `@font-face` moved back into the
+stylesheet with a plain `url('../fonts/inter-variable-latin.woff2')`.
 
-Small, self-contained, and it removes a footgun that will otherwise bite the next person.
+### Notes
+
+**The brief was right about the shape and it cost about what it said.** One `git mv`, one
+line in the build script, one `@font-face` moved, and then the long tail: eleven files
+carried the old path in prose or a comment. The path was load-bearing in exactly one place
+(`tests/test_mobile_touch_targets.py` reads the source to compare it against the build);
+everywhere else it was documentation that would have quietly started lying.
+
+**Why `../fonts/…` is now correct and wasn't before.** `url()` in a collected stylesheet is
+resolved by `ManifestStaticFilesStorage` against *that stylesheet's own directory*. With the
+source at `static/css/src/input.css` there were two collected copies of the same
+declarations, one in `css/` and one in `css/src/`, so no single relative path could be right
+from both — `../fonts/…` means `fonts/` from the build and `css/fonts/` from the source.
+Reproduced deliberately before deleting it, and the error is worth recognising on sight:
+
+```
+ValueError: The file 'css/fonts/inter-variable-latin.woff2' could not be found
+with <ManifestStaticFilesStorage>
+```
+
+`css/fonts/` — a path that exists nowhere — is the tell that something under `static/` is
+resolving a `url()` from the wrong directory.
+
+**The documented recipe would have caught it.** Step 2 of the Verification recipe runs
+collectstatic under `ForgivingManifestStaticFilesStorage`, and "forgiving" made it worth
+checking whether that variant swallows this. It does not: the override is on `stored_name`
+(manifest *lookups*), while this raises in `hashed_name` during post-processing. Both the
+forgiving and the strict storage refuse to collect. The recipe is sound as written.
+
+**`app.css` was stale on `main`, unrelated to any of this.** Rebuilding produced two
+changes, not one: the `@font-face`, and `.pt-2\.5`, which
+`templates/technician_portal/photo_backfill.html` has referenced since 2bbaac1b without
+anyone running the build. That hint paragraph has had no top padding in production since.
+A committed build artifact only stays honest if every arc that touches a template runs
+`./scripts/build_css.sh` — and nothing enforces that, because `bin/tailwindcss` is
+gitignored so CI cannot compile. `tests/test_mobile_touch_targets.py` catches staleness
+only for the specific declarations it lists by hand.
+
+**What is guarded now** — `tests/test_css_pipeline.py`, 8 tests:
+
+| | |
+|---|---|
+| No `@tailwind` directive in any `.css` under `static/` | The general form of the bug: *any* uncompiled source there is served, whatever it is named |
+| `build_css.sh` reads `-i assets/css/input.css` | Stops a half-move that leaves the build pointing at a file nobody edits |
+| Every `url()` in `app.css` resolves from `static/css/` and stays inside `static/` | **The deploy failure as a unit test.** Verified by mutation — point the font `url()` at a missing file and it fails |
+| `head_assets.html` declares no `@font-face` rule | Two rules for one family is a second thing to keep in sync; the preload hint stays |
+
+The `url()` test matters more than the others: it is the only one that would have caught the
+original bug *without* knowing the original bug. The first draft of it asserted
+`'@font-face' not in head_assets.html` and failed on the template's own comment saying where
+the rule went — the assertion has to be about the rule (`@font-face\s*\{`), not the word.
+
+**Two things stay inline in `head_assets.html`, and they are not the same reason.** The
+`@view-transition` opt-in is inline because Chrome ignores it from an external stylesheet
+(S10) — a browser bug, permanent until it isn't. The `<link rel="preload">` for the font is
+inline because a preload has to start during HTML parse, before `app.css` has even arrived;
+that is correct architecture, not a workaround. Neither is a candidate for the same cleanup.
+
+**Verified:** collectstatic passes under both strict `ManifestStaticFilesStorage` and
+production's `ForgivingManifestStaticFilesStorage`; the hashed output carries
+`url("../fonts/inter-variable-latin.65850a373e25.woff2")`; `/static/css/src/input.css` is now
+404 where it used to be 200; and on a real page `document.fonts.check('16px Inter')` is
+`true` with the woff2 fetched 200 and the only inline `<style>` left holding
+`@view-transition` alone. 102 tests across the seven CSS/asset suites green.
+
+### The CSP follow-on is now unblocked twice over
+
+The note below has been waiting on Phase 1 soaking. S17 removes the second obstacle nobody
+had written down: a `style-src` without `'unsafe-inline'` was impossible while a font
+declaration lived in an inline `<style>`, because the `@font-face` had to be re-inlined on
+every page. What is left inline is one `@view-transition` rule and it is static — a hash in
+the `style-src` allowlist covers it.
 
 ## Follow-on once Phase 1 has soaked
 
@@ -1461,14 +1532,13 @@ Consequences worth acting on rather than just noting:
 | S14 | Landing: real product imagery | M | Blocked on nothing, and its brief needed a correction this pass — the mock's drift changed shape on its own. See S14 |
 | S15 | Landing: trust bar rewrite | S | Copy, not code. Wants Drake's eye, like the `InAppCopy` sweep below |
 | S16 | Landing: rhythm + dark section | M | **The `[data-reveal]` half is done — S16a, PR #235.** What is left is the redesign, and it wants Drake on the promise copy |
-| S17 | Tailwind source out of the served tree | S | Self-contained. Unwinds the `@font-face` workaround S1 and S2 both had to route around |
+| CSP | Strict Content-Security-Policy | S–M | **Newly unblocked.** S17 took the last inline `<style>` that had to carry a font declaration; S1 removed every third-party asset host. The allowlist is self + Stripe + Turnstile |
 
 ~~**If you want the cheapest real win:** S17, or the `[data-reveal]` deletion split out of
-S16.~~ — **both taken 2026-08-27** (S17 is PR #233, the deletion is S16a / PR #235).
-~~If you want the one that stops getting more expensive: the `{% icon %}` tag.~~ —
-taken 2026-08-26, see S13a / PR #223. What is cheapest now is **the strict CSP**, which
-S17 unblocked by removing the last inline `<style>` that had to carry a font declaration.
-Phase 4 is the only chunk that is genuinely a project rather than a session.
+S16.~~ — **both done, both merged 2026-08-31** (S17 is PR #233, the deletion is S16a /
+PR #235). ~~If you want the one that stops getting more expensive: the `{% icon %}` tag.~~
+— taken 2026-08-26, see S13a / PR #223. **What is cheapest now is the strict CSP**, which
+S17 unblocked. Phase 4 is the only chunk that is genuinely a project rather than a session.
 
 ## Re-dating the Still-open list
 
@@ -1519,3 +1589,44 @@ Unchanged and still all open: the `InAppCopy` message-copy sweep, the invoice's 
 plain-text half, safe drive-away time (still Drake's call), and emoji in the three staff-only
 surfaces. S14/S15/S16 and S17 are exactly where #216 left them; **S17 and the `[data-reveal]`
 deletion are still the two cheapest real wins on the board.**
+
+---
+
+# Where this stands — 2026-08-27, S17
+
+`origin/main` was clean and had **no open PRs** when this session started: #229 landed the
+S13b reland, #230/#231 fixed and then CI-guarded the duplicate `0061` merge node, #232
+landed the photo-ML work. S17 was the smallest thing on the board and it is done.
+
+## The backlog after this pass
+
+| # | Session | Size | Where it stands |
+|---|---|---|---|
+| S13 | Icon migration sweep | M | The tag shipped (S13a, #223) and the chrome went with S13b (#229). What is left is the ~1,300-call-site sweep and deleting the vendored FA files |
+| S14 | Landing: real product imagery | M | Unblocked, unstarted |
+| S15 | Landing: trust bar rewrite | S | Copy. Wants Drake's eye |
+| S16 | Landing: rhythm + kill `[data-reveal]` | M | **The `[data-reveal]` deletion is now the cheapest real win on the board** — small, strictly an improvement, does not need the redesign half |
+| — | Strict CSP | S–M | Newly unblocked in full; see the S17 section |
+
+## Two things this session found that nobody was looking for
+
+**A committed build artifact drifts silently.** `static/css/app.css` was stale on `main`
+— `.pt-2\.5`, referenced by a template since 2bbaac1b. Nothing catches this: CI cannot
+compile because `bin/tailwindcss` is gitignored by design, and the one test that compares
+source to build does it against a hand-written list of four declarations. Any session that
+runs `./scripts/build_css.sh` should read the resulting diff, because anything in it beyond
+that session's own changes is a rule that has not been shipping. This is the same shape as
+the icon-debt argument in #216: the cost accrues from arcs that never open this file.
+
+**"Forgiving" storage is forgiving about one specific thing.** Worth knowing before the CSP
+work leans on the same recipe: `ForgivingManifestStaticFilesStorage` relaxes manifest
+*lookups* at request time, not collection. A broken `url()` still refuses to collect, in
+production settings exactly as in strict ones. The Verification recipe's step 2 is a real
+gate, not a formality.
+
+## Still open, re-dated 2026-08-27
+
+All four unchanged and still open: the `InAppCopy` message-copy sweep (still wants Drake's
+wording), the invoice's Python-built plain-text half (still correct, still pinned by two
+suites), safe drive-away time (still Drake's call, still do not add it without him), and
+emoji in the three staff-only surfaces.

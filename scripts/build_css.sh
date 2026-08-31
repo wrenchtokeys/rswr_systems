@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Compile static/css/app.css from static/css/src/input.css + tailwind.config.js.
+# Compile static/css/app.css from assets/css/input.css + tailwind.config.js.
+# The source lives OUTSIDE static/ on purpose: collectstatic collects everything
+# under static/, and shipping the uncompiled source publicly is what forced the
+# old inline-@font-face workaround (S17). Don't move it back.
 # Run after ANY template or static/js class change, then commit app.css.
 # The Tailwind standalone CLI binary is downloaded on first run (gitignored);
 # no node/npm required anywhere, and EB deploys are unchanged.
@@ -23,5 +26,5 @@ if [ ! -x "$BIN" ]; then
   chmod +x "$BIN"
 fi
 
-"$BIN" -i static/css/src/input.css -o static/css/app.css --minify "$@"
+"$BIN" -i assets/css/input.css -o static/css/app.css --minify "$@"
 echo "Built static/css/app.css ($(wc -c < static/css/app.css | tr -d ' ') bytes) — remember to commit it."
