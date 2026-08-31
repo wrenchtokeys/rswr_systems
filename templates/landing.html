@@ -38,15 +38,7 @@
     </script>
     <style>
         body { font-family: 'Inter', sans-serif; }
-        /* Scroll-reveal: hidden state only applies once JS tags <html class="js">,
-           so content stays visible without JS. */
-        html.js [data-reveal] { opacity: 0; transform: translateY(24px); transition: opacity .6s ease, transform .6s ease; }
-        html.js [data-reveal].revealed { opacity: 1; transform: none; }
-        @media (prefers-reduced-motion: reduce) {
-            html.js [data-reveal] { opacity: 1; transform: none; transition: none; }
-        }
     </style>
-    <script>document.documentElement.classList.add('js');</script>
 </head>
 <body class="bg-white text-gray-900">
     <!-- Navigation -->
@@ -117,7 +109,7 @@
             </div>
 
             <!-- Dashboard Preview - matches actual owner dashboard -->
-            <div class="mt-16 max-w-4xl mx-auto relative" data-reveal>
+            <div class="mt-16 max-w-4xl mx-auto relative">
                 <div class="absolute -inset-6 bg-gradient-to-r from-blue-200/40 via-blue-100/30 to-green-200/40 blur-3xl rounded-full pointer-events-none" aria-hidden="true"></div>
                 <div class="relative bg-white rounded-xl shadow-2xl shadow-blue-200/40 border border-gray-200 overflow-hidden transition-transform duration-500 hover:scale-[1.01]">
                     <div class="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center space-x-2">
@@ -230,7 +222,7 @@
 
             <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
                 <!-- Before - Softer gray styling -->
-                <div class="bg-gray-100 rounded-2xl p-8 border border-gray-200" data-reveal>
+                <div class="bg-gray-100 rounded-2xl p-8 border border-gray-200">
                     <h3 class="font-bold text-gray-500 mb-4 flex items-center">
                         <i class="fas fa-arrow-left mr-2"></i>
                         The old way
@@ -256,7 +248,7 @@
                 </div>
 
                 <!-- After - Bright blue/green styling -->
-                <div class="bg-gradient-to-br from-blue-50 to-green-50 rounded-2xl p-8 border border-blue-200" data-reveal>
+                <div class="bg-gradient-to-br from-blue-50 to-green-50 rounded-2xl p-8 border border-blue-200">
                     <h3 class="font-bold text-blue-700 mb-4 flex items-center">
                         <i class="fas fa-arrow-right mr-2"></i>
                         With RS Systems
@@ -292,7 +284,7 @@
                 <p class="text-lg text-gray-600 max-w-2xl mx-auto">Simple tools that actually help you run your business.</p>
             </div>
 
-            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6" data-reveal>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <!-- Feature 1 -->
                 <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg hover:-translate-y-0.5 hover:border-gray-300 transition-all duration-300">
                     <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4">
@@ -352,7 +344,7 @@
 
     <!-- Testimonial -->
     <section class="py-16 md:py-24 px-6">
-        <div class="max-w-3xl mx-auto text-center" data-reveal>
+        <div class="max-w-3xl mx-auto text-center">
             <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
                 <span class="text-2xl font-bold text-blue-600">D</span>
             </div>
@@ -375,7 +367,7 @@
                 <p class="text-lg text-gray-600">Start with a 30-day free trial. Upgrade when you're ready.</p>
             </div>
 
-            <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto items-stretch pt-4" data-reveal>
+            <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto items-stretch pt-4">
                 {% for plan in plans %}
                 {% include "components/plan_card.html" with plan=plan mode="public" %}
                 {% empty %}
@@ -436,24 +428,5 @@
             </div>
         </div>
     </footer>
-
-    <script>
-        (function () {
-            var els = document.querySelectorAll('[data-reveal]');
-            if (!('IntersectionObserver' in window)) {
-                els.forEach(function (el) { el.classList.add('revealed'); });
-                return;
-            }
-            var io = new IntersectionObserver(function (entries) {
-                entries.forEach(function (entry) {
-                    if (entry.isIntersecting) {
-                        entry.target.classList.add('revealed');
-                        io.unobserve(entry.target);
-                    }
-                });
-            }, { threshold: 0.12 });
-            els.forEach(function (el) { io.observe(el); });
-        })();
-    </script>
 </body>
 </html>

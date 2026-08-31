@@ -126,6 +126,12 @@ There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are ven
   this reason — a bulk action that partly succeeds cannot be reconciled from a total.
 - **Never animate money** (UI_MAGIC_PLAN Part 4). Amounts change; only the badge and
   its tick move.
+- **Nothing ships hidden waiting on script to reveal it** — no `opacity: 0` + observer
+  scroll fade, on `landing.html` or anywhere else. The landing page carried one until
+  2026-08-27 (UI_MAGIC S16a); its own `#pricing` nav anchor teleported past the observer
+  and put a visitor on plan cards at opacity 0.28. `tests/test_landing_visibility.py`
+  enforces this for the landing page. Motion is for things that *change* (S9/S10/S11), not
+  for content that is already in the response.
 
 ### Color rules
 - **Interactive/brand colour → `brand-*` tokens**, never hardcoded `blue-*`. `{% tenant_brand_css %}` is injected in `base_app.html`, `base_auth.html` and `customer_portal/base_customer.html`, so a shop's `Tenant.brand_color` rethemes the whole product.

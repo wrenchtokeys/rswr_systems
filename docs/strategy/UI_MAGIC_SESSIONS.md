@@ -31,7 +31,7 @@ session with no memory of this work can pick exactly one up and finish it.
 | 3 | S13 · Icon language: Font Awesome solid → line-weight SVG sprite | TODO — debt now **1,303** and rising |
 | 4 | S14 · Landing: real product imagery instead of the fake mock | TODO |
 | 4 | S15 · Landing: trust bar rewrite | TODO |
-| 4 | S16 · Landing: rhythm, dark section, sharper promise | TODO |
+| 4 | S16 · Landing: rhythm, dark section, sharper promise | TODO — **the `[data-reveal]` half split out and DONE 2026-08-27 (S16a, PR #235)** |
 | — | S17 · Stop shipping the Tailwind source to production | TODO |
 | Out | Email + notification chassis, replacement lifecycle | **DONE** 2026-08-24 (PR #200) |
 | Out | Invoice email onto the chassis | **DONE** 2026-08-24 (PR #202, merged 12:15 CDT, deployed 22:48 CDT) |
@@ -149,6 +149,18 @@ Replaying only the failing modules takes ~7 min instead of another full hour.
   leaving its status pill blue and its row tint yellow reads as a half-real list —
   and that colour is from the list being *left*, which after a status filter is the
   exact thing about to change. (S11)
+- **An in-page anchor defeats every scroll-triggered effect below it.** An
+  IntersectionObserver reveal assumes the viewport arrives at a section by travelling
+  there. `href="#pricing"` teleports it: the observer fires on the destination in the same
+  frame it becomes visible, so the fade runs *after* you are already looking at the
+  section, and every block the jump flew over never intersects at all. The landing nav had
+  two such anchors pointed straight at the two sections the reveal hid. Before adding
+  scroll-driven anything, grep the page for `href="#`. (S16a)
+- **A guard that has never been red is a guard nobody has checked.** Stash the change,
+  run the new test against the parent commit, confirm it fails, pop. Three of
+  `test_landing_visibility.py`'s four tests fail on `main` — that is the evidence the
+  assertions match the defect, and it costs one `git stash`. (S16a, and the same lesson
+  S17's `@font-face\s*\{` fix taught from the other direction.)
 - **A page can be full of `brand-*` classes and still leak RS blue.** Component CSS under
   `static/css/components/` and inline `<style>` blocks use raw hex, load *after* `app.css`,
   and win. Two files were overriding the shared `.btn-primary` this way (S7, S8). Grep for
@@ -1051,10 +1063,56 @@ Six identical centred-text stacked sections today. Alternate light/dark ground, 
 asymmetric split and one full-bleed moment. Sharpen "Manage your glass shop without the
 headache" into the specific thing nobody else does.
 
-**Delete the `[data-reveal]` scroll fade** (`landing.html:43`, and the observer at the
-bottom of the file). At real scroll speed it fires *after* you've passed the section — the
-pricing cards render as a blank void, then pop in. It is the page's only motion and it is
-making the page worse.
+~~**Delete the `[data-reveal]` scroll fade**~~ — **done 2026-08-27 as S16a, PR #235.**
+See below. The redesign half of S16 is untouched and still open.
+
+### S16a — the scroll fade, deleted 2026-08-27 (PR #235)
+
+Six `data-reveal` wrappers, three CSS rules, the `classList.add('js')` bootstrap and the
+IntersectionObserver: 33 lines out, 6 in. `templates/landing.html` is the only file that
+had it — nothing in `static/`, no other template, and `app.css` never carried the rule.
+
+**The brief undersold it. The fade was worst on the two paths that matter most.**
+
+- **The nav's own anchors skip the observer entirely.** `#features` and `#pricing`
+  (`landing.html:67-68`, and again in the mobile menu at 80-81) jump the viewport
+  instantly. Clicking **Pricing** — the page's primary conversion path — put you on three
+  plan cards at **opacity 0.28**, prices unreadable, for the better part of a second. Four
+  of the six blocks were still at opacity **0** in that same frame, because the jump had
+  skipped past them without ever intersecting.
+- **It was also on the hero.** `landing.html:120`, the dashboard mock, carried
+  `data-reveal` too — so the page's opening product shot assembled itself on first paint,
+  at both 1280px and 390px. That is the one image the whole page is built around.
+- A measured flick to the pricing section (14 wheel events, so *slower* than a thumb)
+  landed with the grid at **opacity 0.52**.
+
+**The proof it is a pure drop-in.** Two Chrome runs against the same server and the same
+seeded DB, the branch template stashed and popped between them, same CDP script:
+
+| frame | before | after |
+|---|---|---|
+| anchor jump to `#pricing`, settled | — | **byte-identical** |
+| fast scroll to pricing, settled | — | **byte-identical** |
+| first paint, 1280×900, settled | — | **byte-identical** |
+| first paint, 390×844, settled | — | **byte-identical** |
+| first paint, either width, **t0** | ghosted | **differs — the point** |
+
+Four settled frames identical to the byte at two widths says nothing about the layout
+moved; the two t0 frames differing is the entire change. **That table is the shape to
+copy for any deletion-of-motion PR** — a removal is only safe if you can show the settled
+state is the same picture, and only worth shipping if you can show the first frame is not.
+
+**The guard is `tests/test_landing_visibility.py`**, and it asserts the rule rather than
+the word: no inline `<style>` on the landing page may ship content at `opacity: 0` or
+`visibility: hidden`, no inline script may tag `<html>` to arm such a rule, and no inline
+script may hold an `IntersectionObserver`. Three of its four tests fail on the parent
+commit and pass here — a guard that has never been red is a guard nobody has checked.
+Tailwind's `hidden md:flex` does not trip it: those live in the linked stylesheet and are
+decided by the viewport, not by a script that may not have run.
+
+**Why this was worth doing alone.** S16's redesign half needs Drake's eye on the promise
+copy and a decision about the dark section. The fade needed neither, and every day it
+stayed was a day the pricing page introduced itself as a blank rectangle.
 
 ---
 
@@ -1402,13 +1460,15 @@ Consequences worth acting on rather than just noting:
 | S13 | Icon migration | M | **The tag shipped 2026-08-26 (S13a, PR #223).** What is left is the sweep of ~1,300 `<i class="fas">` and then deleting the vendored FA files — mechanical, no longer a race |
 | S14 | Landing: real product imagery | M | Blocked on nothing, and its brief needed a correction this pass — the mock's drift changed shape on its own. See S14 |
 | S15 | Landing: trust bar rewrite | S | Copy, not code. Wants Drake's eye, like the `InAppCopy` sweep below |
-| S16 | Landing: rhythm + kill `[data-reveal]` | M | The fade-deletion half is small and strictly an improvement; it does not need the redesign half |
+| S16 | Landing: rhythm + dark section | M | **The `[data-reveal]` half is done — S16a, PR #235.** What is left is the redesign, and it wants Drake on the promise copy |
 | S17 | Tailwind source out of the served tree | S | Self-contained. Unwinds the `@font-face` workaround S1 and S2 both had to route around |
 
-**If you want the cheapest real win:** S17, or the `[data-reveal]` deletion split out of
-S16. ~~If you want the one that stops getting more expensive: the `{% icon %}` tag.~~ —
-taken 2026-08-26, see S13a / PR #223. Phase 4 is the only chunk that is genuinely a project rather
-than a session.
+~~**If you want the cheapest real win:** S17, or the `[data-reveal]` deletion split out of
+S16.~~ — **both taken 2026-08-27** (S17 is PR #233, the deletion is S16a / PR #235).
+~~If you want the one that stops getting more expensive: the `{% icon %}` tag.~~ —
+taken 2026-08-26, see S13a / PR #223. What is cheapest now is **the strict CSP**, which
+S17 unblocked by removing the last inline `<style>` that had to carry a font declaration.
+Phase 4 is the only chunk that is genuinely a project rather than a session.
 
 ## Re-dating the Still-open list
 
