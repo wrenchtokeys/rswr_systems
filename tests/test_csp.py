@@ -1,5 +1,10 @@
 """Content-Security-Policy (UI_MAGIC_SESSIONS S18).
 
+Most of this file is `SimpleTestCase` on purpose. Only `ResponseHeaderTests`
+needs a database, because only it renders a real view — the rest read templates
+off disk, build the policy, or post to an endpoint that must never touch the
+DB. 37 tests in ~0.5s instead of paying 204 migrations for markup assertions.
+
 Everything here guards a failure that is silent in exactly one direction. A CSP
 that is too LOOSE breaks nothing and shows nothing — it just quietly stops being
 a defence, which is what happens the first time someone adds an inline
@@ -24,7 +29,7 @@ import re
 from pathlib import Path
 
 from django.conf import settings
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from common import csp_views
@@ -58,7 +63,7 @@ def _directives(header_value):
     return out
 
 
-class PolicyContentTests(TestCase):
+class PolicyContentTests(SimpleTestCase):
     """What the policy says, independent of any request."""
 
     def test_the_dangerous_directives_are_locked(self):
@@ -231,7 +236,7 @@ class ResponseHeaderTests(TestCase):
         self.assertNotIn('Content-Security-Policy-Report-Only', response)
 
 
-class TemplateNonceCoverageTests(TestCase):
+class TemplateNonceCoverageTests(SimpleTestCase):
     """Every inline block a browser gets must carry the nonce.
 
     Read from disk rather than from a rendered page: most of these templates
@@ -282,7 +287,7 @@ class TemplateNonceCoverageTests(TestCase):
         self.assertEqual(offenders, [])
 
 
-class PythonEmittedStyleTests(TestCase):
+class PythonEmittedStyleTests(SimpleTestCase):
     """The <style> block no template sweep can reach.
 
     `{% tenant_brand_css %}` builds its block in Python and only renders it for
@@ -329,8 +334,15 @@ class PythonEmittedStyleTests(TestCase):
         return Tenant()
 
 
-class ReportEndpointTests(TestCase):
-    """The endpoint exists so report-only is worth shipping at all."""
+class ReportEndpointTests(SimpleTestCase):
+    """The endpoint exists so report-only is worth shipping at all.
+
+    `SimpleTestCase` is not a speed trick here, it is the assertion: it raises
+    on any database query, and this endpoint must never make one. It is
+    unauthenticated, CSRF-exempt, and anybody on the internet can POST to it in
+    a loop — a DB round-trip on that path is a denial-of-service lever handed
+    out for free. If a later change adds a query, this suite goes red.
+    """
 
     def setUp(self):
         self.url = reverse('csp_report')
@@ -430,7 +442,7 @@ class ReportEndpointTests(TestCase):
         self.assertLess(len(logs.output[0]), 2000)
 
 
-class StagingTests(TestCase):
+class StagingTests(SimpleTestCase):
     """S18 ships report-only ON PURPOSE. This is the tripwire on forgetting why."""
 
     def test_report_only_while_inline_handlers_remain(self):
