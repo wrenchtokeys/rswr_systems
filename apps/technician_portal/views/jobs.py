@@ -503,7 +503,9 @@ def job_create(request):
 
             if send_requested and service.queue_status == 'COMPLETED':
                 invoice, created, result, excluded = invoice_and_send(
-                    service, tenant, copy_to_email=_copy_to_email(request),
+                    service, tenant,
+                    submitted_email=request.POST.get('email', ''),
+                    copy_to_email=_copy_to_email(request),
                     send_sms=bool(request.POST.get('send_sms')))
                 notify_invoice_outcome(request, invoice, created, result, excluded)
                 return redirect('owner_invoice_detail', invoice_id=invoice.id)
@@ -590,7 +592,9 @@ def repair_complete_and_invoice(request, repair_id):
 
     try:
         invoice, created, result, excluded = invoice_and_send(
-            repair, tenant, copy_to_email=_copy_to_email(request),
+            repair, tenant,
+            submitted_email=request.POST.get('email', ''),
+            copy_to_email=_copy_to_email(request),
             send_sms=bool(request.POST.get('send_sms')))
     except ValueError as e:
         messages.error(request, str(e))

@@ -212,11 +212,16 @@
                                 {% endif %}
                             </div>
 
-                            <!-- Unit Number (for Fleet customers) -->
-                            <div class="field-group" id="unit-number-group">
+                            <!-- Unit Number (fleet) — doubles as the free-text Vehicle
+                                 field for an individual whose quick-job vehicle lives in
+                                 unit_number. Server-rendered state below matches what
+                                 updateFieldsForCustomerType() would set, so the page is
+                                 right even before (or without) JS. -->
+                            <div class="field-group" id="unit-number-group"
+                                 {% if customer_is_individual and not repair_vehicle_in_unit %}style="display: none;"{% endif %}>
                                 <label class="icon-field-label">
                                     <i class="fas fa-truck"></i>
-                                    Unit Number
+                                    <span id="unit-label-text">{% if repair_vehicle_in_unit %}Vehicle{% else %}Unit Number{% endif %}</span>
                                     <span class="field-required">*</span>
                                 </label>
                                 <input type="text"
@@ -224,10 +229,10 @@
                                        id="id_unit_number"
                                        value="{{ form.unit_number.value|default:'' }}"
                                        class="icon-field-input"
-                                       placeholder="e.g., TRUCK-1045">
+                                       placeholder="{% if repair_vehicle_in_unit %}e.g., Silver Camry{% else %}e.g., TRUCK-1045{% endif %}">
                                 <p class="icon-field-helper">
                                     <i class="fas fa-info-circle"></i>
-                                    Enter the fleet vehicle identification number
+                                    <span id="unit-helper-text">{% if repair_vehicle_in_unit %}The customer's vehicle (e.g., Silver Camry){% else %}Enter the fleet vehicle identification number{% endif %}</span>
                                 </p>
                                 {% if form.unit_number.errors %}
                                     <div class="field-error">
@@ -238,7 +243,8 @@
                             </div>
 
                             <!-- Vehicle Info (for Retail/Walk-in customers) -->
-                            <div class="field-group" id="vehicle-info-group" style="display: none;">
+                            <div class="field-group" id="vehicle-info-group"
+                                 {% if not customer_is_individual or repair_vehicle_in_unit %}style="display: none;"{% endif %}>
                                 <label class="icon-field-label">
                                     <i class="fas fa-car"></i>
                                     Vehicle
@@ -950,14 +956,41 @@
         const customerId = customerSelect.value;
         const customerType = customerTypes[customerId] || 'FLEET';
 
+        const unitLabel = document.getElementById('unit-label-text');
+        const unitHelper = document.getElementById('unit-helper-text');
+        const unitInput = document.getElementById('id_unit_number');
+
+        function setUnitWording(vehicleMode) {
+            if (unitLabel) unitLabel.textContent = vehicleMode ? 'Vehicle' : 'Unit Number';
+            if (unitHelper) unitHelper.textContent = vehicleMode
+                ? "The customer's vehicle (e.g., Silver Camry)"
+                : 'Enter the fleet vehicle identification number';
+            if (unitInput) unitInput.placeholder = vehicleMode ? 'e.g., Silver Camry' : 'e.g., TRUCK-1045';
+        }
+
         if (customerType === 'FLEET') {
             // Show unit number, hide vehicle info
+            setUnitWording(false);
             unitNumberGroup.style.display = '';
             vehicleInfoGroup.style.display = 'none';
         } else {
-            // Show vehicle info, hide unit number (RETAIL, WALK_IN)
-            unitNumberGroup.style.display = 'none';
-            vehicleInfoGroup.style.display = '';
+            // RETAIL / WALK_IN. A quick-job individual's vehicle lives as free
+            // text in unit_number — keep showing that input (relabeled
+            // "Vehicle") rather than empty year/make/model fields that would
+            // hide the value the repair actually has.
+            const makeVal = document.getElementById('id_vehicle_make');
+            const modelVal = document.getElementById('id_vehicle_model');
+            const vehicleInUnit = !!(unitInput && unitInput.value.trim())
+                && !(makeVal && makeVal.value.trim())
+                && !(modelVal && modelVal.value.trim());
+            if (vehicleInUnit) {
+                setUnitWording(true);
+                unitNumberGroup.style.display = '';
+                vehicleInfoGroup.style.display = 'none';
+            } else {
+                unitNumberGroup.style.display = 'none';
+                vehicleInfoGroup.style.display = '';
+            }
         }
     }
 
