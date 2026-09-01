@@ -37,6 +37,10 @@ urlpatterns = [
     # Burn down the photos nobody ever marked (P4a.1). Read-only itself —
     # every tap it collects POSTs to save_photo_crop below.
     path('photos/mark/', views.photo_backfill_queue, name='photo_backfill_queue'),
+    # Hand the shop the same photo archive the customer gets (P7).
+    path('repairs/<int:job_id>/photos.zip', views.job_photos_zip, name='repair_photos_zip'),
+    path('replacements/<int:job_id>/photos.zip', views.job_photos_zip,
+         {'kind': 'replacement'}, name='replacement_photos_zip'),
     path('repairs/<int:repair_id>/photo-crop/', views.save_photo_crop, name='save_photo_crop'),
     path('repairs/<int:repair_id>/photo-crop/suggest/', views.suggest_photo_crop, name='suggest_photo_crop'),
     # Replacements carry the same GlassService photo fields, and they are the

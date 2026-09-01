@@ -25,7 +25,7 @@ from django.db.models import Sum, Q, Count
 from django.db import models, transaction, IntegrityError
 from django.contrib.auth import update_session_auth_hash
 from functools import wraps
-from django.http import HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from collections import defaultdict
 from datetime import datetime, timedelta
 from django.urls import reverse
@@ -755,6 +755,63 @@ def customer_repair_detail(request, repair_id):
             # never reframed (it would magnify the repair's blemish).
             'photo_focus': focus_positions_for(repair),
         })
+    except (CustomerUser.DoesNotExist, AttributeError):
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+def _job_invoice_number(job):
+    """The invoice this job was billed on, if it has been billed at all.
+
+    A job downloaded from the portal is usually already on an invoice, and a
+    fleet manager files by invoice — so the filename carries the number when
+    there is one and simply drops the segment when there is not.
+    """
+    line = (job.invoice_line_items
+            .select_related('invoice')
+            .filter(invoice__deleted_at__isnull=True)
+            .first())
+    return line.invoice.invoice_number if line else ''
+
+
+def _customer_photo_zip(request, model, pk):
+    """One job's photos as a ZIP, scoped to the signed-in customer (P7).
+
+    Same builder and the same filenames as the public invoice download,
+    deliberately NOT the same gate: that route is HMAC-gated per invoice,
+    this one is session-gated per customer, exactly like the detail page it
+    hangs off. Per job rather than per invoice because a fleet files by unit
+    and date, and an uninvoiced job still has photos worth keeping.
+    """
+    from apps.technician_portal.services.photo_archive import (
+        entries_for_job, photo_zip_response, zip_name_for_job,
+    )
+    customer_user = _get_customer_user_for_tenant(request)
+    customer = customer_user.customer
+    job = get_object_or_404(model, id=pk, customer=customer,
+                            tenant=customer.tenant)
+    entries = entries_for_job(job, invoice_number=_job_invoice_number(job))
+    response = photo_zip_response(entries, zip_name_for_job(job))
+    if response is None:
+        raise Http404("No photos to download for this job.")
+    return response
+
+
+@customer_required
+def customer_repair_photos_zip(request, repair_id):
+    """Download every photo on one repair."""
+    try:
+        return _customer_photo_zip(request, Repair, repair_id)
+    except (CustomerUser.DoesNotExist, AttributeError):
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+@customer_required
+def customer_replacement_photos_zip(request, replacement_id):
+    """Download every photo on one replacement."""
+    try:
+        return _customer_photo_zip(request, Replacement, replacement_id)
     except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')

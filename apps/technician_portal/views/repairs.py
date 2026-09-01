@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Q
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from decimal import Decimal, InvalidOperation
 import json
 import logging
@@ -1988,6 +1988,29 @@ def portal_bulk_reassign(request):
     })
 
 
+def _job_access(request, job, kind='repair', tenant=None):
+    """``(technician, allowed)`` — may this user work with this job's photos?
+
+    One gate for every photo endpoint on a job: the crop endpoints and the
+    P7 download. A download that is laxer than the crop endpoints would leak
+    one shop's photos to another just as effectively.
+    """
+    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
+    technician = (
+        Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if tenant else None
+    )
+    if kind == 'replacement':
+        # Mirror the replacement detail page's own gate rather than
+        # inventing a second one: can_view_repair reads queue_status rules
+        # that only exist for repairs.
+        from apps.saas.views import _replacement_technician_access
+        allowed = _replacement_technician_access(request, tenant, replacement=job)
+    else:
+        allowed = can_view_repair(job, technician, user_is_admin)
+    return technician, allowed
+
+
 def _resolve_crop_target(request, job_id, kind='repair'):
     """Shared front half of the photo-crop endpoints.
 
@@ -2013,19 +2036,7 @@ def _resolve_crop_target(request, job_id, kind='repair'):
     qs = model.objects.filter(tenant=tenant) if tenant else model.objects.none()
     job = get_object_or_404(qs, id=job_id)
 
-    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
-    technician = (
-        Technician.objects.filter(user=request.user, tenant=tenant).first()
-        if tenant else None
-    )
-    if kind == 'replacement':
-        # Mirror the replacement detail page's own gate rather than
-        # inventing a second one: can_view_repair reads queue_status rules
-        # that only exist for repairs.
-        from apps.saas.views import _replacement_technician_access
-        allowed = _replacement_technician_access(request, tenant, replacement=job)
-    else:
-        allowed = can_view_repair(job, technician, user_is_admin)
+    technician, allowed = _job_access(request, job, kind=kind, tenant=tenant)
     if not allowed:
         return None, None, None, JsonResponse(
             {'success': False,
@@ -2073,6 +2084,41 @@ def suggest_photo_crop(request, repair_id, kind='repair'):
         'score': round(suggestion.score, 3),
         'engine': suggestion.engine,
     })
+
+
+@technician_required
+def job_photos_zip(request, job_id, kind='repair'):
+    """Every photo on one job, as a ZIP, for the shop (P7).
+
+    The shop is who a customer phones asking for the photos — for an
+    insurance claim, a fleet's records, a dispute — so it gets the same
+    one-click download the customer has, named identically. Same builder,
+    same filenames; the gate is the shop's own (`_job_access`), which is the
+    gate the crop endpoints on this job already use.
+    """
+    from apps.technician_portal.services.photo_archive import (
+        entries_for_job, photo_zip_response, zip_name_for_job,
+    )
+    tenant = getattr(request, 'tenant', None)
+    model = Replacement if kind == 'replacement' else Repair
+    qs = model.objects.filter(tenant=tenant) if tenant else model.objects.none()
+    job = get_object_or_404(qs, id=job_id)
+
+    _technician, allowed = _job_access(request, job, kind=kind, tenant=tenant)
+    if not allowed:
+        raise Http404(f"No such {kind}.")
+
+    line = (job.invoice_line_items
+            .select_related('invoice')
+            .filter(invoice__deleted_at__isnull=True)
+            .first())
+    invoice_number = line.invoice.invoice_number if line else ''
+
+    entries = entries_for_job(job, invoice_number=invoice_number)
+    response = photo_zip_response(entries, zip_name_for_job(job))
+    if response is None:
+        raise Http404("No photos to download for this job.")
+    return response
 
 
 @technician_required

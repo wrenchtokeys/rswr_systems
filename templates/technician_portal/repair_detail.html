@@ -571,13 +571,24 @@
                             {{ repair.get_photo_count }} photo{{ repair.get_photo_count|pluralize }}
                         </span>
                     </h4>
-                    <button type="button" 
-                            id="photoToggleBtn" 
-                            class="inline-flex items-center px-3 py-1 text-sm font-medium text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 rounded-md transition-colors"
-                            onclick="togglePhotoSection()">
-                        <i id="photoToggleIcon" class="fas fa-chevron-down mr-1"></i>
-                        <span id="photoToggleText">Hide Photos</span>
-                    </button>
+                    <div class="flex items-center gap-2">
+                        {% comment %}
+                        The shop is who a customer phones asking for the
+                        photos — for a claim, a fleet's records, a dispute.
+                        Same archive the customer gets, same filenames (P7).
+                        {% endcomment %}
+                        <a href="{% url 'repair_photos_zip' repair.id %}"
+                           class="btn-secondary btn-sm inline-flex items-center gap-1.5">
+                            {% icon 'download' class="w-4 h-4" %}Download all
+                        </a>
+                        <button type="button"
+                                id="photoToggleBtn"
+                                class="inline-flex items-center px-3 py-1 text-sm font-medium text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 rounded-md transition-colors"
+                                onclick="togglePhotoSection()">
+                            <i id="photoToggleIcon" class="fas fa-chevron-down mr-1"></i>
+                            <span id="photoToggleText">Hide Photos</span>
+                        </button>
+                    </div>
                 </div>
                 
                 <div id="photoContent" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

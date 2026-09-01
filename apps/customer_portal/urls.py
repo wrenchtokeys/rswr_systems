@@ -19,6 +19,7 @@ urlpatterns = [
     # Repairs management ('customer_repairs' redirects to services — name kept for old links)
     path('repairs/', views.customer_repairs, name='customer_repairs'),
     path('repairs/<int:repair_id>/', views.customer_repair_detail, name='customer_repair_detail'),
+    path('repairs/<int:repair_id>/photos.zip', views.customer_repair_photos_zip, name='customer_repair_photos_zip'),
     path('repairs/<int:repair_id>/approve/', views.customer_repair_approve, name='customer_repair_approve'),
     path('repairs/<int:repair_id>/deny/', views.customer_repair_deny, name='customer_repair_deny'),
     path('repairs/request/', views.request_repair, name='customer_request_repair'),
@@ -28,6 +29,7 @@ urlpatterns = [
     # Replacements management
     path('replacements/', views.customer_replacements, name='customer_replacements'),
     path('replacements/<int:replacement_id>/', views.customer_replacement_detail, name='customer_replacement_detail'),
+    path('replacements/<int:replacement_id>/photos.zip', views.customer_replacement_photos_zip, name='customer_replacement_photos_zip'),
     path('replacements/<int:replacement_id>/apply-reward/', views.customer_apply_reward_replacement, name='customer_apply_reward_replacement'),
     path('replacements/<int:replacement_id>/approve/', views.customer_replacement_approve, name='customer_replacement_approve'),
     path('replacements/<int:replacement_id>/deny/', views.customer_replacement_deny, name='customer_replacement_deny'),

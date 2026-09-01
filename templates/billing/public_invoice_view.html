@@ -45,7 +45,11 @@
         .sms-optin input[type="tel"] { display: block; width: 100%; max-width: 260px; margin-top: 6px; padding: 10px 12px; font-size: 16px; border: 1px solid #cbd5e1; border-radius: 8px; }
         .sms-confirmed { margin-top: 24px; padding: 12px 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; font-size: 13px; color: #166534; }
         .photos { margin-top: 24px; }
-        .photos h2 { font-size: 15px; color: #111827; margin: 0 0 12px; }
+        .photos h2 { font-size: 15px; color: #111827; margin: 0; }
+        .photos-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; }
+        /* 44px tall: this is tapped one-handed on a phone as often as it is
+           clicked (the touch rule in CLAUDE.md). */
+        .btn-photos { display: inline-block; padding: 12px 18px; min-height: 44px; box-sizing: border-box; background: white; color: #2563eb; border: 1px solid #2563eb; border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 600; }
         .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
         .photo-grid figure { margin: 0; }
         /* object-fit: cover crops this tile. Without a marked break it crops
@@ -204,7 +208,18 @@
 
                 {% if photo_pairs or photos %}
                 <div class="photos">
-                    <h2>Photos</h2>
+                    <div class="photos-head">
+                        <h2>Photos</h2>
+                        {% comment %}
+                        A real download, served by the app. `<a download>` is
+                        ignored cross-origin and every photo above is on S3,
+                        so a download attribute here would silently OPEN the
+                        photo instead of saving it — and the customer would
+                        still be saving one file at a time, named by the
+                        technician's phone.
+                        {% endcomment %}
+                        <a class="btn-photos" href="{{ photos_zip_url }}">Download all photos</a>
+                    </div>
                     {% comment %}
                     A job with both photos is one exhibit, captioned once —
                     the same glass, an hour apart. A job with one photo is a
