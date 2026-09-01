@@ -10,6 +10,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from decimal import Decimal, InvalidOperation
+import json
 import logging
 import uuid
 
@@ -28,6 +29,26 @@ from common.utils import convert_heic_to_jpeg
 from core.notification_text import on_vehicle
 
 logger = logging.getLogger(__name__)
+
+
+def _customer_type_context(tenant):
+    """customer_types_json / customer_primary_tech_json for repair_form.html.
+
+    The template's field-toggle script does `const customerTypes = {{ ... }}`,
+    so a context that omits the key renders a JS SyntaxError that kills the
+    whole script block — both create and edit views must pass these.
+    """
+    # No tenant context → no customers (never leak other shops' data)
+    customers_qs = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.none()
+    return {
+        'customer_types_json': json.dumps({
+            str(c.id): c.customer_type for c in customers_qs
+        }),
+        'customer_primary_tech_json': json.dumps({
+            str(c.id): c.primary_technician_id
+            for c in customers_qs if c.primary_technician_id
+        }),
+    }
 
 
 def can_view_repair(repair, technician, user_is_admin=False):
@@ -438,18 +459,6 @@ def create_repair(request):
 
     admin = user_is_admin  # already computed above; reuse cached value
 
-    # Build customer types dict for JavaScript
-    import json
-    # No tenant context → no customers (never leak other shops' data)
-    customers_qs = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.none()
-    customer_types_json = json.dumps({
-        str(c.id): c.customer_type for c in customers_qs
-    })
-    # Map customer → primary technician ID for JS auto-selection on repair form
-    customer_primary_tech_json = json.dumps({
-        str(c.id): c.primary_technician_id
-        for c in customers_qs if c.primary_technician_id
-    })
     # Tenant-scoped Technician for the current user — used by the template to
     # check is_manager without falling back to the unscoped OneToOneField
     # reverse accessor (user.technician) which could return a record from a
@@ -464,8 +473,6 @@ def create_repair(request):
         'pending_repair_warning': pending_repair_warning,
         'is_admin': admin,
         'expected_cost': expected_cost,
-        'customer_types_json': customer_types_json,
-        'customer_primary_tech_json': customer_primary_tech_json,
         'current_technician': current_technician,
         'show_charges_editor': True,
         'charge_rows': [
@@ -476,6 +483,7 @@ def create_repair(request):
         ] if request.method == 'POST' else [],
         'fee_presets': FeePreset.objects.filter(tenant=tenant, is_active=True) if tenant else [],
     }
+    context.update(_customer_type_context(tenant))
     if admin:
         context['technicians'] = Technician.objects.filter(
             tenant=tenant, can_repair=True, is_active=True
@@ -739,6 +747,15 @@ def update_repair(request, repair_id):
             ).select_related('reward_option', 'reward_option__reward_type').order_by('created_at')
         )
 
+    # A quick-job individual's vehicle lives as free text in unit_number
+    # (get_vehicle_identifier falls back to it) — the template shows that
+    # input relabeled "Vehicle" instead of the year/make/model fields.
+    customer_is_individual = bool(repair.customer and repair.customer.is_individual)
+    repair_vehicle_in_unit = bool(
+        customer_is_individual
+        and not (repair.vehicle_year or repair.vehicle_make or repair.vehicle_model)
+        and repair.unit_number
+    )
     update_context = {
         'form': form,
         'repair': repair,
@@ -750,9 +767,12 @@ def update_repair(request, repair_id):
         'show_charges_editor': True,
         'charges_locked_invoice': charges_locked_invoice,
         'charge_rows': charge_rows,
-        'fee_presets': FeePreset.objects.filter(tenant=tenant, is_active=True) if tenant else [],
         'pending_reward_redemptions': pending_reward_redemptions,
+        'customer_is_individual': customer_is_individual,
+        'repair_vehicle_in_unit': repair_vehicle_in_unit,
+        'fee_presets': FeePreset.objects.filter(tenant=tenant, is_active=True) if tenant else [],
     }
+    update_context.update(_customer_type_context(tenant))
     if admin:
         update_context['technicians'] = Technician.objects.filter(
             tenant=tenant, can_repair=True, is_active=True

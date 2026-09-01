@@ -765,11 +765,14 @@ class RepairForm(forms.ModelForm):
                 if not unit_number:
                     self.add_error('unit_number', 'Unit number is required for fleet customers.')
             else:
-                # Retail/Walk-in customers require vehicle info
+                # Retail/Walk-in customers require vehicle info. A quick-job
+                # individual's vehicle legitimately lives as free text in
+                # unit_number (get_vehicle_identifier falls back to it), so
+                # that satisfies the requirement too.
                 if not vehicle_year and not vehicle_make and not vehicle_model:
-                    # None provided - require at least make/model
-                    self.add_error('vehicle_make', 'Vehicle make is required for retail customers.')
-                    self.add_error('vehicle_model', 'Vehicle model is required for retail customers.')
+                    if not unit_number:
+                        self.add_error('vehicle_make', 'Vehicle make is required for retail customers.')
+                        self.add_error('vehicle_model', 'Vehicle model is required for retail customers.')
                 elif not vehicle_make:
                     self.add_error('vehicle_make', 'Vehicle make is required.')
                 elif not vehicle_model:
