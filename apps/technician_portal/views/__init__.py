@@ -56,6 +56,7 @@ from .repairs import (
     portal_bulk_reassign,
     save_photo_crop,
     suggest_photo_crop,
+    job_photos_zip,
 )
 
 # Unmarked-photo backfill queue (P4a.1)

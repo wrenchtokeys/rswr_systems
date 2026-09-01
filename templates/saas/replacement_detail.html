@@ -253,7 +253,14 @@
             {% endcomment %}
             {% if replacement.customer_submitted_photo or replacement.damage_photo_before or replacement.damage_photo_after %}
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <h2 class="text-lg font-semibold text-gray-900 mb-4"><i class="fas fa-camera mr-2 text-gray-500"></i>Photos</h2>
+                <div class="flex items-center justify-between gap-3 mb-4">
+                    <h2 class="text-lg font-semibold text-gray-900"><i class="fas fa-camera mr-2 text-gray-500"></i>Photos</h2>
+                    {% comment %}Same archive the customer gets, same filenames (P7).{% endcomment %}
+                    <a href="{% url 'replacement_photos_zip' replacement.id %}"
+                       class="btn-secondary btn-sm inline-flex items-center gap-1.5">
+                        {% icon 'download' class="w-4 h-4" %}Download all
+                    </a>
+                </div>
                 <div class="grid grid-cols-2 gap-4">
                     {% if replacement.customer_submitted_photo %}
                     <div>

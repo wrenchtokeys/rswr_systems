@@ -653,6 +653,35 @@ PAIR_LANGUAGE = {
 }
 
 
+def _public_invoice_jobs(invoice):
+    """``[(kind, job)]`` for every job billed on this invoice, deduped.
+
+    One traversal, two consumers: the photos the page renders and the photos
+    the customer downloads (P7). They must agree — a ZIP that carries a job
+    the page never showed, or misses one it did, is worse than no ZIP.
+    """
+    items = (
+        invoice.line_items
+        .filter(models.Q(repair_id__isnull=False)
+                | models.Q(replacement_id__isnull=False))
+        .select_related('repair', 'replacement')
+        .prefetch_related('repair__photo_crops', 'replacement__photo_crops')
+    )
+    jobs = []
+    seen = set()
+    for item in items:
+        job = item.repair or item.replacement
+        if job is None:
+            continue
+        kind = 'replacement' if item.replacement_id else 'repair'
+        key = (kind, job.pk)
+        if key in seen:  # a job billed on two lines is still one job
+            continue
+        seen.add(key)
+        jobs.append((kind, job))
+    return jobs
+
+
 def _public_invoice_photos(invoice):
     """Photo exhibits for the public invoice page: ``(pairs, tiles)``.
 
@@ -689,24 +718,7 @@ def _public_invoice_photos(invoice):
     pairs = []
     tiles = []
     try:
-        items = (
-            invoice.line_items
-            .filter(models.Q(repair_id__isnull=False)
-                    | models.Q(replacement_id__isnull=False))
-            .select_related('repair', 'replacement')
-            .prefetch_related('repair__photo_crops', 'replacement__photo_crops')
-        )
-        seen = set()
-        for item in items:
-            job = item.repair or item.replacement
-            if job is None:
-                continue
-            kind = 'replacement' if item.replacement_id else 'repair'
-            key = (kind, job.pk)
-            if key in seen:  # a job billed on two lines is still one job
-                continue
-            seen.add(key)
-
+        for kind, job in _public_invoice_jobs(invoice):
             focus_positions = focus_positions_for(job)
             vehicle = job.get_vehicle_label()
 
@@ -820,6 +832,9 @@ def public_view_invoice(request, invoice_id, token):
         'pdf_url': f"/invoice/{invoice.id}/{token}/pdf/",
         'photo_pairs': photo_pairs,
         'photos': photos,
+        # The one control that turns a page of photos into a record the
+        # customer keeps (P7). Rendered only when there is something in it.
+        'photos_zip_url': f"/invoice/{invoice.id}/{token}/photos.zip",
         'sms_optin_offered': customer is not None,
         'sms_optin_phone_last4': sms_phone[-4:] if sms_phone else '',
         'sms_opted_in': bool(customer and customer.sms_opt_in),
@@ -887,6 +902,38 @@ def public_invoice_pdf(request, invoice_id, token):
 
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="Invoice_{invoice.invoice_number}.pdf"'
+    return response
+
+
+def public_invoice_photos_zip(request, invoice_id, token):
+    """Every photo on this invoice, as one ZIP (P7). Same token as /pdf/.
+
+    This exists because a fleet manager's record is a file in a folder, not
+    a page they have to find again — and because the page's own photo links
+    cannot be made to save. `<a download>` is ignored cross-origin, and the
+    photos are served from S3, so a "Download" attribute bolted onto the
+    existing markup would silently *open* the photo instead. The download
+    has to be served by the app, which is also what lets the file be named
+    for the invoice, the vehicle and the date rather than the phone that
+    took it.
+
+    Nothing is written to storage: the archive is assembled in memory.
+    """
+    invoice = _resolve_public_invoice(invoice_id, token, request=request)
+    if invoice is None:
+        return render(request, '404.html', status=404)
+
+    from apps.technician_portal.services.photo_archive import (
+        entries_for_jobs, photo_zip_response, zip_name_for_invoice,
+    )
+    jobs = [job for _kind, job in _public_invoice_jobs(invoice)]
+    entries = entries_for_jobs(jobs, invoice_number=invoice.invoice_number)
+    response = photo_zip_response(entries, zip_name_for_invoice(invoice))
+    if response is None:
+        logger.warning(
+            f"Photo ZIP requested for invoice {invoice.pk} with nothing "
+            f"readable to put in it")
+        return render(request, '404.html', status=404)
     return response
 
 

@@ -87,7 +87,17 @@
 
             {% if repair.damage_photo_before or repair.damage_photo_after %}
             <div class="mt-4 pt-3 border-t border-gray-100">
-                <p class="text-sm font-semibold text-gray-900 mb-2">Photos:</p>
+                <div class="flex items-center justify-between gap-3 mb-2">
+                    <p class="text-sm font-semibold text-gray-900">Photos:</p>
+                    {% comment %}
+                    Per break, not per batch: a multi-break session is several
+                    repairs on one unit, and a fleet files each one (P7).
+                    {% endcomment %}
+                    <a href="{% url 'customer_repair_photos_zip' repair.id %}"
+                       class="btn-secondary btn-sm inline-flex items-center gap-1.5">
+                        {% icon 'download' class="w-4 h-4" %}Download
+                    </a>
+                </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {% if repair.damage_photo_before %}
                     <div>

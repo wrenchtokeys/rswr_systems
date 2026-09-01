@@ -58,16 +58,19 @@ without re-running the exploration that produced this doc.
 | P3.1 · Validate | Run the suggester against the 77 real windshield photos we now have | S | DONE (2026-08-27) — **it wins on real photos; but the (41,61) centroid beats it for free** |
 | P6.1 · Free win | Default unmarked photos to (41%, 61%) instead of dead centre | XS | **DONE and ON `main`** — merged 2026-08-31 *inside* #236; #234 closed as superseded. Halves the framing error on every photo nobody marked, forever |
 | P6.2 · Proof of work | Before/after pair on the public invoice page — one exhibit, not two tiles | S | **DONE, DEPLOYED 2026-08-31** — PR #236, squash `fb4f8b98`. **The census says the pairs are already there: 76 of 82 photographed jobs have both** |
-| P7 · Records | Let a customer **keep** the photos, not just look at them | M | **TODO — specced 2026-09-01, ready to execute.** The next session |
+| P7 · Records | Let a customer **keep** the photos, not just look at them | M | **DONE 2026-09-01, branch `feat/photoml-p7-keep-the-photos`** — tokened ZIP on the public invoice, per-job download in the portal AND on the shop side. Not yet deployed |
 | P5 · Negative class | Record the jobs we turn away — the only source of "not repairable" | M | TODO — **held open by Drake, 2026-09-01**; still the actual gate on P4b |
 | P4b · Payoff | Repairability classifier | L | BLOCKED on **P5** (or on The Glass Guy entering replacement jobs — see §The pause) |
 
 **Suggested sequence, as revised 2026-08-26:**
 P1 → P2 → P3 → P4a → P6 → P4a.1 → P3.1 → P6.1 → P6.2 → **P7** → **P5** → P4b.
 Everything up to and including P6.2 is done, deployed and confirmed serving in
-production (2026-08-31). **P7 is the open session** and it is specced. **P5 is
-a decision**, held open by Drake on 2026-09-01 (see §The pause), and P4b is
-blocked behind it.
+production (2026-08-31). **P7 is built** (2026-09-01) and awaiting merge and a
+deploy. **P5 is a decision**, held open by Drake on 2026-09-01 (see §The
+pause), and P4b is blocked behind it. The one piece of work this arc has
+written down and not scheduled is **closing the media bucket**, which P7
+deliberately did not touch and which P7 is the prerequisite for — see the end
+of the P7 section.
 Note that P3.1's
 method was revised on 2026-08-27 by a dry run against production: **mark
 cold, score afterwards**, rather than sweeping first. See P3.1 for the
@@ -208,7 +211,8 @@ branches and this was a deploy-time choice.
 | ~~P6.1~~ | **Merged** (inside #236; #234 closed as superseded) — the measured `41% 61%` default for unmarked photos. See its section. |
 | ~~P6.2~~ | **Merged** (#236, squash `fb4f8b98`) — the before/after pair. |
 | ~~DEPLOY `main`~~ | **DONE 2026-08-31 23:46 UTC.** Prod runs `966a31da` off `main`; `fb4f8b98` verified inside it by ancestry, and `object-position:41% 61%` verified in the stylesheet production serves. 20 invoices now carry a marked job. The item this document called "the highest-value action in the arc" for five days is closed. |
-| **→ P7** | **The open session.** A customer can view every photo on their invoice and keep none of them in any useful form. Specced in full below on 2026-09-01, anchors verified the same day. Start here. |
+| ~~P7~~ | **Built 2026-09-01** on `feat/photoml-p7-keep-the-photos` — one control saves every photo on an invoice as a named ZIP, and every job page (customer *and* shop) has the same button. 29 tests. **Not merged, not deployed.** |
+| **→ Close the media bucket** | **The open piece of work, and now unblocked.** `AWS_S3_CUSTOM_DOMAIN` makes every photo URL unsigned: an anonymous `curl` of `media/repair_photos/before/IMG_4686.jpg` returns 200, and the filenames are the technician's phone's originals. P7 was sequenced first precisely so that closing it does not take away the customer's only way to save a photo — that path now exists and reads through storage, not over HTTP. Its own PR, its own verification: every `<img>` in both portals resolves through the same `.url`. |
 | **P5 / P4b** | **`TODO`, held by Drake's call of 2026-09-01** — not dropped, not scheduled. He was asked directly whether the classifier is still wanted now that the customer-facing half has shipped, and chose to keep both open and decide later. **Do not open P5 on the strength of this document; ask again.** |
 | **The live second source** | The Glass Guy (tenant 15) is **likely** to start entering jobs. A windshield replacement with a photo is a negative-class row and P4a already made that expressible — **no code needed**, so watch `export_photo_dataset --stats-only` rather than building for it. |
 
@@ -223,13 +227,12 @@ curl -I https://rssystems.io/health/
 ```
 
 
-**What is left, in one line:** **P7 — let the customer keep the photos.**
-Everything before it is written, merged, deployed and confirmed serving; P5 is
-held open by choice and P4b sits behind it, both gated on the business
-producing a job it turned away rather than on this repository. See §The pause
-for the census, and P7 for the audit of what a customer can do with a photo
-today — the short answer is right-click, one at a time, and get a file called
-`IMG_4686.jpg`.
+**What is left, in one line:** **close the media bucket** — P7 has shipped the
+app-served download that closing it requires. Everything through P6.2 is
+merged, deployed and confirmed serving; P7 is written and waiting on a merge
+and a deploy; P5 is held open by choice and P4b sits behind it, both gated on
+the business producing a job it turned away rather than on this repository.
+See §The pause for the census.
 
 **Verifying a merge in this arc.** Every PR here squashes, so the recipe an
 earlier session wrote — `git log origin/main..origin/<branch>` should be
@@ -1518,7 +1521,7 @@ Tailwind source, the compiled `app.css` and the portal template, plus
 checked out at `main` itself. Neither PR carried a migration.
 
 
-# P7 · Let the customer keep the photos — TODO · **specced 2026-09-01, ready to execute**
+# P7 · Let the customer keep the photos — DONE · **built 2026-09-01, branch `feat/photoml-p7-keep-the-photos`**
 
 **Where this came from.** Drake, 2026-09-01, immediately after the deploy
 landed: *"how customers can save their repair photos instead of only getting
@@ -1532,8 +1535,9 @@ find again; it is a file in a folder, per unit, per date. This is the same
 shape of miss the arc already made once and wrote a purpose statement about:
 the artifact exists and the payoff for the person on the other end does not.
 
-**What a customer can actually do today — audited 2026-09-01, all four
-surfaces:**
+**What a customer could do before this session — audited 2026-09-01, all four
+surfaces. This table is the "before" picture; what replaced it is at the end
+of this section.**
 
 | Surface | What exists | What the customer gets |
 |---|---|---|
@@ -1609,7 +1613,79 @@ harvest a real share of the corpus.
   so it is a wider change than a download button and deserves its own PR and
   its own verification. Record it, ship P7, raise the bucket separately.
 
-**Notes**
+**What shipped, 2026-09-01**
+
+`apps/technician_portal/services/photo_archive.py` is the whole substrate:
+jobs in, `(filename, FieldFile)` out, and a ZIP built from those. Every
+surface calls the same two functions, so the file a customer saves from the
+public invoice page and the one the shop saves from the job page are named
+identically — which is the point. It is ~200 lines and no migration.
+
+| Surface | Route | Gate |
+|---|---|---|
+| Public invoice page | `/invoice/<id>/<token>/photos.zip` (`rs_systems/views.py`) | The same `_resolve_public_invoice` HMAC as `/pdf/` |
+| Customer portal, repair | `/app/repairs/<id>/photos.zip` | Session, scoped `customer=` + `tenant=` |
+| Customer portal, replacement | `/app/replacements/<id>/photos.zip` | Same |
+| Customer portal, batch | per repair, links to the repair route | Same |
+| Shop, repair | `/tech/repairs/<id>/photos.zip` | `_job_access` — the gate the crop endpoints already used |
+| Shop, replacement | `/tech/replacements/<id>/photos.zip` | Same, via `_replacement_technician_access` |
+
+**Drake's three calls, taken at the top of the session:**
+
+1. **Photos in the invoice PDF: no.** It stays its own decision, unbuilt.
+   Nothing in this branch touches the PDF, and `include_photos` is still a
+   flag nobody reads — do not mistake it for a switch next session either.
+2. **The customer's own submitted photo: yes, it is in the archive.** They
+   took it and sent it in; it is theirs. It is named `Customer-submitted` so
+   it is never confused with the shop's proof of work.
+3. **The shop gets the same button: yes.** The shop is who a customer phones
+   asking for the photos — a claim, a fleet's records, a dispute — and once
+   the builder exists the shop side is a route and a link.
+
+**Two things worth knowing before touching this again:**
+
+- **`_public_invoice_jobs` was extracted from `_public_invoice_photos`.** One
+  traversal now feeds both the photos the page renders and the photos the ZIP
+  carries. They must not drift: a ZIP that misses a photo the page showed is
+  worse than no ZIP, and a test asserts the two counts match.
+- **`_job_access` was extracted from `_resolve_crop_target`.** The shop-side
+  download and the crop endpoints answer for the same object under the same
+  permission; a download that was laxer than the crop endpoint would leak one
+  shop's photos to another just as effectively.
+
+**Where the traps landed.** Every one the spec listed was real and is now a
+test in `tests/test_photo_downloads.py` (29 tests, all green, plus the 190 in
+the adjacent photo/CSP/icon/CSS suites re-run unchanged):
+
+- Bytes are read with `field.open()`. A test patches `FieldFile.url` to
+  raise, and the ZIP still builds — the server never fetches its own public
+  URL, which is also what makes closing the bucket possible.
+- Filenames go through `get_vehicle_label()`. An individual's file reads
+  `INV-1042_2019-Ford-F-150_2026-08-14_Before.jpg`; the word "Unit" cannot
+  appear on it. Free text is sanitised, so `Ford F-150 / spare` cannot put a
+  slash in a path.
+- Two breaks on one unit on one day — a normal multi-break ticket — get `-2`
+  appended rather than silently overwriting each other in the customer's
+  unzipper.
+- A photo missing from storage is skipped, the rest still download, **and the
+  ZIP carries a `README.txt` naming what was left out.** A partial archive
+  that looks complete is the one outcome worse than an error.
+- Nothing is written to media or S3, and no `<a download>` was used anywhere
+  (it is ignored cross-origin, which is the whole reason this is an app route
+  rather than an attribute).
+
+**What is still not possible, deliberately:** photos in the PDF (call 1
+above), photos in email (SES policy), and any change to *which* photos are
+shown — P6.2 settled that and this session read its output rather than
+re-deciding it.
+
+**Found while specifying this, still open: the photos are world-readable.**
+See the subsection above. **P7 was the prerequisite and P7 has shipped**, so
+closing the bucket is now unblocked and is the next piece of work in this
+document. It is not folded in here on purpose: every `<img>` in the technician
+portal and the customer portal resolves through the same `.url`, so it is a
+wider change than a download button and deserves its own PR and its own
+verification.
 
 # P5 · Record the jobs we turn away — TODO · **needs Drake's call before it is a session**
 
@@ -1808,3 +1884,4 @@ and did not move the count.
 | 2026-09-01 | **P7 added — the customer can see the photos and cannot keep them.** Asked, hours after the deploy, what a trucking company does when it wants the photos for its records. Audited all four surfaces: the public invoice page links each photo (right-click, one at a time, saved as `IMG_4686.jpg`), the portal lightbox has no download at all, and **the invoice PDF's `include_photos` flag is threaded through three signatures and read by none of them** — photos-in-PDF looks built and is not. Specced as a tokened ZIP mirroring `public_invoice_pdf`, plus per-job download in the portal, with the naming, storage-read and individual-vs-fleet traps written down. **Also found while specifying it: the media bucket is world-readable and filenames are the phone's originals** (`IMG_4686.jpg` returns 200 anonymously; a 16-name probe of our own bucket hit one live photo), so the invoice token protects the page and not the photos — recorded as its own piece of work, deliberately not folded into P7, and sequenced *after* it because closing the bucket removes today's only save path. |
 | 2026-09-01 | **IT SHIPPED, and the arc's purpose is finally being served.** The deploy this document called its highest-value action for five days happened on 2026-08-31 23:46 UTC: prod runs `966a31da` off `main`, with `fb4f8b98` (P6.1+P6.2) verified *inside the deployed commit* by ancestry and `object-position:41% 61%` verified in the stylesheet production actually serves. `migrate` was the predicted no-op. **20 invoices now carry a job whose damage photo is framed on the break a technician tapped** (62 line items, 75 marked repairs, counted live). Census re-run: 78 crops, `repairable=73`, **`not_repairable=0`** — unchanged where it matters. **Drake's calls, asked directly:** P5 and P4b are **held as `TODO`**, neither built nor dropped — ask again, don't decide for him; and **The Glass Guy starting to enter jobs is *likely***, which would supply the negative class with no code at all, so §The pause's second way out is now live rather than a dead end. Also recorded: the `--stats-only` line about no machine suggestions on confirmed rows is permanent and by design (the backlog was marked cold on purpose), not evidence that P3.1 never ran. |
 | 2026-09-01 | **Doc brought current after the merges.** P6.1 and P6.2 are on `main` (#236 = `fb4f8b98`; #234 closed as superseded), so the rows that named their branches, the START HERE checklist and the "what is left" line all said the arc had code to write when it does not. **The only open item that is not a decision is the deploy** — production has run `d88f70d5` since before P6, 23+ commits back, and the migration delta is **zero**, so it is code-only. Also recorded: UI_MAGIC **S17 (#233) moved the Tailwind source** to `assets/css/input.css`; that session correctly re-pointed `tests/test_photo_blind_focus.py` and preserved `.photo-blind-focus` in both the source and the committed `app.css`, so the three-copy drift guard still holds. |
+| 2026-09-01 | **P7 executed — the photos are now keepable.** One control on the public invoice page saves every photo on that invoice as a ZIP through the same HMAC gate as `/pdf/`, and every job page — customer portal *and* shop — has the same button. Files arrive named `INV-1042_Unit-4521_2026-08-14_Before.jpg`, or `…_2019-Ford-F-150_…` for an individual, because the name is built from `get_vehicle_label()` and the word "Unit" cannot reach a retail customer's filename. **Drake's three calls, taken up front:** photos in the invoice PDF stay unbuilt and stay their own decision; the customer's own submitted photo *is* in the archive (it is theirs); the shop gets the same button, because the shop is who a customer phones asking for the photos. New shared module `services/photo_archive.py`, no migration; `_public_invoice_jobs` extracted so the page and the ZIP can never disagree about which jobs an invoice has, and `_job_access` extracted so the shop download cannot be laxer than the crop endpoint next to it. Bytes are read through storage — a test patches `FieldFile.url` to raise and the ZIP still builds — which is both correct today and the precondition for closing the bucket. A photo missing from storage is skipped and named in a `README.txt` inside the ZIP rather than silently dropped. 29 new tests; the 190 in the adjacent photo/CSP/icon/CSS suites re-run green. **The bucket is now the arc's only open piece of work that is not a decision.** |
