@@ -57,14 +57,15 @@ without re-running the exploration that produced this doc.
 | P4a.1 · Backfill | Mark the break on the photos we already have — one queue, not 77 jobs | S | DONE (PR #224) — **and RUN: 1 → 73 confirmed crops, 2026-08-27** |
 | P3.1 · Validate | Run the suggester against the 77 real windshield photos we now have | S | DONE (2026-08-27) — **it wins on real photos; but the (41,61) centroid beats it for free** |
 | P6.1 · Free win | Default unmarked photos to (41%, 61%) instead of dead centre | XS | **DONE and ON `main`** — merged 2026-08-31 *inside* #236; #234 closed as superseded. Halves the framing error on every photo nobody marked, forever |
-| P6.2 · Proof of work | Before/after pair on the public invoice page — one exhibit, not two tiles | S | **DONE and ON `main`** — PR #236, squash `fb4f8b98`, 2026-08-31. **The census says the pairs are already there: 76 of 82 photographed jobs have both** |
-| P5 · Negative class | Record the jobs we turn away — the only source of "not repairable" | M | TODO — **this is the actual gate on P4b** |
-| P4b · Payoff | Repairability classifier | L | BLOCKED on **P5** — see P4b and §The pause |
+| P6.2 · Proof of work | Before/after pair on the public invoice page — one exhibit, not two tiles | S | **DONE, DEPLOYED 2026-08-31** — PR #236, squash `fb4f8b98`. **The census says the pairs are already there: 76 of 82 photographed jobs have both** |
+| P5 · Negative class | Record the jobs we turn away — the only source of "not repairable" | M | TODO — **held open by Drake, 2026-09-01**; still the actual gate on P4b |
+| P4b · Payoff | Repairability classifier | L | BLOCKED on **P5** (or on The Glass Guy entering replacement jobs — see §The pause) |
 
 **Suggested sequence, as revised 2026-08-26:**
 P1 → P2 → P3 → P4a → P6 → P4a.1 → P3.1 → P6.1 → P6.2 → **P5** → P4b. **Every
-code session in the arc is now done, P6.2 included.** What is left is not a
-session: **P5 is a decision** (see §The pause), and P4b is blocked behind it.
+code session in the arc is done, deployed and confirmed serving in production
+(2026-08-31).** What is left is not a session: **P5 is a decision**, held open
+by Drake on 2026-09-01 (see §The pause), and P4b is blocked behind it.
 Note that P3.1's
 method was revised on 2026-08-27 by a dry run against production: **mark
 cold, score afterwards**, rather than sweeping first. See P3.1 for the
@@ -92,7 +93,29 @@ before P4a.1** because backfilling 77 photos is worth an afternoon once each
 one visibly improves a real invoice, and is charity before that. **P5 before
 P4b** because P5 is the only negative-class source this business generates.
 
-**Where we are (2026-08-27, end of day — the backlog is marked and the
+**Where we are (2026-09-01 — live, and down to one open decision):**
+
+**Everything this arc built is deployed and reaching customers** (see the
+verification below). The customer-facing half — a close-up framed on the
+break, on the invoice and in the portal, plus the before/after exhibit — is
+finished, shipped and confirmed serving. **No code session in this arc is
+open.**
+
+**The census has not moved where it matters.** Production, 2026-09-01:
+78 crops, `repairable=73`, **`not_repairable=0`**. One class, still. Five more
+crops than August 27 and not one of them a negative. §The pause explains why
+waiting does not fix this and P5 does.
+
+**Drake's call, 2026-09-01: P5 and P4b stay `TODO` — held, not dropped.**
+Asked whether to close the classifier out (the honest option once the
+customer-facing half shipped) or to build P5 for its own sake, Drake chose
+neither: leave both open and decide later. **So do not open P5 on the strength
+of this document, and do not close it either.** The Glass Guy is **likely** to
+start entering jobs, which would open the second negative-class source with no
+new code at all — that is now a live possibility rather than the dead end the
+census made it look like.
+
+**Where we were (2026-08-27, end of day — the backlog is marked and the
 suggester has finally been measured):**
 
 **The rate went from 1 of 77 to 73.** Drake sat down with `/tech/photos/mark/`
@@ -116,22 +139,29 @@ the tables):
   photos at 3.2% error. Everything below is noise, and `suggest_photo_crops`
   currently gates on nothing.
 
-**Deploy state still lags merge state — check it before you believe it.**
-Production is running `app-d88f7-260827_125012793353`, which is commit
-`d88f70d5` on `feat/photoml-p31-score-the-suggester` — **a feature branch,
-deployed straight off the branch**, not off `main`:
+**IT IS DEPLOYED (2026-08-31 23:46 UTC).** Production runs
+`app-966a-260831_234633995822` = commit `966a31da`, taken off `main`, which
+contains `fb4f8b98` (P6.1 + P6.2) and `c8876d8e` (P4a). This document has been
+wrong about deploy state before, so it was verified 2026-09-01 three ways:
 
-- Prod **has** P4a.1's queue — which is how the backfill got done at all.
-- Prod **does not have P6**, so the 73 marks Drake made are recorded and
-  their crops derived, but **not one of them reaches a customer's invoice
-  until `main` ships.** That deploy is still the highest-value action in the
-  arc.
-- Prod is also behind `main` on the S13b icon work and P6.1.
+- `git merge-base --is-ancestor fb4f8b98 966a31da` — the P6 work is inside the
+  **deployed commit**, not merely on `main`. (Ancestry, not the commit log:
+  every PR here squashes.)
+- The stylesheet production actually serves —
+  `https://rssystems.io/static/css/app.3a79468a77b2.css` — contains
+  `photo-blind-focus{object-position:41% 61%}`. The measured default is in a
+  customer's browser, not just in the repository.
+- `/health/` 200, environment Green.
 
-**`main` migrates cleanly now** (#231 restored the `0061` merge node and added
-CI), and every migration in the graph is **already applied in production** —
-`showmigrations technician_portal` shows `0060`, `0060` and `0061` all `[X]`.
-So the deploy that ships P6/P6.1 is code-only; `migrate` will be a no-op.
+`migrate` was the no-op it was predicted to be: the migration delta between
+`d88f70d5` and `main` was zero.
+
+**What that means in rows, counted on production 2026-09-01:** the marks now
+reach **20 invoices** (62 line items across **75** marked repairs). Every one
+of those invoices frames its damage photo on the break a technician tapped,
+and every unmarked photo everywhere else is aimed at (41%, 61%) instead of
+dead centre. **This is the arc delivering its first purpose to actual
+customers** — the thing four sessions of training-first work never did.
 
 **The 2026-08-27 19:24 UTC deploy failed, and the cause was not the code.**
 It died in `01_migrate` with the same conflicting-leaf-nodes error the whole
@@ -165,12 +195,13 @@ branches and this was a deploy-time choice.
 | ~~#231~~ | **Merged.** Restored the `0061` merge migration and added the repo's first CI workflow (`.github/workflows/migration-graph.yml`). |
 | ~~#232~~ | **Merged.** P3.1's results. |
 | ~~P6.1~~ | **Merged** (inside #236; #234 closed as superseded) — the measured `41% 61%` default for unmarked photos. See its section. |
-| **→ DEPLOY `main`** | **The one thing standing between all of this and a customer, and now the ONLY open item in the arc that is not a decision.** Production has run `d88f70d5` since before P6 and is **23+ commits behind**. Verified 2026-08-31: **zero migration files differ** between that commit and `main`, so the deploy is code-only and `migrate` is a no-op. Nothing in this arc is visible to anyone until this happens. |
-| ~~P6.2~~ | **Merged** (#236, squash `fb4f8b98`) — the before/after pair. Like P6 and P6.1 it is in the repository and reaches nobody until `main` deploys. |
-| **Then** | **P5 is a decision, not a session** — see §The pause before building toward P4b. **Ask Drake whether the classifier is still wanted**; if it is not, close P5 and P4b as DROPPED and the arc ends here, which would be a good ending. |
+| ~~P6.2~~ | **Merged** (#236, squash `fb4f8b98`) — the before/after pair. |
+| ~~DEPLOY `main`~~ | **DONE 2026-08-31 23:46 UTC.** Prod runs `966a31da` off `main`; `fb4f8b98` verified inside it by ancestry, and `object-position:41% 61%` verified in the stylesheet production serves. 20 invoices now carry a marked job. The item this document called "the highest-value action in the arc" for five days is closed. |
+| **P5 / P4b** | **`TODO`, held by Drake's call of 2026-09-01** — not dropped, not scheduled. He was asked directly whether the classifier is still wanted now that the customer-facing half has shipped, and chose to keep both open and decide later. **Do not open P5 on the strength of this document; ask again.** |
+| **The live second source** | The Glass Guy (tenant 15) is **likely** to start entering jobs. A windshield replacement with a photo is a negative-class row and P4a already made that expressible — **no code needed**, so watch `export_photo_dataset --stats-only` rather than building for it. |
 
-**How to deploy this, exactly** — the 19:24 failure was caused by getting
-this wrong:
+**How to deploy, exactly** — kept because the 19:24 failure was caused by
+getting this wrong, and the next deploy can repeat it:
 
 ```bash
 git checkout main && git pull origin main   # NOT a feature branch: sc: git
@@ -180,10 +211,10 @@ curl -I https://rssystems.io/health/
 ```
 
 
-**What is left, in one line:** **deploy `main`** — every code session in the
-arc is now written, merged and green — then P5, which is still the only thing
-that unblocks the classifier, and is still gated on the business turning a job
-away rather than on any code. See §The pause for the census.
+**What is left, in one line:** **nothing that is code.** Every session is
+written, merged, deployed and confirmed serving. P5 is held open by choice and
+P4b sits behind it; both are gated on the business producing a job it turned
+away, not on this repository. See §The pause for the census that says so.
 
 **Verifying a merge in this arc.** Every PR here squashes, so the recipe an
 earlier session wrote — `git log origin/main..origin/<branch>` should be
@@ -1474,6 +1505,15 @@ checked out at `main` itself. Neither PR carried a migration.
 
 # P5 · Record the jobs we turn away — TODO · **needs Drake's call before it is a session**
 
+**ASKED AND ANSWERED — 2026-09-01: held.** Drake was given the three options
+below (drop it, build it for its own sake, or leave it open) and chose to
+**leave P5 and P4b as `TODO` and decide later**. So this section is neither
+dead nor scheduled: the spec is ready, the product case stands on its own, and
+nobody has committed to it. **Ask again before opening it.** The one thing
+that changed underneath it: The Glass Guy entering replacement jobs is now
+**likely** rather than hypothetical, and that would supply the negative class
+without P5 being built at all — see §The pause, way out 2.
+
 **Ask before building (raised 2026-08-27).** P5 is the only negative-class
 source this business generates, and P4b cannot happen without it. But P4b's
 value is now a fair question rather than an assumption: P3.1 showed that the
@@ -1518,11 +1558,25 @@ not what the arc assumed.
 
 ### What is actually banked
 
-| | count | rate |
-|---|---|---|
-| Positive class — completed repairs with a photo | **77** banked | ~9/month |
-| ...of those actually marked with a crop | **1** | — |
-| Negative class — windshield replacements with a photo | **0** | **0/month** |
+| | count (2026-08-26) | count (2026-09-01) | rate |
+|---|---|---|---|
+| Positive class — completed repairs with a photo | **77** banked | — | ~9/month |
+| ...of those actually marked with a crop | **1** | **73** | — |
+| Negative class — windshield replacements with a photo | **0** | **0** | **0/month** |
+
+The 2026-09-01 column is `export_photo_dataset --stats-only` run on
+production: 78 crops considered, `repairable=73`, `not_applicable=3`,
+`unknown=2`, and the command's own verdict — *"Only one class present (73
+rows, no not_repairable). A classifier cannot be trained on this."* Believe
+that line over any narrative, this one included.
+
+**One sentence in that output will always be there, and it is not a
+regression:** *"No confirmed rows carry a machine suggestion, so there is
+still nothing to say about the suggester's accuracy."* That is **by design** —
+the backlog was deliberately marked **cold**, with no suggestion pre-placed,
+which is exactly what made P3.1's measurement honest. P3.1 scored the
+suggester offline against those cold marks. Do not read that sentence as "the
+suggester has never been measured"; read P3.1's Notes.
 
 The positive side is healthy: 77 examples are sitting in production right now,
 already photographed, needing only a human to tap where the break is. That is
@@ -1558,7 +1612,13 @@ and did not move the count.
    negative-class source that exists and it is already happening every week.**
 2. **Get The Glass Guy onto the app for replacement work.** A business
    question, not an engineering one, and the reason P4a bothered to make
-   replacement crops possible at all. Worth asking Drake where that stands.
+   replacement crops possible at all. **Asked 2026-09-01: Drake says this is
+   likely** — he expects the shop to start entering jobs. That makes it a live
+   source rather than the dead end the census implied, and it needs **no
+   code**: P4a already lets a crop hang off a `Replacement`, and
+   `photo_dataset.py` already labels a completed *windshield* replacement
+   `not_repairable`. The action is to watch `--stats-only` for the first row,
+   not to build anything.
 3. **Import an outside corpus.** Note the asymmetry with P3's standing
    decision: Drake rejected sending *our customers' photos out*. Bringing
    someone else's photos *in* is a different question and has not been asked.
@@ -1568,8 +1628,8 @@ and did not move the count.
 
 - ~~**P6 first.**~~ **Merged (#222).** A tap now visibly reframes the photo
   on the customer's invoice and in their portal. That was the binding
-  constraint on everything below and it is lifted — **in the repository.**
-  It reaches customers on the next deploy of `main`, which has not happened.
+  constraint on everything below and it is lifted — **and deployed.**
+  It reached customers on the 2026-08-31 deploy of `main`.
 - ~~**P4a.1 — build the queue.**~~ **Merged (#224),** and live in production
   at `/tech/photos/mark/`.
 - ~~**Run the queue.**~~ **Done 2026-08-27 — 1 → 73 crops**, in about twenty
@@ -1578,13 +1638,18 @@ and did not move the count.
   see P3.1, whose measurement is worth more than the 70 training rows.
 - ~~**P6.1**~~ **Done** — the measurement is cashed out. Every photo
   nobody marked, past and future, is now aimed at (41%, 61%) instead of dead
-  centre, at no computational cost. **In the repository**; like P6, it reaches
-  customers only on the next deploy of `main`.
-- **Deploy `main`.** P6, P6.1 **and P6.2** are all sitting in the repository
-  doing nothing for anybody. This is the highest-value action in the arc, and
-  since 2026-08-31 it is the only one left that is not a decision.
-- **P5 is the only thing left that is not code**, and it is a decision rather
-  than a session: see below.
+  centre, at no computational cost. **Live in production since 2026-08-31**,
+  verified in the stylesheet the site serves.
+- ~~**Deploy `main`.**~~ **DONE 2026-08-31 23:46 UTC** — prod runs `966a31da`,
+  P6/P6.1/P6.2 verified inside the deployed commit and the `41% 61%` rule
+  verified in the stylesheet production serves. 20 invoices carry a marked
+  job. The arc's first purpose is now being delivered to customers, which it
+  had never once been while this section was being written.
+- **P5 stays open by decision, not by neglect (2026-09-01).** Drake was asked
+  whether to close the classifier out now that the customer-facing half has
+  shipped, and chose to hold both P5 and P4b as `TODO`. Nothing about the
+  census changed; the appetite is simply undecided. **Ask again before
+  building; do not close it unilaterally either.**
 - **P3.1** — the suggester has never once been run on a real windshield photo,
   which P3 flagged as the first thing to fix. **There are now 77 of them.**
   This is the cheapest honest test in the arc, and P4a.1 composes with it:
@@ -1601,7 +1666,7 @@ and did not move the count.
 |---|---|
 | **Goal** | Train and evaluate a repairable-vs-not classifier on the exported bundle. |
 | **Size** | L |
-| **Depends on** | P4a's export, and **P5** — not merely "data", and not merely time. The minority class stands at **0** and accrues at **0/month**; see §The pause. `export_photo_dataset --stats-only` is the check; it prints the balance and refuses to flatter it. |
+| **Depends on** | P4a's export, and **a negative class from somewhere** — not merely "data", and not merely time. Two possible sources: **P5** (held open, 2026-09-01) or **The Glass Guy entering replacement jobs** (likely as of 2026-09-01, and needs no code). The minority class stands at **0** and accrues at **0/month**; see §The pause. `export_photo_dataset --stats-only` is the check; it prints the balance and refuses to flatter it. |
 | **Why it matters** | The whole point of the arc. |
 | **Verified current state** | The export exists, is anonymised, tenant-scoped and reproducible from metadata. Labels come from `services/photo_dataset.py`. Label strength is recorded (`confirmed_by_human`) and unconfirmed suggestions are excluded by default. |
 | **Considerations** | Class imbalance is the live risk, not model choice: techs photograph what they already know is repairable, and windshield replacements are rarer than repairs. Read the balance before writing a line of training code. Rows carrying both a `suggested_*` point and a human-confirmed mark are the training pairs for a *learned* detector, and their correction distances are also the honest answer to whether P3's saliency suggester is worth keeping at all. Train outside this codebase; the app's job is the export and, later, serving a verdict. |
@@ -1632,4 +1697,5 @@ and did not move the count.
 | 2026-08-27 | **P6.1 executed — the arc's code is finished.** Unmarked photos are now aimed at the measured (41%, 61%) instead of dead centre, on both surfaces P6 wired. `BLIND_FOCUS_POSITION` is authored once in `photo_crops.py` and copied into two stylesheets that cannot import Python (the portal's Tailwind build, the standalone invoice page); `tests/test_photo_blind_focus.py` fails if any copy drifts, and asserts the rule survived the Tailwind purge into the committed `app.css`. **Caught a bug the spec would have shipped:** the invoice rule was specified for `.photo-grid img`, which also renders the *after* photo — aiming the blind crop there would frame the resin blemish instead of the fix, so a `reframe` flag now excludes it. Two tests that passed while describing behaviour that was no longer true were renamed and re-pointed. **Everything buildable in this arc is now built; what remains is P5, which is Drake's decision, and a deploy.** |
 | 2026-08-27 | **The arc reopens: P6.2 added.** Asked how tap-to-crop justifies itself to a shop that is not ours — the modal explains what to do but never why, and shows no proof — Drake picked the **before/after pair on the invoice** from the proposed options. The "natural ending" note is revised: the customer-facing half has one more session in it. The framing decision (after photo stays unzoomed in v1; matched framing only ever from the after photo's own tap) and the data census (how many jobs have both photos) are written into the spec. P5/P4b remain exactly where they were: a decision, then a gate. |
 | 2026-08-31 | **P6.2 executed — the arc's code is finished, again.** A job with both photos is now one exhibit on the public invoice page: two labelled shots side by side, captioned once, framed on the tap (or on P6.1's measured default) with the after photo still deliberately unzoomed. Replacements get their own language. **The census the spec asked for came back the opposite way round:** 76 of 82 photographed repairs already have both photos (20 of 47 invoices carry a pair, exactly 1 has a before and no after), so **P6.3 — prompting for the after photo — should not be built**; the constraint is jobs with no photos at all, not missing after shots. Landed as #236, squash `fb4f8b98`, **carrying #234 (P6.1)**, which was closed as superseded. |
+| 2026-09-01 | **IT SHIPPED, and the arc's purpose is finally being served.** The deploy this document called its highest-value action for five days happened on 2026-08-31 23:46 UTC: prod runs `966a31da` off `main`, with `fb4f8b98` (P6.1+P6.2) verified *inside the deployed commit* by ancestry and `object-position:41% 61%` verified in the stylesheet production actually serves. `migrate` was the predicted no-op. **20 invoices now carry a job whose damage photo is framed on the break a technician tapped** (62 line items, 75 marked repairs, counted live). Census re-run: 78 crops, `repairable=73`, **`not_repairable=0`** — unchanged where it matters. **Drake's calls, asked directly:** P5 and P4b are **held as `TODO`**, neither built nor dropped — ask again, don't decide for him; and **The Glass Guy starting to enter jobs is *likely***, which would supply the negative class with no code at all, so §The pause's second way out is now live rather than a dead end. Also recorded: the `--stats-only` line about no machine suggestions on confirmed rows is permanent and by design (the backlog was marked cold on purpose), not evidence that P3.1 never ran. |
 | 2026-09-01 | **Doc brought current after the merges.** P6.1 and P6.2 are on `main` (#236 = `fb4f8b98`; #234 closed as superseded), so the rows that named their branches, the START HERE checklist and the "what is left" line all said the arc had code to write when it does not. **The only open item that is not a decision is the deploy** — production has run `d88f70d5` since before P6, 23+ commits back, and the migration delta is **zero**, so it is code-only. Also recorded: UI_MAGIC **S17 (#233) moved the Tailwind source** to `assets/css/input.css`; that session correctly re-pointed `tests/test_photo_blind_focus.py` and preserved `.photo-blind-focus` in both the source and the committed `app.css`, so the three-copy drift guard still holds. |
