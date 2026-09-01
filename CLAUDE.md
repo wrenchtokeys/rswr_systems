@@ -169,27 +169,56 @@ There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are ven
 Use `{% comment %}…{% endcomment %}`.
 
 ### Running Tests
+
+**Always pass `--parallel`.** The suite is 4,693 tests and takes **80 minutes**
+single-process; at `--parallel 8` it takes **20**. This works only because
+`tblib` is in `requirements.txt` — without it Django's parallel runner cannot
+pickle a failing test's traceback and the whole run dies printing nothing (see
+the comment on that pin). If you see `TypeError: cannot pickle 'traceback'
+object`, your venv is stale: `pip install -r requirements.txt`.
+
 ```bash
-# Test database credentials
-export LOCAL_DATABASE_URL="postgresql://amelia_test:AmeliaTest2026!@localhost:5432/rs_systems_test"
 export DJANGO_SETTINGS_MODULE=rs_systems.settings.development
 
-# Full suite (~331 tests, ~7 min)
-python manage.py test tests/ -v 1
+# Full suite — ~20 min, ~90 pre-existing failures (see below)
+python manage.py test --parallel 8 tests 2>&1 \
+  | grep -E "^(FAIL|ERROR): |^Ran |^FAILED|^OK"
 
 # Fast smoke tests (use these during dev)
-python manage.py test tests.test_primary_contact tests.test_e2e_today -v 2
+python manage.py test --parallel 4 tests.test_primary_contact tests.test_e2e_today
 
-# Specific test file
+# Specific test file / single test
 python manage.py test tests.test_step5_nav
-python manage.py test tests.comprehensive.test_user_flow
-python manage.py test tests.comprehensive.test_rewards
-
-# Run a single test
 python manage.py test tests.test_e2e_today.SubscriptionEnforcementTests.test_trial_user_can_access_dashboard
 ```
 
-Test files live in `tests/` (top-level), not `apps/*/tests.py`. Some app-level test files exist but the canonical suite is under `tests/`.
+**Pipe every full run through that `grep`.** Assertion messages here dump whole
+templates; a raw run overflows the tool-result buffer and silently keeps only
+the tail.
+
+**~90 tests are red on a clean `main`** — compare, never count. The current
+sorted baseline is committed at `docs/strategy/test_baseline_main.txt`; diff
+your run's `FAIL:`/`ERROR:` lines against it and only `comm -23` output
+(regressions) means anything. Regenerating it costs 20 minutes, not the hour
+the old note assumed. Full arc for fixing this: `docs/strategy/TEST_SUITE_SESSIONS.md`.
+
+**Multi-module runs must `export` the variable and run under `bash -c`.** zsh
+does not word-split an unquoted `$MODULES`, and without `export` the variable
+never reaches the subshell — `manage.py test` then silently runs the **entire
+suite** instead of your seven modules. It does not error; it looks exactly like
+a hang, and it has cost 45 minutes before.
+
+**No Postgres creds are needed.** Neither `USE_AWS_DB` nor `LOCAL_DATABASE_URL`
+set means SQLite (`rs_systems/settings/development.py`), which is what tests run
+on locally. The `amelia_test` Postgres URL this section used to export does not
+authenticate on any current machine — only export a database URL if you
+specifically want to test against Postgres.
+
+Test files live in `tests/` (top-level). **~495 test methods also live outside
+it** — `core/tests/`, `apps/billing/tests/`, and five `apps/*/tests.py` — and
+`manage.py test tests` does not run them. `manage.py test` with no argument
+does. The canonical suite is `tests/`, but don't mistake a green `tests` run
+for a green repo.
 
 ### Maintenance Commands
 ```bash
