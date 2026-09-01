@@ -805,7 +805,7 @@ on its own and nothing else on the page submits with it.
 </div>
 
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function openImageModal(imageUrl, title) {
     document.getElementById('modalImage').src = imageUrl;
     document.getElementById('imageModalLabel').textContent = title;

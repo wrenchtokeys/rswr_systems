@@ -436,7 +436,7 @@
     </div>
 </div>
 
-<style>
+<style nonce="{{ csp_nonce }}">
     /* Radio pill toggle: hide the input, style the sibling span */
     #type-toggle input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
     #type-toggle input[type="radio"]:checked + .type-pill {
@@ -445,7 +445,7 @@
     /* Customer mode toggle (existing vs new individual) */
     .cust-mode-btn.active { background-color: rgb(var(--brand-600)); border-color: rgb(var(--brand-600)); color: #fff; }
 </style>
-<script>
+<script nonce="{{ csp_nonce }}">
 // Shared hooks so the autosave restore below can put the form back into a
 // coherent state — restoring raw field values alone would leave the type
 // toggle, customer mode, and damage marker out of sync with the data.
@@ -805,7 +805,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 {% if shop_offers_repairs %}
 <!-- Windshield damage location diagram (same behavior as the full repair form) -->
-<script>
+<script nonce="{{ csp_nonce }}">
 (function() {
     const diagram = document.getElementById('windshieldDiagram');
     const marker = document.getElementById('damageMarker');
@@ -889,7 +889,7 @@ were never touched. The container above carries the input id and the endpoint.
 <!-- Draft autosave: a dropped connection or a backgrounded tab mid-job used to
      lose everything typed. Photos are excluded — file inputs can't be serialized. -->
 <script src="{% static 'js/form_autosave.js' %}"></script>
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof FormAutosave === 'undefined') return;
 
@@ -917,7 +917,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 {% if user_can_invoices %}
 {% include "includes/invoice_send_confirm_modal.html" %}
-<script>
+<script nonce="{{ csp_nonce }}">
 // "Save & Send Invoice" confirms before sending: show who the invoice email
 // goes to (from the selected customer) instead of firing it blind.
 document.addEventListener('DOMContentLoaded', function() {

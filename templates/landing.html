@@ -18,7 +18,7 @@
     <meta name="twitter:description" content="Track repairs, generate invoices, manage fleet customers. Built by a shop owner for shop owners.">
     <meta name="twitter:site" content="@wrenchtokeys">
     <!-- Structured Data -->
-    <script type="application/ld+json">
+    <script nonce="{{ csp_nonce }}" type="application/ld+json">
     {
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
@@ -36,7 +36,7 @@
         }
     }
     </script>
-    <style>
+    <style nonce="{{ csp_nonce }}">
         body { font-family: 'Inter', sans-serif; }
     </style>
 </head>

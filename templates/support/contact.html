@@ -79,7 +79,7 @@
     {% endif %}
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 (function () {
     var page = document.getElementById('contact-page');
     if (page && document.referrer) page.value = document.referrer.slice(0, 500);

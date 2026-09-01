@@ -47,6 +47,9 @@ MIDDLEWARE = [
     'common.health_check_middleware.HealthCheckMiddleware',  # Must be first to bypass host validation
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    # After WhiteNoise so static responses never reach it; before everything
+    # that renders a template, so request.csp_nonce always exists (UI_MAGIC S18).
+    'common.csp_middleware.ContentSecurityPolicyMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -76,6 +79,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'common.context_processors.portal_access',
                 'common.context_processors.customer_loyalty',
+                'common.context_processors.csp_nonce',
             ],
         },
     },
@@ -326,3 +330,25 @@ TRIAL_GRACE_DAYS = int(os.environ.get('TRIAL_GRACE_DAYS', '14'))
 INVOICE_DEFAULT_DUE_DAYS = 30
 
 # Celery removed — notifications are synchronous; batch billing runs via management commands.
+
+# =========================================
+# CONTENT SECURITY POLICY (UI_MAGIC S18)
+# =========================================
+#
+# Phase 1 removed every third-party asset host and S17 removed the last inline
+# @font-face, so the allowlist is now `self` plus Cloudflare Turnstile. See
+# common/csp_middleware.py for the policy itself.
+#
+# REPORT-ONLY IS NOT A PLACEHOLDER — it is the correct state until the ~173
+# inline `on*` handlers are gone. CLAUDE.md requires optimistic rows to use
+# inline onclick (Optimistic.rollback restores innerHTML and drops bound
+# listeners), and a nonce cannot cover an inline handler. Flipping this to
+# False before S18b lands breaks every optimistic row in the app.
+CSP_ENABLED = os.environ.get('CSP_ENABLED', 'True').lower() == 'true'
+CSP_REPORT_ONLY = os.environ.get('CSP_REPORT_ONLY', 'True').lower() == 'true'
+CSP_REPORT_URI = os.environ.get('CSP_REPORT_URI', '/csp-report/')
+
+# Django's admin ships its own inline scripts and is not ours to make
+# CSP-clean; leaving it in would drown the report in violations we will never
+# act on.
+CSP_EXCLUDE_PREFIXES = ('/admin/',)

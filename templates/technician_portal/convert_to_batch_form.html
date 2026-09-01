@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .modal {
         display: none;
         position: fixed;
@@ -174,7 +174,7 @@
 </div>
 
 <script src="{% static 'js/viscosity_suggestion.js' %}"></script>
-<script>
+<script nonce="{{ csp_nonce }}">
 // Per-break marker redraw callbacks, keyed by break index. Populated by
 // initDiagram() as cards are built; used to repaint markers after a draft restore.
 const markerSyncers = {};
@@ -454,7 +454,7 @@ document.getElementById('submitBtn').disabled = true;
      the per-break fields only exist after `additional_breaks` fires its change
      handler — which the restore below triggers before filling them in. -->
 <script src="{% static 'js/form_autosave.js' %}"></script>
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof FormAutosave === 'undefined') return;
 

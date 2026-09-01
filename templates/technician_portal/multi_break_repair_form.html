@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .modal {
         display: none;
         position: fixed;

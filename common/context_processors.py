@@ -142,3 +142,14 @@ def customer_loyalty(request):
     except Exception:
         logger.debug('customer_loyalty context processor skipped', exc_info=True)
         return {}
+
+
+def csp_nonce(request):
+    """Expose this request's CSP nonce as `{{ csp_nonce }}`.
+
+    ContentSecurityPolicyMiddleware sets `request.csp_nonce` on the way in, so
+    it is there for every template including the 404/500 handlers. The default
+    is empty rather than absent: an inline block that renders `nonce=""` is
+    reported under report-only, which is the outcome we want to hear about.
+    """
+    return {'csp_nonce': getattr(request, 'csp_nonce', '')}

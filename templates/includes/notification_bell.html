@@ -72,7 +72,7 @@ Two rules this file exists to hold:
 </div>
 
 {% include "components/notification_row_script.html" %}
-<script>
+<script nonce="{{ csp_nonce }}">
 (function() {
     const NOTIFY_BASE = '{% if bell_role == "customer" %}/app/notifications{% else %}/tech/notifications{% endif %}';
     const trigger = document.getElementById('notificationDropdown');

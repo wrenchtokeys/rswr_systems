@@ -2,7 +2,7 @@
 {% load ui %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
     /* Card tap target */
     .repair-card {
         transition: transform 0.1s ease, box-shadow 0.15s ease;
@@ -592,7 +592,7 @@
     {% endif %}
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // Toggle filter panel
 function toggleFilters() {
     const panel = document.getElementById('filter-panel');

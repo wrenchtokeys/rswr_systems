@@ -1,7 +1,7 @@
 {% extends "base_app.html" %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .form-check-input:checked {
         background-color: #16a34a;
         border-color: #16a34a;
@@ -309,7 +309,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // Show/hide quiet hours settings
 document.getElementById('{{ form.quiet_hours_enabled.id_for_label }}').addEventListener('change', function() {
     document.getElementById('quiet-hours-settings').style.display = this.checked ? 'block' : 'none';

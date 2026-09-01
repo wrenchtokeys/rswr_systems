@@ -3,7 +3,7 @@ Behaviour for a notification history page. Identical for both portals except the
 endpoint prefix, so it lives here rather than as two copies that drift.
 Params: notify_base (e.g. "/tech/notifications" or "/app/notifications").
 {% endcomment %}
-<script>
+<script nonce="{{ csp_nonce }}">
 (function() {
     const NOTIFY_BASE = '{{ notify_base }}';
     const list = document.getElementById('notification-page-list');

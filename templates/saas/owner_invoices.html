@@ -642,7 +642,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 // === Send Reminder (from invoice list) ===
 async function sendReminderAjax(invoiceId, invoiceNumber, customerName) {
     const ok = await UI.confirm({

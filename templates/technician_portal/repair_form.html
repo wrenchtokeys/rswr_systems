@@ -924,7 +924,7 @@
 <script src="{% static 'js/photo_tap_crop.js' %}"></script>
 
 <!-- Customer type field toggle -->
-<script>
+<script nonce="{{ csp_nonce }}">
 (function() {
     // Customer type data from Django view
     const customerTypes = {{ customer_types_json|safe }};
@@ -1027,7 +1027,7 @@
 </script>
 
 <!-- Windshield damage location diagram -->
-<script>
+<script nonce="{{ csp_nonce }}">
 (function() {
     const diagram = document.getElementById('windshieldDiagram');
     const marker = document.getElementById('damageMarker');

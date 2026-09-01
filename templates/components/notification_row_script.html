@@ -8,7 +8,7 @@ its "Unread." sr-only text after being read is a row that lies to a screen reade
 while looking correct on screen, which is exactly the kind of drift three copies
 of this function would produce.
 {% endcomment %}
-<script>
+<script nonce="{{ csp_nonce }}">
 window.NotificationRow = window.NotificationRow || {
     markRead: function(row) {
         row.dataset.read = '1';

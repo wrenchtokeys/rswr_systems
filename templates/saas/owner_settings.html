@@ -1321,7 +1321,7 @@
             </div>
         </form>
     </div>
-    <script>
+    <script nonce="{{ csp_nonce }}">
     (function() {
         var prefix = document.getElementById('invoice-prefix-input');
         var next = document.getElementById('invoice-next-input');
@@ -1884,7 +1884,7 @@ Thank you,
 
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 // Tab switching is handled by static/js/ui.js ([data-tabs]/[data-tab]/[data-tab-panel]).
 
 // ---- Tax rate helpers ----

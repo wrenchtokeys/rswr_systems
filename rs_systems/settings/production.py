@@ -245,6 +245,13 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        # CSP violation reports (UI_MAGIC S18). Its own logger so the
+        # report-only run can be read — and silenced — on its own.
+        'csp': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
         'common': {
             'handlers': ['console'],
             'level': 'INFO',

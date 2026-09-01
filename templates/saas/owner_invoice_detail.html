@@ -438,7 +438,7 @@
                 </div>
             </div>
         </div>
-        <script>
+        <script nonce="{{ csp_nonce }}">
         function copyPayLink() {
             const input = document.getElementById('public-pay-link');
             const btn = document.getElementById('copy-pay-link-btn');
@@ -735,7 +735,7 @@ Best regards,
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function openReminderModal() {
     document.getElementById('reminder-modal').classList.remove('hidden');
     document.body.classList.add('overflow-hidden');
@@ -895,7 +895,7 @@ document.addEventListener('keydown', function(e) {
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 const INVOICE_ID = {{ invoice.id }};
 
 function _csrf() {
@@ -1147,7 +1147,7 @@ document.addEventListener('keydown', function(e) {
 {% endif %}
 
 {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
-<script>
+<script nonce="{{ csp_nonce }}">
 async function voidInvoice() {
     const ok = await UI.confirm({
         title: 'Void invoice',
@@ -1175,7 +1175,7 @@ async function voidInvoice() {
 }
 </script>
 {% endif %}
-<script>
+<script nonce="{{ csp_nonce }}">
 async function deleteInvoice() {
     const ok = await UI.confirm({
         title: 'Delete invoice',

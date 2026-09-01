@@ -3,7 +3,7 @@
 <head>
     <title>Statement of Account — {{ customer.name }} | {{ tenant.name }}</title>
     {% include "includes/head_assets.html" %}
-    <style>
+    <style nonce="{{ csp_nonce }}">
         @media print {
             .no-print { display: none !important; }
             body { font-size: 12px; }

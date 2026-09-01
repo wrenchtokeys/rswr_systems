@@ -4,7 +4,7 @@
 {% block title %}Account Settings | Customer Portal{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .tooltip-trigger { position: relative; display: inline-flex; align-items: center; cursor: help; color: #6b7280; transition: color 0.2s; }
     .tooltip-trigger:hover { color: #4299E1; }
     .tooltip-content {
@@ -384,7 +384,7 @@
 </div>
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     // Tab switching
     const tabs = document.querySelectorAll('.settings-tab');

@@ -516,7 +516,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 // ─── Reward Option Modal ────────────────────────────────────────────────────
 const OPTION_CREATE_URL = "{% url 'owner_reward_option_create' %}";
 
