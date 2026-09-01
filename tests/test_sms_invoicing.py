@@ -73,6 +73,43 @@ class SettingsToggleTests(TestCase):
         self.assertFalse(BillingConfig.get_for_tenant(tenant).sms_invoicing_enabled)
 
 
+class PlatformDarkMessagingTests(TestCase):
+    """While the platform's toll-free number is pending, the settings UI must
+    not claim texting works — the toggle-on message and the pending banner
+    both say the option will appear once the number is live."""
+
+    def setUp(self):
+        result = make_tenant(self.client)
+        self.tenant = result['tenant']
+
+    def _toggle_on(self):
+        return self.client.post(
+            '/owner/settings/', {'form_type': 'toggle_sms_invoicing'}, follow=True)
+
+    @override_settings(SMS_ENABLED=True, SMS_ORIGINATION_IDENTITY='')
+    def test_toggle_on_message_is_honest_while_platform_dark(self):
+        response = self._toggle_on()
+        text = ' '.join(str(m) for m in response.context['messages'])
+        self.assertIn("isn't live yet", text)
+        self.assertNotIn('now offers', text)
+
+    @override_settings(**SMS_SETTINGS)
+    def test_toggle_on_message_when_platform_ready(self):
+        response = self._toggle_on()
+        text = ' '.join(str(m) for m in response.context['messages'])
+        self.assertIn('now offers', text)
+
+    @override_settings(SMS_ENABLED=True, SMS_ORIGINATION_IDENTITY='')
+    def test_pending_banner_shows_even_with_toggle_off(self):
+        response = self.client.get('/owner/settings/?tab=billing')
+        self.assertContains(response, "texting number isn't live yet")
+
+    @override_settings(**SMS_SETTINGS)
+    def test_no_pending_banner_when_platform_ready(self):
+        response = self.client.get('/owner/settings/?tab=billing')
+        self.assertNotContains(response, "texting number isn't live yet")
+
+
 @override_settings(**SMS_SETTINGS)
 class SendSmsServiceTests(SmsInvoicingBase):
     @patch('core.services.sms_service.SMSService._send_via_aws')

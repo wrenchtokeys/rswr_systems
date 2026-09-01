@@ -1648,7 +1648,9 @@ def replacement_complete_and_invoice(request, pk):
 
     try:
         invoice, created, result, excluded = invoice_and_send(
-            replacement, tenant, copy_to_email=_copy_to_email(request),
+            replacement, tenant,
+            submitted_email=request.POST.get('email', ''),
+            copy_to_email=_copy_to_email(request),
             send_sms=bool(request.POST.get('send_sms')))
     except ValueError as e:
         messages.error(request, str(e))
@@ -2164,10 +2166,19 @@ def owner_settings_view(request):
                 config.sms_invoicing_enabled = not config.sms_invoicing_enabled
                 config.save(update_fields=['sms_invoicing_enabled'])
                 if config.sms_invoicing_enabled:
-                    messages.success(
-                        request,
-                        'Invoice texting enabled. Sending an invoice now offers '
-                        '"Also text it" for customers with a mobile number.')
+                    if _sms_platform_ready():
+                        messages.success(
+                            request,
+                            'Invoice texting enabled. Sending an invoice now offers '
+                            '"Also text it" for customers with a mobile number.')
+                    else:
+                        # Don't claim the option exists while the platform's
+                        # toll-free number is still pending carrier approval.
+                        messages.success(
+                            request,
+                            "Invoice texting enabled for your shop. The platform's "
+                            "texting number isn't live yet — the \"Also text it\" "
+                            'option will appear automatically once it is.')
                 else:
                     messages.success(request, 'Invoice texting disabled.')
             except Exception as e:

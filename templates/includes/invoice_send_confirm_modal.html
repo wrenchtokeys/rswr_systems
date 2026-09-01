@@ -35,9 +35,11 @@ appended when "Email me a copy" is checked.
                 <div id="sim-noemail" class="hidden bg-amber-50 border border-amber-200 rounded-lg p-3">
                     <p class="text-sm text-amber-800">
                         {% icon 'exclamation-circle' class="mr-1" %}
-                        No email on file for this customer. The invoice will be saved as a
-                        draft and you can add an email on the next screen.
+                        No email on file for this customer. Enter one to send the invoice —
+                        it will be saved to the customer. Leave it blank to save a draft instead.
                     </p>
+                    <input type="email" id="sim-new-email" placeholder="customer@email.com"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mt-2 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
                 </div>
             </div>
             {% if request.user.email %}
@@ -90,10 +92,23 @@ appended when "Email me a copy" is checked.
             document.getElementById('sim-sms-phone').textContent = phone;
             document.getElementById('sim-sms').checked = false;
         }
-        document.getElementById('sim-confirm-label').textContent =
-            email ? 'Confirm & Send' : 'Save as Draft';
+        const newEmail = document.getElementById('sim-new-email');
+        if (newEmail) newEmail.value = '';
+        updateConfirmLabel();
         modal.classList.remove('hidden');
     }
+
+    // "Save as Draft" until an email exists (on file or just typed) — then
+    // the confirm really sends, and a typed address is saved to the customer.
+    function updateConfirmLabel() {
+        const noEmailOnFile = !document.getElementById('sim-noemail').classList.contains('hidden');
+        const input = document.getElementById('sim-new-email');
+        const typed = input ? input.value.trim() : '';
+        document.getElementById('sim-confirm-label').textContent =
+            !noEmailOnFile ? 'Confirm & Send' : (typed ? 'Save Email & Send' : 'Save as Draft');
+    }
+    const newEmailInput = document.getElementById('sim-new-email');
+    if (newEmailInput) newEmailInput.addEventListener('input', updateConfirmLabel);
 
     function close() { modal.classList.add('hidden'); pending = null; }
 
@@ -123,6 +138,20 @@ appended when "Email me a copy" is checked.
             const inp = document.createElement('input');
             inp.type = 'hidden'; inp.name = 'send_sms'; inp.value = '1';
             form.appendChild(inp);
+        }
+        // Email typed for a customer with none on file — the server validates
+        // it, saves it onto the customer, and sends. Set (don't skip) so a
+        // reopened modal can't submit a stale value.
+        const newEmail = document.getElementById('sim-new-email');
+        if (newEmail && !document.getElementById('sim-noemail').classList.contains('hidden')
+            && newEmail.value.trim()) {
+            let inp = form.querySelector('input[name="email"]');
+            if (!inp) {
+                inp = document.createElement('input');
+                inp.type = 'hidden'; inp.name = 'email';
+                form.appendChild(inp);
+            }
+            inp.value = newEmail.value.trim();
         }
         if (pending.submitName && !form.querySelector('input[name="' + pending.submitName + '"]')) {
             const btn = document.createElement('input');
