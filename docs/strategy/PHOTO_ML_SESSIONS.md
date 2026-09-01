@@ -56,8 +56,8 @@ without re-running the exploration that produced this doc.
 | P6 · Show the close-up | Put the marked point on surfaces customers already see — and fix three bugs there | M | DONE (PR #222, merged 2026-08-27) |
 | P4a.1 · Backfill | Mark the break on the photos we already have — one queue, not 77 jobs | S | DONE (PR #224) — **and RUN: 1 → 73 confirmed crops, 2026-08-27** |
 | P3.1 · Validate | Run the suggester against the 77 real windshield photos we now have | S | DONE (2026-08-27) — **it wins on real photos; but the (41,61) centroid beats it for free** |
-| P6.1 · Free win | Default unmarked photos to (41%, 61%) instead of dead centre | XS | DONE (2026-08-27, branch `feat/photoml-p61-blind-crop-default`) — halves the framing error on every photo nobody marked, forever |
-| P6.2 · Proof of work | Before/after pair on the public invoice page — one exhibit, not two tiles | S | DONE (2026-08-31, branch `docs/photoml-p62-before-after-pair`) — **and the census says the pairs are already there: 76 of 82 photographed jobs have both** |
+| P6.1 · Free win | Default unmarked photos to (41%, 61%) instead of dead centre | XS | **DONE and ON `main`** — merged 2026-08-31 *inside* #236; #234 closed as superseded. Halves the framing error on every photo nobody marked, forever |
+| P6.2 · Proof of work | Before/after pair on the public invoice page — one exhibit, not two tiles | S | **DONE and ON `main`** — PR #236, squash `fb4f8b98`, 2026-08-31. **The census says the pairs are already there: 76 of 82 photographed jobs have both** |
 | P5 · Negative class | Record the jobs we turn away — the only source of "not repairable" | M | TODO — **this is the actual gate on P4b** |
 | P4b · Payoff | Repairability classifier | L | BLOCKED on **P5** — see P4b and §The pause |
 
@@ -158,15 +158,15 @@ four of this saga was not a duplicate migration at all — it was deploying the
 wrong commit. The CI added in #231 cannot catch this, because CI checks
 branches and this was a deploy-time choice.
 
-**START HERE (state as of 2026-08-27, end of day):**
+**START HERE (state as of 2026-09-01):**
 
 | | |
 |---|---|
 | ~~#231~~ | **Merged.** Restored the `0061` merge migration and added the repo's first CI workflow (`.github/workflows/migration-graph.yml`). |
 | ~~#232~~ | **Merged.** P3.1's results. |
-| ~~P6.1~~ | **Done** on `feat/photoml-p61-blind-crop-default` — the measured `41% 61%` default for unmarked photos. See its section. |
-| **→ DEPLOY `main`** | **The one thing standing between all of this and a customer.** `main` is correct and migrates cleanly; production is still on a feature-branch commit from before P6. Nothing in this arc is visible to anyone until this happens. |
-| ~~Then~~ | ~~P6.2 — the before/after pair~~ **Done (2026-08-31).** Like P6 and P6.1 it is in the repository and reaches nobody until `main` deploys. |
+| ~~P6.1~~ | **Merged** (inside #236; #234 closed as superseded) — the measured `41% 61%` default for unmarked photos. See its section. |
+| **→ DEPLOY `main`** | **The one thing standing between all of this and a customer, and now the ONLY open item in the arc that is not a decision.** Production has run `d88f70d5` since before P6 and is **23+ commits behind**. Verified 2026-08-31: **zero migration files differ** between that commit and `main`, so the deploy is code-only and `migrate` is a no-op. Nothing in this arc is visible to anyone until this happens. |
+| ~~P6.2~~ | **Merged** (#236, squash `fb4f8b98`) — the before/after pair. Like P6 and P6.1 it is in the repository and reaches nobody until `main` deploys. |
 | **Then** | **P5 is a decision, not a session** — see §The pause before building toward P4b. **Ask Drake whether the classifier is still wanted**; if it is not, close P5 and P4b as DROPPED and the arc ends here, which would be a good ending. |
 
 **How to deploy this, exactly** — the 19:24 failure was caused by getting
@@ -180,10 +180,10 @@ curl -I https://rssystems.io/health/
 ```
 
 
-**What is left, in one line:** deploy `main`, build **P6.2** (the
-before/after pair), then P5 — which is still the only thing that unblocks the
-classifier, and is still gated on the business turning a job away rather than
-on any code. See §The pause for the census.
+**What is left, in one line:** **deploy `main`** — every code session in the
+arc is now written, merged and green — then P5, which is still the only thing
+that unblocks the classifier, and is still gated on the business turning a job
+away rather than on any code. See §The pause for the census.
 
 **Verifying a merge in this arc.** Every PR here squashes, so the recipe an
 earlier session wrote — `git log origin/main..origin/<branch>` should be
@@ -1455,14 +1455,21 @@ photographs the job) and not one a completion prompt fixes either.
   `alt` ("Unit #4521 — Before"), because a shared caption tells a screen
   reader nothing about which image is which.
 
-**Depended on P6.1, which had not merged.** `feat/photoml-p61-blind-crop-default`
-(#234) was still open, and P6.2 rewrites the exact lines it touches — so this
-branch **merges #234 rather than racing it**. Merging this PR lands both.
-Given this arc's history with stacked branches (#218 into a consumed base,
-three rounds of duplicate migrations), that is deliberate: **do not
-squash-merge #234 separately first**, or this branch will conflict on every
-file the two share. There is no migration in either, so the graph is not at
-risk this time.
+**Depended on P6.1, which had not merged — and this is how it was handled.**
+`feat/photoml-p61-blind-crop-default` (#234) was still open when P6.2 was
+built, and P6.2 rewrites the exact lines it touches, so this branch **merged
+#234 into itself rather than racing it**. Given this arc's history with
+stacked branches (#218 into a consumed base, three rounds of duplicate
+migrations), squash-merging the two separately would have conflicted on every
+shared file.
+
+**Outcome, 2026-08-31:** #236 merged as squash `fb4f8b98` carrying both, and
+**#234 was closed as superseded** — nothing lost. Both were verified on `main`
+*by content*, not by commit log (squashing rewrites SHAs; see "Verifying a
+merge in this arc"): `BLIND_FOCUS_POSITION`, `.photo-blind-focus` in the
+Tailwind source, the compiled `app.css` and the portal template, plus
+`PAIR_LANGUAGE` and `.photo-pair-shot`. 52 tests green against a worktree
+checked out at `main` itself. Neither PR carried a migration.
 
 
 # P5 · Record the jobs we turn away — TODO · **needs Drake's call before it is a session**
@@ -1573,8 +1580,9 @@ and did not move the count.
   nobody marked, past and future, is now aimed at (41%, 61%) instead of dead
   centre, at no computational cost. **In the repository**; like P6, it reaches
   customers only on the next deploy of `main`.
-- **Deploy `main`.** P6 and P6.1 are both sitting in the repository doing
-  nothing for anybody. This is the highest-value action in the arc.
+- **Deploy `main`.** P6, P6.1 **and P6.2** are all sitting in the repository
+  doing nothing for anybody. This is the highest-value action in the arc, and
+  since 2026-08-31 it is the only one left that is not a decision.
 - **P5 is the only thing left that is not code**, and it is a decision rather
   than a session: see below.
 - **P3.1** — the suggester has never once been run on a real windshield photo,
@@ -1623,4 +1631,5 @@ and did not move the count.
 | 2026-08-27 | **The deploy failed, and the code was not at fault.** `eb deploy` was run from the feature branch instead of `main`. `.elasticbeanstalk/config.yml` sets `sc: git`, so the EB CLI ships **the current branch's HEAD commit** — that branch predated #231, so the already-fixed duplicate-`0060` graph went to production and `01_migrate` refused to run. Round four of the migration saga was not a duplicate migration at all; it was deploying the wrong commit, which no CI check can catch. Nothing was damaged — `migrate` fails at graph-load time, so nothing partially applied and the running version kept serving 200. **`git checkout main && git pull` before every `eb deploy`.** |
 | 2026-08-27 | **P6.1 executed — the arc's code is finished.** Unmarked photos are now aimed at the measured (41%, 61%) instead of dead centre, on both surfaces P6 wired. `BLIND_FOCUS_POSITION` is authored once in `photo_crops.py` and copied into two stylesheets that cannot import Python (the portal's Tailwind build, the standalone invoice page); `tests/test_photo_blind_focus.py` fails if any copy drifts, and asserts the rule survived the Tailwind purge into the committed `app.css`. **Caught a bug the spec would have shipped:** the invoice rule was specified for `.photo-grid img`, which also renders the *after* photo — aiming the blind crop there would frame the resin blemish instead of the fix, so a `reframe` flag now excludes it. Two tests that passed while describing behaviour that was no longer true were renamed and re-pointed. **Everything buildable in this arc is now built; what remains is P5, which is Drake's decision, and a deploy.** |
 | 2026-08-27 | **The arc reopens: P6.2 added.** Asked how tap-to-crop justifies itself to a shop that is not ours — the modal explains what to do but never why, and shows no proof — Drake picked the **before/after pair on the invoice** from the proposed options. The "natural ending" note is revised: the customer-facing half has one more session in it. The framing decision (after photo stays unzoomed in v1; matched framing only ever from the after photo's own tap) and the data census (how many jobs have both photos) are written into the spec. P5/P4b remain exactly where they were: a decision, then a gate. |
-| 2026-08-31 | **P6.2 executed — the arc's code is finished, again.** A job with both photos is now one exhibit on the public invoice page: two labelled shots side by side, captioned once, framed on the tap (or on P6.1's measured default) with the after photo still deliberately unzoomed. Replacements get their own language. **The census the spec asked for came back the opposite way round:** 76 of 82 photographed repairs already have both photos (20 of 47 invoices carry a pair, exactly 1 has a before and no after), so **P6.3 — prompting for the after photo — should not be built**; the constraint is jobs with no photos at all, not missing after shots. This branch **carries #234 (P6.1) by merge** because it rewrites the same lines; merging it lands both. |
+| 2026-08-31 | **P6.2 executed — the arc's code is finished, again.** A job with both photos is now one exhibit on the public invoice page: two labelled shots side by side, captioned once, framed on the tap (or on P6.1's measured default) with the after photo still deliberately unzoomed. Replacements get their own language. **The census the spec asked for came back the opposite way round:** 76 of 82 photographed repairs already have both photos (20 of 47 invoices carry a pair, exactly 1 has a before and no after), so **P6.3 — prompting for the after photo — should not be built**; the constraint is jobs with no photos at all, not missing after shots. Landed as #236, squash `fb4f8b98`, **carrying #234 (P6.1)**, which was closed as superseded. |
+| 2026-09-01 | **Doc brought current after the merges.** P6.1 and P6.2 are on `main` (#236 = `fb4f8b98`; #234 closed as superseded), so the rows that named their branches, the START HERE checklist and the "what is left" line all said the arc had code to write when it does not. **The only open item that is not a decision is the deploy** — production has run `d88f70d5` since before P6, 23+ commits back, and the migration delta is **zero**, so it is code-only. Also recorded: UI_MAGIC **S17 (#233) moved the Tailwind source** to `assets/css/input.css`; that session correctly re-pointed `tests/test_photo_blind_focus.py` and preserved `.photo-blind-focus` in both the source and the committed `app.css`, so the three-copy drift guard still holds. |
