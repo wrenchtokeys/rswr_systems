@@ -4,9 +4,11 @@ Job → invoice price synchronization.
 The invoice → job half lives in the owner line-item editor
 (apps/billing/views.py update_invoice_line_item): editing a job-linked line
 writes the new price back to the Repair/Replacement. This module is the
-other direction: when a job's price changes, its line on any live invoice
-follows, so the two sides can never drift apart again
-(sync_job_prices_from_invoices measures and back-fills historical drift).
+other direction: when a job's price or tax status changes (no_tax, the
+customer going tax-exempt), its line on any live invoice follows, so the
+two sides can never drift apart again (sync_job_prices_from_invoices
+measures and back-fills historical drift). The invoice's tax RATE stays
+frozen at creation; the sync only changes which lines it applies to.
 
 Paid and cancelled invoices are financial history and are never touched;
 RepairForm locks the job's price fields instead (see forms.py).
@@ -103,12 +105,16 @@ def create_charge_lines(invoice, service):
 
 
 def sync_lines_for_service(service):
-    """Update the service's line on every live invoice to match service.cost.
+    """Update the service's line on every live invoice to match the job.
 
-    A line already charging service.cost is left untouched (including its
-    unit_price/discount presentation); a stale line is rewritten to the
+    Price: a line already charging service.cost is left untouched (including
+    its unit_price/discount presentation); a stale line is rewritten to the
     simple form the line-item editor uses: unit_price = the price, no
-    discount. Returns the number of lines updated.
+    discount. Taxable status: the line's taxable flag follows the job's
+    no_tax flag and the customer's tax_exempt setting — the same expression
+    line creation uses — so marking a customer tax-free and re-saving the job
+    reaches its live invoice. The invoice's tax_rate stays frozen; only which
+    lines it applies to changes. Returns the number of lines updated.
     """
     from apps.billing.models import InvoiceLineItem
 
@@ -124,16 +130,30 @@ def sync_lines_for_service(service):
         .select_related('invoice')
     )
 
+    customer = getattr(service, 'customer', None)
+    desired_taxable = (
+        not getattr(service, 'no_tax', False)
+        and not (customer and customer.tax_exempt)
+    )
+
     synced = 0
     for line in lines:
         quantity = line.quantity or 1
         per_unit = (Decimal(line.amount) / quantity).quantize(Decimal('0.01'))
-        if per_unit == service.cost:
+        price_stale = per_unit != service.cost
+        taxable_stale = line.taxable != desired_taxable
+        if not price_stale and not taxable_stale:
             continue
-        line.unit_price = service.cost
-        line.discount = Decimal('0.00')
-        line.amount = service.cost * quantity
-        line.save(update_fields=['unit_price', 'discount', 'amount'])
+        update_fields = []
+        if price_stale:
+            line.unit_price = service.cost
+            line.discount = Decimal('0.00')
+            line.amount = service.cost * quantity
+            update_fields += ['unit_price', 'discount', 'amount']
+        if taxable_stale:
+            line.taxable = desired_taxable
+            update_fields.append('taxable')
+        line.save(update_fields=update_fields)
         recalculate_invoice_totals(line.invoice)
         synced += 1
     return synced

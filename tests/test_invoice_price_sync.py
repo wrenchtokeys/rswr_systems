@@ -125,3 +125,118 @@ class JobToInvoiceSyncTests(OwnerClientMixin, TestCase):
         form = RepairForm(instance=self.repair, user=self.user, tenant=self.tenant)
         self.assertIn('cost_override', form.fields)
         self.assertIsNone(form.price_locked_invoice)
+
+
+@override_settings(**TEST_OVERRIDES)
+class JobToInvoiceTaxSyncTests(OwnerClientMixin, TestCase):
+    """Taxable-status half of the job→invoice sync.
+
+    Marking a customer tax-exempt (or the job no_tax) and re-saving the job
+    must reach its line on a live invoice — the field alternative was
+    deleting the job and invoice and recreating both. The invoice's tax RATE
+    stays frozen at creation; only which lines it applies to changes.
+    """
+
+    def setUp(self):
+        self.login_owner(make_owner_tenant('Tax Sync Shop', 'taxsync@test.com'))
+        from apps.technician_portal.models import Repair, Technician
+        self.tech = Technician.objects.get(user=self.user, tenant=self.tenant)
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, name='Jane Driver', customer_type='RETAIL',
+        )
+        self.repair = Repair.objects.create(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='Silver Camry', queue_status='COMPLETED',
+            service_date=timezone.now(),
+        )
+        Repair.objects.filter(pk=self.repair.pk).update(cost=Decimal('50.00'))
+        self.repair.refresh_from_db()
+
+    def _make_taxed_invoice(self, status='SENT', tax_rate=Decimal('6.500'),
+                            taxable=True, number='INV-TAX-1'):
+        from apps.billing.models import Invoice, InvoiceLineItem
+        subtotal = Decimal('50.00')
+        tax_amount = (subtotal * tax_rate / Decimal('100')).quantize(Decimal('0.01')) if taxable else Decimal('0.00')
+        inv = Invoice.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            invoice_number=number, invoice_date=date.today(),
+            due_date=date.today() + timedelta(days=30),
+            status=status, subtotal=subtotal, discount=Decimal('0.00'),
+            tax_rate=tax_rate, tax_amount=tax_amount,
+            total=subtotal + tax_amount,
+        )
+        li = InvoiceLineItem.objects.create(
+            invoice=inv, repair=self.repair,
+            description='Windshield repair', quantity=1,
+            unit_price=subtotal, discount=Decimal('0.00'), amount=subtotal,
+            taxable=taxable,
+        )
+        return inv, li
+
+    def test_tax_exempt_flip_reaches_live_invoice(self):
+        inv, li = self._make_taxed_invoice()
+        self.assertEqual(inv.total, Decimal('53.25'))
+
+        self.customer.tax_exempt = True
+        self.customer.save(update_fields=['tax_exempt'])
+        self.repair.save()
+
+        li.refresh_from_db()
+        inv.refresh_from_db()
+        self.assertFalse(li.taxable)
+        self.assertEqual(inv.tax_amount, Decimal('0.00'))
+        self.assertEqual(inv.total, Decimal('50.00'))
+        # The rate is frozen at creation — only its application changed.
+        self.assertEqual(inv.tax_rate, Decimal('6.500'))
+
+    def test_unexempting_restores_tax_at_frozen_rate(self):
+        inv, li = self._make_taxed_invoice()
+        self.customer.tax_exempt = True
+        self.customer.save(update_fields=['tax_exempt'])
+        self.repair.save()
+
+        self.customer.tax_exempt = False
+        self.customer.save(update_fields=['tax_exempt'])
+        self.repair.refresh_from_db()
+        self.repair.save()
+
+        li.refresh_from_db()
+        inv.refresh_from_db()
+        self.assertTrue(li.taxable)
+        self.assertEqual(inv.tax_amount, Decimal('3.25'))
+        self.assertEqual(inv.total, Decimal('53.25'))
+
+    def test_paid_invoice_tax_is_never_touched(self):
+        inv, li = self._make_taxed_invoice(status='PAID')
+        self.customer.tax_exempt = True
+        self.customer.save(update_fields=['tax_exempt'])
+        self.repair.save()
+
+        li.refresh_from_db()
+        inv.refresh_from_db()
+        self.assertTrue(li.taxable)
+        self.assertEqual(inv.tax_amount, Decimal('3.25'))
+        self.assertEqual(inv.total, Decimal('53.25'))
+
+    def test_no_tax_flag_propagates_like_exemption(self):
+        inv, li = self._make_taxed_invoice()
+        self.repair.no_tax = True
+        self.repair.save()
+
+        li.refresh_from_db()
+        inv.refresh_from_db()
+        self.assertFalse(li.taxable)
+        self.assertEqual(inv.tax_amount, Decimal('0.00'))
+        self.assertEqual(inv.total, Decimal('50.00'))
+
+    def test_exempt_at_creation_invoice_keeps_frozen_zero_rate(self):
+        """Un-exempting can't retroactively sprout tax on an invoice created
+        while the customer was exempt: its rate was frozen at zero."""
+        inv, li = self._make_taxed_invoice(tax_rate=Decimal('0.000'), taxable=False)
+        self.repair.save()
+
+        li.refresh_from_db()
+        inv.refresh_from_db()
+        self.assertTrue(li.taxable)  # status synced to the non-exempt job...
+        self.assertEqual(inv.tax_amount, Decimal('0.00'))  # ...at the frozen zero rate
+        self.assertEqual(inv.total, Decimal('50.00'))
