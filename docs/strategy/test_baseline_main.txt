@@ -14,6 +14,15 @@
 # Taken: 2026-09-01 · main 6ad8b59d · SQLite · --parallel 8 · Django 5.1.2 / Py 3.13.4
 # Result: Ran 4730 tests in 967s — 57 failures + 36 errors = 93 across 41 modules.
 #
+# CONFIRMED INTERMITTENT (2026-09-01, main 00b27ded) — kept in this file
+# deliberately. These two are listed below as red but passed a full --parallel 8
+# run, and pass when their module is run alone; no commit since 6ad8b59d touches
+# either area. Removing them would make a future run where they flake red report
+# a regression nobody caused. A baseline shrinks when a test is FIXED.
+#   test_answer_yes_enables_tax_and_stores_rate  (…test_code103_billing_location_missing_taxrate)
+#   test_in_sync_job_reports_no_drift            (…test_sync_job_prices_command)
+# See TEST_SUITE_SESSIONS.md T3b.
+#
 # NOTE: this set is flag-dependent. The same commit run SERIALLY produced a
 # slightly different set (91 red at eb048a1e vs 93 here) — some of these tests
 # depend on execution order or on being the only writer. That is a real bug
