@@ -2,7 +2,11 @@
 
 **Created:** 2026-08-25
 **Author:** Claude (planning session with Drake)
-**Status:** living document — update statuses and Notes as sessions complete
+**Status:** living document, **and finished being written (2026-09-01)** — every
+session that is going to be specced is specced. What remains is execution and one
+decision, both enumerated with owners in **§Closing the arc** at the end. Update
+statuses and Notes as those complete; when the checklist there is empty this
+document is closed, not deleted.
 **Companions:** none required; this arc is self-contained. The wider product queues live in `IMPROVEMENT_SESSIONS.md` and `FIELD_OPS_SESSIONS.md`.
 
 **What this arc is for (the durable purpose statement — REVISED 2026-08-26):**
@@ -246,6 +250,14 @@ P6.2 is merged, deployed and confirmed serving; P5 is held open by choice and
 P4b sits behind it, both gated on the business producing a job it turned away
 rather than on anything in this repository. See §The pause for the census, and
 §P8 for the bucket.
+
+**Every one of those items now has an owner and a condition that says when it
+is finished, in §Closing the arc at the end of this document.** That section
+is what makes this doc closeable: it holds the scorecard (purpose 1 delivered,
+purpose 2 not), the four-item checklist, the rules that must be moved out of
+here before it closes, and the re-entry path if the classifier ever comes
+back. **The spec-writing is finished** — nothing above needs another planning
+pass, only execution and one decision.
 
 **Verifying a merge in this arc.** Every PR here squashes, so the recipe an
 earlier session wrote — `git log origin/main..origin/<branch>` should be
@@ -499,10 +511,13 @@ fixed two blind spots: soft-deleted repairs and all Replacement photos).
 
 **Tests.** `tests/test_photo_tap_crop.py` (13, P1),
 `tests/test_photo_crop_coverage.py` (24, P2),
-`tests/test_photo_suggest.py` (39, P3),
+`tests/test_photo_suggest.py` (40, P3),
 `tests/test_photo_dataset.py` (40, P4a),
+`tests/test_photo_closeup_visible.py` (41, P6 + P6.2),
 `tests/test_photo_backfill_queue.py` (37, P4a.1),
-`tests/test_photo_downloads.py` (29, P7). `real_jpeg()` there
+`tests/test_photo_blind_focus.py` (6, P6.1 — the three-copy drift guard),
+`tests/test_photo_downloads.py` (29, P7). **230 tests across eight files**;
+run all eight before touching anything shared, they are ~40s. `real_jpeg()` there
 builds actual decodable JPEGs (with optional EXIF orientation);
 `QuickJobForm` uses `forms.ImageField`, which rejects fake bytes at form
 validation — but model-level writes (multi-break, customer portal) don't, so
@@ -1865,7 +1880,7 @@ application half is deployed and confirmed, not before.
 
 **Notes**
 
-# P5 · Record the jobs we turn away — TODO · **needs Drake's call before it is a session**
+# P5 · Record the jobs we turn away — TODO · **held open by Drake, 2026-09-01 — ask again before opening it, and do not close it either**
 
 **ASKED AND ANSWERED — 2026-09-01: held.** Drake was given the three options
 below (drop it, build it for its own sake, or leave it open) and chose to
@@ -2043,6 +2058,126 @@ and did not move the count.
 
 **Notes**
 
+# §Closing the arc · what "done" means, who owns the rest, and what survives this document
+
+*Written 2026-09-01, when the last session that needed specifying was specced.
+Everything above this line is the record of the work. This section exists so
+that closing the arc is a checklist rather than a judgement call, and so that
+the things worth keeping do not die with the document that happens to hold
+them.*
+
+## The scorecard, stated once and without flattering it
+
+The purpose statement at the top names two jobs. **One is delivered. One is
+not, and not by an amount of time that will fix itself.**
+
+| Purpose | State | The number that says so |
+|---|---|---|
+| **1 · A close-up of the break the customer can see** | **Delivered, and reaching real customers since the 2026-08-31 deploy** | **20 invoices** frame their damage photo on a break a technician tapped (62 line items, 75 marked repairs). Every *unmarked* photo in the product, past and future, is aimed at the measured **(41%, 61%)** instead of dead centre. **76 of 82** photographed repairs carry a before *and* an after, rendered as one exhibit |
+| **1b · …and can keep** | **Built, not yet merged** (#243) | Five routes and six surfaces serve a named ZIP: `INV-1042_Unit-4521_2026-08-14_Before.jpg`, or the vehicle for an individual. Bytes read through storage, so it survives P8 |
+| **2 · A repairable-vs-not training set** | **Not delivered** | `repairable=73`, **`not_repairable=0`**, accruing at **0/month**. The classifier was never trained and must not be until a second class exists |
+
+**What the arc actually produced, as opposed to what it set out to produce:**
+a shop's tap, stored as percent coordinates on an EXIF-upright original, that
+reframes a photo on every customer-facing surface — and **one constant**.
+(41%, 61%) came out of 73 human marks, halves the framing error against dead
+centre on 90% of photos, cost nothing to compute, and improves every photo
+nobody will ever mark. That is the most valuable single result in eight
+sessions, it is not a model, and it would not exist if the backlog had not
+been marked.
+
+**The cost, for the next person estimating something like this:** 9 merged
+PRs plus #243 open, 5 service modules (`photo_crops`, `photo_suggest`,
+`photo_dataset`, `photo_backlog`, `photo_archive`), 4 migrations — all of them
+before P6 — 230 tests, one CI workflow the repo did not have, and four rounds
+of a duplicate-migration saga that the CI workflow now prevents.
+
+## What is left, with an owner on each
+
+Nothing below is discovery. Each item has a spec above and a condition that
+says when it is finished.
+
+| # | Item | Kind | Owner | Done when |
+|---|---|---|---|---|
+| 1 | **Merge #243 (P7)** | code, written | Drake | Squashed onto `main` |
+| 2 | **Deploy `main`** | ops | any session | `git checkout main && git pull` first (`sc: git` ships the *current branch*), then `eb deploy rs-systems-production`; `photos.zip` returns a ZIP on the public invoice route with a valid token. **Item 3 must not start before this** |
+| 3 | **P8 · close the media bucket** | code, specced | one session | Anonymous `curl -I` of `media/repair_photos/**` → **403**, of `media/tenants/logos/**` → **200**, and every photo surface still renders |
+| 4 | **P5 / P4b — ask, then decide** | decision | Drake | Either scheduled, or marked **DROPPED with the reason written down**. Held since 2026-09-01; **do not decide either way on the strength of this document** |
+| 5 | **The Glass Guy** | business, no code | Drake | Watch `export_photo_dataset --stats-only` for the first `not_repairable` row. P4a already made it expressible; there is nothing to build |
+| 6 | **Move the durable rules out of here** | docs | whoever closes it | The list below is in CLAUDE.md or a test, not only in this file |
+
+When 1–4 are resolved — **resolved, not necessarily built**; a written-down
+`DROPPED` closes item 4 — flip the header **Status** to `closed` with the
+date, and leave the document where it is. It is the only record of why the
+photos are framed the way they are.
+
+## What must outlive this document
+
+A living doc that closes takes its knowledge with it unless the knowledge is
+somewhere a person will trip over. **Already safe** — in CLAUDE.md, in a
+constraint, or in a test that fails:
+
+- **Percent coordinates on an EXIF-upright original**, never pixels — the one
+  convention that makes every crop regenerable and both purposes serveable
+  from a single tap.
+- **`RepairPhotoCrop` rows and `repair_photos/crops/` are human labour, not
+  derived caches.** CLAUDE.md says so; `audit_repair_photos` would otherwise
+  delete them as orphans.
+- **A crop hangs off a `Repair` *or* a `Replacement`** (CheckConstraint), and
+  side/rear glass is tempered — so only a *windshield* replacement means "not
+  repairable".
+- **No damage photo leaves our infrastructure.** P3's decision, enforced by a
+  test that asserts the suggester opens no sockets.
+
+**Not yet safe — these live only in this file, and item 6 above is to fix
+that:**
+
+- **(41%, 61%) is measured, not chosen**, and is authored once in
+  `photo_crops.py` and copied into two stylesheets that cannot import Python.
+  `tests/test_photo_blind_focus.py` catches the drift but not the *why*; a
+  future reader who thinks it is an arbitrary constant will "clean it up".
+- **Photo bytes are read through storage (`field.open()`), never by fetching
+  the photo's own URL.** True of the ZIP, the export and the retry command;
+  **not** true of the invoice PDF's logo fetch
+  (`invoice_service.py:239`, `urllib.request.urlretrieve`). This is the rule
+  P8 depends on, and it belongs in CLAUDE.md the day P8 lands.
+- **The media bucket's prefix split**: `tenants/logos/` and `email_branding/`
+  are public *on purpose* — email `<img>` opened days later — and
+  `repair_photos/` must not be. Re-widening that one policy statement would
+  undo P8 silently and no test can see it.
+
+## If the classifier comes back
+
+Nothing was lost by waiting, and that is a property of the design rather than
+luck: the stored asset is the tap, so the corpus can be re-exported at any
+crop size a future model wants. Re-entry, in order:
+
+1. Run `export_photo_dataset --stats-only` **first** and believe its balance
+   line over anything written here, including this section. It refuses to
+   flatter the count on purpose.
+2. Read **§The pause** for why volume is not the constraint, and **P5** for
+   the only source this business generates on its own. P5's spec is ready and
+   its product case — a shop seeing the work it walks away from — stands
+   without any ML.
+3. The reason list ("crack too long", "in the sight line", …) is **Drake's to
+   supply, not ours to invent**; it is the actual class vocabulary.
+4. `--stats-only`'s line about no confirmed row carrying a machine suggestion
+   is **permanent and by design** — the backlog was marked cold so P3.1 could
+   score honestly. It is not evidence the suggester was never measured.
+
+## The one lesson worth carrying to the next arc
+
+**This arc was reopened three separate times by the same question, and never
+once by a bug:** *what does the person on the other end actually get?* Asked
+after P4a it produced P6; asked after P6.1 it produced P6.2; asked hours after
+the deploy it produced P7. Written training-first, four sessions of capture
+plumbing moved the marking rate to **1 photo out of 77**. The number moved to
+**73 in about twenty minutes** — because a person sat down with a queue, on a
+day when tapping had finally started paying that person's shop back.
+
+The plumbing was not wrong and the sequence was. **Ask that question at spec
+time**, not after a deploy, and expect the answer to reorder the plan.
+
 ## Document history
 
 | Date | Change |
@@ -2069,3 +2204,4 @@ and did not move the count.
 | 2026-09-01 | **Doc brought current after the merges.** P6.1 and P6.2 are on `main` (#236 = `fb4f8b98`; #234 closed as superseded), so the rows that named their branches, the START HERE checklist and the "what is left" line all said the arc had code to write when it does not. **The only open item that is not a decision is the deploy** — production has run `d88f70d5` since before P6, 23+ commits back, and the migration delta is **zero**, so it is code-only. Also recorded: UI_MAGIC **S17 (#233) moved the Tailwind source** to `assets/css/input.css`; that session correctly re-pointed `tests/test_photo_blind_focus.py` and preserved `.photo-blind-focus` in both the source and the committed `app.css`, so the three-copy drift guard still holds. |
 | 2026-09-01 | **P7 executed — the photos are now keepable.** One control on the public invoice page saves every photo on that invoice as a ZIP through the same HMAC gate as `/pdf/`, and every job page — customer portal *and* shop — has the same button. Files arrive named `INV-1042_Unit-4521_2026-08-14_Before.jpg`, or `…_2019-Ford-F-150_…` for an individual, because the name is built from `get_vehicle_label()` and the word "Unit" cannot reach a retail customer's filename. **Drake's three calls, taken up front:** photos in the invoice PDF stay unbuilt and stay their own decision; the customer's own submitted photo *is* in the archive (it is theirs); the shop gets the same button, because the shop is who a customer phones asking for the photos. New shared module `services/photo_archive.py`, no migration; `_public_invoice_jobs` extracted so the page and the ZIP can never disagree about which jobs an invoice has, and `_job_access` extracted so the shop download cannot be laxer than the crop endpoint next to it. Bytes are read through storage — a test patches `FieldFile.url` to raise and the ZIP still builds — which is both correct today and the precondition for closing the bucket. A photo missing from storage is skipped and named in a `README.txt` inside the ZIP rather than silently dropped. 29 new tests; the 190 in the adjacent photo/CSP/icon/CSS suites re-run green. **The bucket is now the arc's only open piece of work that is not a decision.** |
 | 2026-09-01 | **P8 added — the bucket is the arc's last piece of code, and it is smaller than it looked.** With P7 built, the exposure it uncovered was specced as its own session against production facts rather than left as a paragraph in P7's Notes. What the audit found: the photos are public because of **one bucket-policy statement** (`PublicReadMediaOnly`, `s3:GetObject` for `*` on `media/*`), object ACLs are **already blocked** (`BucketOwnerEnforced`, `BlockPublicAcls`), **static files are not in this bucket** so no CSS can break, and the sensitive prefix is **235 objects** against 2 shop logos. So the fix is to narrow one `Resource` line — keeping `tenants/logos/` and `email_branding/` public because email `<img>` tags are opened days later — and serve `repair_photos` through the app the way P7's ZIP already reads bytes. Recommendation recorded as **app-served over presigned**, because signed URLs expire and this repo has already paid for that once (`repair_completed.html:12` says why photos left that email). Three traps written down with line numbers: the invoice PDF still fetches the shop's logo by anonymous `urlretrieve` (`invoice_service.py:239`) — the last place the app fetches its own media over the network; `_absolute_media_url` would sign email logos if `AWS_S3_CUSTOM_DOMAIN` were dropped globally; and `img-src` is derived at runtime from `MEDIA_URL`, whose own docstring notes that getting it wrong fails photos on production only. **Sequenced after #243 deploys, not after it merges.** |
+| 2026-09-01 | **The document is finished being written.** Added **§Closing the arc**: the honest scorecard (purpose 1 — the customer-visible close-up — is delivered and reaching customers, **20 invoices** framed on a tapped break and every unmarked photo aimed at the measured (41%, 61%); purpose 2 — the training set — is **not**, at `not_repairable=0` accruing 0/month), the arc's real cost (9 merged PRs, 5 service modules, 4 migrations, **230 tests**, one CI workflow), and a four-item checklist with an owner on each: merge #243, deploy `main`, do P8, and **ask Drake about P5/P4b** — where a written-down `DROPPED` closes the item just as well as building it. Also recorded what must **outlive** this file: (41,61) is measured rather than chosen, photo bytes are read through storage and never over HTTP (the invoice PDF's `urlretrieve` logo fetch is the last exception), and the bucket's prefix split is deliberate — none of which any test explains, so they belong in CLAUDE.md the day P8 lands. Two corrections to §0 while in here: the test inventory omitted `test_photo_closeup_visible.py` (41) and `test_photo_blind_focus.py` (6) entirely, so a session reading the primer would not have known to run the two suites guarding P6 and P6.1. **The lesson recorded for the next arc:** this one was reopened three times by the same question — *what does the person on the other end get?* — and never once by a bug; ask it at spec time. |
