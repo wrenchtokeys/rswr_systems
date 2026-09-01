@@ -33,7 +33,7 @@ session with no memory of this work can pick exactly one up and finish it.
 | 4 | S15 · Landing: trust bar rewrite | TODO |
 | 4 | S16 · Landing: rhythm, dark section, sharper promise | TODO — **the `[data-reveal]` half split out and DONE 2026-08-27 (S16a, PR #235, merged 2026-08-31)** |
 | — | S17 · Stop shipping the Tailwind source to production | **DONE** 2026-08-27, merged 2026-08-31 (PR #233) |
-| — | S18 · Strict Content-Security-Policy | **S18a DONE** 2026-08-31 — the policy, the nonce on all 88 inline blocks, the report endpoint, 36 guard tests. Ships **`Report-Only` on purpose**. **S18b TODO** — the 195 inline `on*` handlers + 8 `javascript:` hrefs, which is what stands between here and an enforcing header. See S18 |
+| — | S18 · Strict Content-Security-Policy | **S18a DONE** 2026-08-31 (PR #240) — the policy, the nonce on all 88 inline blocks, the report endpoint, 36 guard tests. Ships **`Report-Only` on purpose**. **S18b TODO** — the 195 inline `on*` handlers + 8 `javascript:` hrefs, which is what stands between here and an enforcing header. See S18 |
 | Out | Email + notification chassis, replacement lifecycle | **DONE** 2026-08-24 (PR #200) |
 | Out | Invoice email onto the chassis | **DONE** 2026-08-24 (PR #202, merged 12:15 CDT, deployed 22:48 CDT) |
 | Out | In-app surfaces: notification bell + notification history | **DONE** 2026-08-25 (PR #206) |
@@ -1202,7 +1202,7 @@ the `style-src` allowlist covers it.
 
 ## S18 · Strict Content-Security-Policy — the Phase 1 dividend
 
-> **S18a shipped 2026-08-31.** The brief below is left as written because it was
+> **S18a shipped 2026-08-31 (PR #240).** The brief below is left as written because it was
 > right about the shape and wrong about the size in a way worth keeping. What
 > actually happened, and the four things the count missed, is in
 > **"Where this stands — 2026-08-31, S18a"** at the end of this file.
@@ -1754,7 +1754,7 @@ two to already be there. Nothing was lost and nothing needed reverting.
 
 | # | Session | Size | Where it stands |
 |---|---|---|---|
-| **S18b** | **Inline `on*` handlers → delegated listeners** | **M** | **S18a shipped the policy 2026-08-31** (report-only, nonce on all 88 inline blocks, report endpoint, 36 guard tests). What is left is the **195 inline `on*` handlers + 8 `javascript:` hrefs** that keep the header from enforcing — and the `Optimistic.rollback` rule in CLAUDE.md has to change in the same PR. See "Where this stands — 2026-08-31, S18a" |
+| **S18b** | **Inline `on*` handlers → delegated listeners** | **M** | **S18a shipped the policy 2026-08-31 (PR #240)** (report-only, nonce on all 88 inline blocks, report endpoint, 36 guard tests). What is left is the **195 inline `on*` handlers + 8 `javascript:` hrefs** that keep the header from enforcing — and the `Optimistic.rollback` rule in CLAUDE.md has to change in the same PR. See "Where this stands — 2026-08-31, S18a" |
 | S13 | Icon migration sweep | M | The tag (S13a, #223) and the chrome (S13b, #229) shipped. What is left is **~1,217 call sites page by page** — `owner_settings.html` 116, `repair_form.html` 80, `repair_detail.html` 60, `owner_invoice_detail.html` 56 — then the 17 Python-side names in `HELP_TOPICS`, then deleting the vendored FA files. Mechanical, and against a target that has stopped moving |
 | S14 | Landing: real product imagery | M | Unblocked, unstarted. Whatever it ships must be **regenerable by a command**, or the drift note gets written a third time |
 | S15 | Landing: trust bar rewrite | S | Copy, not code. Wants Drake's eye |
@@ -1786,7 +1786,7 @@ current branch's HEAD, so it is `git checkout main && git pull` **first**, from
 
 ---
 
-# Where this stands — 2026-08-31, S18a
+# Where this stands — 2026-08-31, S18a (PR #240)
 
 **The policy is live in the codebase and it ships `Content-Security-Policy-Report-Only`.**
 That is the deliverable, not a compromise: the brief above was right that S11's rollback
