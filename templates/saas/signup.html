@@ -177,7 +177,7 @@
                                 <span class="text-sm text-gray-800">Replacements only <span class="text-gray-500">(full glass)</span></span>
                             </label>
                         </div>
-                        <script>
+                        <script nonce="{{ csp_nonce }}">
                         document.querySelectorAll('#services-radio-group input[type=radio]').forEach(function(radio) {
                             radio.addEventListener('change', function() {
                                 document.querySelectorAll('#services-radio-group .services-option').forEach(function(label) {
@@ -227,7 +227,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // After a failed submit, bring the first problem into view instead of leaving
 // the user staring at the submit button (matters most on mobile).
 (function () {

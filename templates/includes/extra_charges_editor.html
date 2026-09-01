@@ -57,7 +57,7 @@ Context:
         {% endfor %}
     </div>
 </div>
-<script>
+<script nonce="{{ csp_nonce }}">
 if (!window.addChargeRow) {
     window.addChargeRow = function (desc, amount) {
         const container = document.getElementById('charge-rows');

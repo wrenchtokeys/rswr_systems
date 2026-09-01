@@ -4,7 +4,7 @@
 {% block title %}Profile Settings - Technician Portal{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
 /* Tab Styles */
 .tab-button {
     display: flex;
@@ -340,7 +340,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     // Tab Switching
     const tabButtons = document.querySelectorAll('.tab-button');

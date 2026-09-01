@@ -99,7 +99,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 // Reverse the URL with a placeholder id of 0, then swap in the real policy id.
 const UPDATE_URL_TEMPLATE = "{% url 'update_warranty_policy' 0 %}";
 

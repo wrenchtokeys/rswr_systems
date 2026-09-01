@@ -41,6 +41,7 @@ EXEMPT_PREFIXES = (
     '/app/invite/',       # Customer invitation acceptance (may be unauthenticated)
     '/subscription-blocked/',  # The blocked page itself
     '/sms/',              # Public SMS program disclosure (carrier registration evidence)
+    '/csp-report/',       # Browser-posted CSP violation reports (UI_MAGIC S18)
 )
 
 # Paths for static/media

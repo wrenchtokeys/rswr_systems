@@ -212,7 +212,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 function openScheduleModal(optionId, optionName) {
     document.getElementById('scheduleOptionId').value = optionId;
     document.getElementById('scheduleModalTitle').textContent = 'Redeem: ' + optionName;

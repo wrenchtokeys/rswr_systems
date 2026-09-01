@@ -5,7 +5,7 @@ Just {% include "includes/fab_quick_actions.html" %} on any page.
 Override items by passing fab_role="owner"|"tech"|"customer".
 {% endcomment %}
 
-<style>
+<style nonce="{{ csp_nonce }}">
 .fab-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,0); z-index: 39;
     pointer-events: none; transition: background 0.25s ease;
@@ -165,7 +165,7 @@ Override items by passing fab_role="owner"|"tech"|"customer".
     </button>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function toggleFabMenu() {
     const c = document.getElementById('fabContainer');
     const o = document.getElementById('fabOverlay');

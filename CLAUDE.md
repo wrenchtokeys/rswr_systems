@@ -102,6 +102,28 @@ There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are ven
 - **The Tailwind source lives in `assets/css/input.css`, deliberately outside `static/`.** `STATICFILES_DIRS` is `static/`, so anything under it is collected and served — the source used to sit at `static/css/src/input.css` and was public. It also meant a relative `url()` resolved against two directories (`css/` for the build, `css/src/` for the source) and manifest storage hard-failed the deploy, which is why the Inter `@font-face` was inlined in `head_assets.html` for two sessions. With one location, `url()` is relative to the built `static/css/app.css` — so `../fonts/…` is correct and the manifest rewrites it to the hashed name. Don't move the source back under `static/`; `tests/test_css_pipeline.py` guards this.
 - Verify before deploying: run `collectstatic` under `ForgivingManifestStaticFilesStorage`, not just dev storage — see `docs/strategy/UI_MAGIC_SESSIONS.md` for the settings shim.
 
+### Content-Security-Policy
+- **Every inline `<script>` and `<style>` a browser receives must carry
+  `nonce="{{ csp_nonce }}"`** — that exact spelling, so there is one thing to grep.
+  A block without it is silently dropped the day the header stops being report-only.
+  `tests/test_csp.py` fails the build on a missing one. Two exceptions, both enforced
+  by the same suite: **`templates/emails/**` never gets a nonce** (an email is not an
+  HTTP response, and the nonce is a per-request secret), and an **external
+  `<script src=…>` never gets one** (it is covered by `'self'`).
+- **A `<style>` block built in Python needs the nonce too**, and no template sweep
+  will find it. `{% tenant_brand_css %}` is the one that exists; it renders only for
+  a shop that HAS a brand colour, so a mistake there is invisible on every dev shop
+  and test fixture. Grep `*.py` for `<style` / `<script` as well as the templates.
+- **The header is `Content-Security-Policy-Report-Only` on purpose.** Do not set
+  `CSP_REPORT_ONLY=False` until the inline `on*` handlers are gone (UI_MAGIC S18b) —
+  a nonce cannot cover an attribute, and the rollback rule below *requires* them.
+- **Do not reintroduce a third-party host.** The allowlist is `'self'` plus
+  Cloudflare Turnstile, and that is the whole point of S1 and S17. A new host means
+  editing `common/csp_middleware.py`, which is where the argument belongs.
+- Inline `style="…"` attributes are *allowed* (`style-src-attr 'unsafe-inline'`) —
+  a style attribute cannot execute code and 226 of them exist, many dynamic. Inline
+  `on*` handlers and `href="javascript:…"` are **not**; don't add new ones.
+
 ### View Transitions
 - **`@view-transition { navigation: auto; }` must stay inline** in the `<style>` block of `templates/includes/head_assets.html`. Chrome ignores the opt-in from an external stylesheet, so moving it into `assets/css/input.css` silently turns every page transition back into a hard swap with nothing in the console. `tests/test_view_transitions.py` guards it.
 - List rows opt into the row→title morph with `data-vt-key="<detail url>"` + a `data-vt-hero` inside; the detail page's `<h1>` carries `.vt-hero`. Only pair them where the two texts are the same thing. `static/js/view-transitions.js` (loaded from `<head>`, not deferred — its `pagereveal` listener must exist before first render) does the naming.
@@ -120,7 +142,10 @@ There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are ven
   `{% status_badge … optimistic=True %}` for the pill it repaints, and
   `data-optimistic-due` / `-actions` for whatever else the change invalidates.
   `Optimistic.rollback` restores saved `innerHTML`, so the row's handlers must be
-  inline `onclick` attributes, not `addEventListener` bindings.
+  inline `onclick` attributes, not `addEventListener` bindings. **This rule is on
+  notice**: it is the one thing keeping the CSP from enforcing (UI_MAGIC S18b).
+  Event delegation on a stable ancestor survives `innerHTML` replacement and is the
+  intended replacement — but change this rule and the rows together, in one PR.
 - **An endpoint an optimistic row reconciles against must name what it changed**, not
   count it. `owner_invoice_bulk_action` returns `paid_ids`/`skipped_ids` for exactly
   this reason — a bulk action that partly succeeds cannot be reconciled from a total.

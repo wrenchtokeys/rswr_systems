@@ -305,7 +305,7 @@
 <script src="{% static 'js/photo_crop_modal.js' %}" defer></script>
 <script src="{% static 'js/photo_crop_detail.js' %}" defer></script>
 {% if mygrant_enabled and replacement.nags_number %}
-<script>
+<script nonce="{{ csp_nonce }}">
 (function () {
     const card = document.getElementById('mygrant-quote-card');
     if (!card) return;

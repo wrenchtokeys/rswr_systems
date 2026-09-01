@@ -34,6 +34,7 @@ class PortalAccessMiddleware:
             '/admin/', '/api/', '/setup-database/', '/logout/', '/referrals/',
             '/signup/', '/pricing/', '/onboarding/', '/login/', '/invite/',
             '/join/', '/health/', '/clawdbot/', '/app/invite/',
+            '/csp-report/',
         ]
         if any(request.path.startswith(path) for path in skip_paths):
             return None

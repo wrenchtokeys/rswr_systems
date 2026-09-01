@@ -5,7 +5,7 @@
     <title>{% block title %}RS Systems{% endblock %}</title>
     {% include "includes/head_assets.html" %}
     {% block extra_head %}{% endblock %}
-    <style>
+    <style nonce="{{ csp_nonce }}">
         body { font-family: 'Inter', system-ui, sans-serif; }
     </style>
 </head>

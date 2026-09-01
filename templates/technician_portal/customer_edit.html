@@ -250,7 +250,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // Toggle tax exempt certificate field
 document.getElementById('id_tax_exempt').addEventListener('change', function() {
     document.getElementById('tax_exempt_cert_field').classList.toggle('hidden', !this.checked);

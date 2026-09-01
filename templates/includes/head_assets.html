@@ -30,7 +30,7 @@ inputs on coarse pointers, see the TOUCH / MOBILE block in app.css.
 
 {# The Inter @font-face lives in assets/css/input.css and ships in app.css (S17). #}
 {# Only the view-transition opt-in has to be inline — see below. #}
-<style>
+<style nonce="{{ csp_nonce }}">
   {% comment %}
   Cross-document View Transitions opt-in (S10). Everything else about the
   transition — the timing, the named navbar, the list-row hero — lives in

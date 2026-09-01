@@ -4,7 +4,7 @@
 <head>
     <title>Join {{ tenant.name }} | Customer Portal</title>
     {% include "includes/head_assets.html" %}
-    <style>body { font-family: 'Inter', system-ui, sans-serif; }</style>
+    <style nonce="{{ csp_nonce }}">body { font-family: 'Inter', system-ui, sans-serif; }</style>
     {% if turnstile_site_key %}
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     {% endif %}

@@ -224,7 +224,8 @@ class PortalBrandCssTests(TestCase):
         self.tenant.brand_color = '#3b82f6'
         html = self._render()
         self.assertIn('--brand-500: 59 130 246;', html)
-        self.assertIn('<style>', html)
+        # `<style` not `<style>`: the block carries a CSP nonce (UI_MAGIC S18).
+        self.assertIn('<style', html)
 
     def test_renders_nothing_without_brand_color(self):
         self.assertEqual(self._render(), '')

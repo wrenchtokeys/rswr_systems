@@ -26,6 +26,7 @@ from . import views
 from apps.saas import views as saas_views
 from core.views import preview_email_template, test_notification, check_notification_prefs
 from apps.technician_portal.review_views import review_click, review_opt_out
+from common.csp_views import csp_report
 
 # Custom error handlers (BUG-004 — replace bare Django 404/500 with branded templates)
 handler404 = 'rs_systems.views.custom_404'
@@ -34,6 +35,10 @@ handler500 = 'rs_systems.views.custom_500'
 urlpatterns = [
     path('', views.home, name='home'),
     path('health/', views.health_check, name='health_check'),  # AWS health check endpoint
+    # CSP violation reports (UI_MAGIC S18). Unauthenticated and CSRF-exempt by
+    # necessity — the browser posts it, not a form. Exempt in the subscription
+    # and portal middlewares so a locked-out shop's browser can still report.
+    path('csp-report/', csp_report, name='csp_report'),
     path('robots.txt', views.robots_txt, name='robots_txt'),
     path('sitemap.xml', views.sitemap_xml, name='sitemap_xml'),
 

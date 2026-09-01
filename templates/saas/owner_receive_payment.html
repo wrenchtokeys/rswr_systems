@@ -146,7 +146,7 @@
     </div>
 </form>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // All money math in integer cents — float arithmetic drifts.
 function _cents(v) { return Math.round(parseFloat(v || '0') * 100) || 0; }
 function _fmt(cents) { return '$' + (cents / 100).toFixed(2); }

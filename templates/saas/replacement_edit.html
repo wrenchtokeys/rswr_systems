@@ -3,7 +3,7 @@
 {% block title %}Edit Replacement #{{ replacement.id }} | RS Systems{% endblock %}
 
 {% block extra_head %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .insurance-fields, .adas-cost-field {
         display: none;
     }
@@ -241,7 +241,7 @@
 
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
     // Toggle insurance fields
     const insuranceCheckbox = document.getElementById('insurance-checkbox');
     const insuranceFields = document.getElementById('insurance-fields');

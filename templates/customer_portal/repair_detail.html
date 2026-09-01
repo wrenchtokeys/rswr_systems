@@ -434,7 +434,7 @@
 </div>
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 function openImageModal(url, title) {
     document.getElementById('modalImage').src = url;
     document.getElementById('modalTitle').textContent = title;

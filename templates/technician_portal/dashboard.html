@@ -2,7 +2,7 @@
 {% load static ui %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .stat-widget {
         transition: transform 0.2s, box-shadow 0.2s;
     }
@@ -186,7 +186,7 @@
             </div>
 
             {% if todays_queue|length > 5 %}
-            <script>
+            <script nonce="{{ csp_nonce }}">
                 document.addEventListener('DOMContentLoaded', function() {
                     const btn = document.querySelector('[onclick*="queue-overflow"]');
                     if (btn) {

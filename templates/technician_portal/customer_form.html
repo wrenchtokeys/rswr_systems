@@ -430,7 +430,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     const typeSelect = document.getElementById('{{ form.customer_type.id_for_label }}');
     if (!typeSelect) return;

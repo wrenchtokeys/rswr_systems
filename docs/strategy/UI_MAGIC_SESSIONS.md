@@ -33,7 +33,7 @@ session with no memory of this work can pick exactly one up and finish it.
 | 4 | S15 · Landing: trust bar rewrite | TODO |
 | 4 | S16 · Landing: rhythm, dark section, sharper promise | TODO — **the `[data-reveal]` half split out and DONE 2026-08-27 (S16a, PR #235, merged 2026-08-31)** |
 | — | S17 · Stop shipping the Tailwind source to production | **DONE** 2026-08-27, merged 2026-08-31 (PR #233) |
-| — | S18 · Strict Content-Security-Policy | **TODO — the next one.** Unblocked by S1 + S17. **Not the S the old note claimed** — the hosts are trivial, `'unsafe-inline'` is the work: 55 inline `<script>`, 34 `<style>`, 173 `on*` handlers. See S18 |
+| — | S18 · Strict Content-Security-Policy | **S18a DONE** 2026-08-31 (PR #240) — the policy, the nonce on all 88 inline blocks, the report endpoint, 36 guard tests. Ships **`Report-Only` on purpose**. **S18b TODO** — the 195 inline `on*` handlers + 8 `javascript:` hrefs, which is what stands between here and an enforcing header. See S18 |
 | Out | Email + notification chassis, replacement lifecycle | **DONE** 2026-08-24 (PR #200) |
 | Out | Invoice email onto the chassis | **DONE** 2026-08-24 (PR #202, merged 12:15 CDT, deployed 22:48 CDT) |
 | Out | In-app surfaces: notification bell + notification history | **DONE** 2026-08-25 (PR #206) |
@@ -1202,6 +1202,11 @@ the `style-src` allowlist covers it.
 
 ## S18 · Strict Content-Security-Policy — the Phase 1 dividend
 
+> **S18a shipped 2026-08-31 (PR #240).** The brief below is left as written because it was
+> right about the shape and wrong about the size in a way worth keeping. What
+> actually happened, and the four things the count missed, is in
+> **"Where this stands — 2026-08-31, S18a"** at the end of this file.
+
 Add a strict **Content-Security-Policy**. S1 removed every third-party asset host and S17
 removed the last inline `<style>` that had to carry a font declaration, so this is finally
 possible. It is the main security dividend of Phase 1 — don't leave it on the table.
@@ -1749,7 +1754,7 @@ two to already be there. Nothing was lost and nothing needed reverting.
 
 | # | Session | Size | Where it stands |
 |---|---|---|---|
-| **S18** | **Strict Content-Security-Policy** | **M** | **The one this arc has been building toward**, and the brief is now written from a real count rather than an estimate. The host allowlist is four entries and one of them is Turnstile; the work is the 55 inline `<script>`, 34 `<style>` and **173 `on*` handlers** — and S11's rollback *requires* inline `onclick`, which a nonce cannot cover. Stage it report-only. See S18 |
+| **S18b** | **Inline `on*` handlers → delegated listeners** | **M** | **S18a shipped the policy 2026-08-31 (PR #240)** (report-only, nonce on all 88 inline blocks, report endpoint, 36 guard tests). What is left is the **195 inline `on*` handlers + 8 `javascript:` hrefs** that keep the header from enforcing — and the `Optimistic.rollback` rule in CLAUDE.md has to change in the same PR. See "Where this stands — 2026-08-31, S18a" |
 | S13 | Icon migration sweep | M | The tag (S13a, #223) and the chrome (S13b, #229) shipped. What is left is **~1,217 call sites page by page** — `owner_settings.html` 116, `repair_form.html` 80, `repair_detail.html` 60, `owner_invoice_detail.html` 56 — then the 17 Python-side names in `HELP_TOPICS`, then deleting the vendored FA files. Mechanical, and against a target that has stopped moving |
 | S14 | Landing: real product imagery | M | Unblocked, unstarted. Whatever it ships must be **regenerable by a command**, or the drift note gets written a third time |
 | S15 | Landing: trust bar rewrite | S | Copy, not code. Wants Drake's eye |
@@ -1778,3 +1783,148 @@ customer-facing half — reaches nobody until `main` is deployed. `eb deploy` sh
 current branch's HEAD, so it is `git checkout main && git pull` **first**, from
 `~/projects/rs_systems_branch2` (worktrees are not eb-initialized). Confirm with
 `eb status rs-systems-production | grep 'Deployed Version'` before and after.
+
+---
+
+# Where this stands — 2026-08-31, S18a (PR #240)
+
+**The policy is live in the codebase and it ships `Content-Security-Policy-Report-Only`.**
+That is the deliverable, not a compromise: the brief above was right that S11's rollback
+design and a strict `script-src` are in direct conflict, and report-only is the only header
+that can go out before that conflict is resolved.
+
+What landed:
+
+| | |
+|---|---|
+| `common/csp_middleware.py` | per-request nonce + the policy, built at runtime |
+| `common/csp_views.py` | `/csp-report/`, deduplicated, unauthenticated, CSRF-exempt |
+| `common/context_processors.py` | `{{ csp_nonce }}` |
+| 60 templates | `nonce="{{ csp_nonce }}"` on all 55 inline `<script>` and 33 `<style>` |
+| `core/templatetags/branding_tags.py` | the 34th `<style>` — see below |
+| `rs_systems/settings/base.py` | `CSP_ENABLED` / `CSP_REPORT_ONLY` / `CSP_REPORT_URI`, all env-overridable |
+| `tests/test_csp.py` | 36 tests |
+
+The header as delivered:
+
+```
+default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';
+object-src 'none'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self';
+script-src 'self' 'nonce-…' https://challenges.cloudflare.com;
+style-src  'self' 'nonce-…';
+script-src-elem 'self' 'nonce-…' https://challenges.cloudflare.com;
+style-src-elem  'self' 'nonce-…';
+script-src-attr 'none'; style-src-attr 'unsafe-inline';
+frame-src https://challenges.cloudflare.com; report-uri /csp-report/
+```
+
+The brief's host table survived contact exactly: four entries, one of them Turnstile, no
+Stripe SDK anywhere. **Everything that went wrong went wrong somewhere else**, and all four
+are the same mistake — *counting what is in the templates and calling that the inventory.*
+
+## Four things the count missed
+
+**1. `style="…"` is an inline style, and there are 226 of them.** The brief counted
+`<style>` blocks. The first real Chrome run against the policy reported three violations on
+the *landing page alone*, all of them `style` attributes. A nonce cannot help: there is
+nowhere on an attribute to put one. 226 across 44 templates, and plenty are legitimately
+dynamic — `style="width: {{ pct }}%"` is not a sweep anybody finishes.
+
+The resolution is the `-elem`/`-attr` split in the header above, and it is the one
+deliberate relaxation in the policy: `style-src-attr 'unsafe-inline'`, `style-src-elem`
+left strict. The trade is defensible in a way the same relaxation on `script-src` would not
+be — **a style attribute cannot execute code.** It can exfiltrate through a crafted
+`background-image` URL, which is why `connect-src` and `img-src` stay closed.
+`script-src-attr` stays `'none'`, which is what makes an `on*` handler show up in the report
+under its own directive name instead of as an anonymous `script-src` violation.
+
+**2. `{% tenant_brand_css %}` builds a `<style>` block in Python.** No sweep of
+`templates/` can see it, no template-coverage test can catch it, and it renders *only for a
+shop that has a brand colour*. So a strict `style-src` would have dropped every branded shop
+back to the default palette while every unbranded dev shop, test fixture and demo tenant
+stayed perfectly green. It is in `base_app.html`, `base_auth.html` and
+`customer_portal/base_customer.html` — the shells. **Grep the Python for `<style` and
+`<script`, not just the templates.**
+
+**3. Adding `report-to` makes Chrome stop honouring `report-uri`.** And the Reporting API
+refuses to deliver over plain HTTP. Both together mean a local `http://` dev server
+delivers *nothing* to the endpoint while the console fills with violations — the endpoint
+looks broken and is fine. Verified by deleting the `report-to` pair and watching the report
+arrive on the next run. The middleware now gates `report-to` on `request.is_secure()`:
+production gets the modern spelling, dev keeps the one that works there, and Firefox and
+Safari get `report-uri` either way.
+
+**4. An inline `on*` handler is checked when it FIRES, not when it parses.** A headless
+walk of `/`, `/tech/`, `/tech/jobs/`, `/owner/settings/`, `/owner/invoices/`,
+`/tech/customers/` and the customer portal, logged in as a real owner, reported **zero**
+violations — with 195 inline handlers sitting in those pages. They only report when
+somebody clicks. Firing four of them by hand on `/owner/settings/` produced the expected
+`script-src-attr 'none'` violations immediately.
+
+**This changes what the report-only stage means.** It will not tell you what is wrong in a
+day; it trickles in as real people use the app, and a quiet endpoint means *nobody clicked*
+until it has been up long enough to mean anything else. Read it against the known count of
+195 rather than against zero.
+
+One thing the count got for free: `/admin/` is excluded from the policy, and
+`/admin/email-preview/<template>/` lives under it. That view serves an **email** shell over
+HTTP — inline styles and all — against templates that are deliberately un-nonced, so it
+would otherwise report violations for markup that is correct as it stands.
+
+## Why the endpoint deduplicates, and why not with the cache
+
+195 known-bad handlers × every page load × every visitor would bury the violations nobody
+has written down yet, which are the only ones worth having. `csp_views` keeps a per-process
+dict of `(directive, blocked, source, line, sample)` with a 10-minute window and a 500-key
+cap. **Not `django.core.cache`:** production's `CACHES` default is `DatabaseCache`, so a
+cache-backed limiter puts a DB write on the path of every violation report — an
+unauthenticated endpoint anybody can POST to. The in-memory dict costs nothing and the
+worst case of losing it on a restart is one extra log line.
+
+## What has to be true before the header can enforce
+
+`tests/test_csp.py::StagingTests` is the tripwire and it states the condition in code: while
+any inline `on*` handler remains in a served template, `CSP_REPORT_ONLY` must be True. That
+test goes green on its own the day S18b finishes, and it fails loudly today if somebody sets
+`CSP_REPORT_ONLY=False` in the environment.
+
+**S18b, the session that unlocks it:**
+
+- **195 inline `on*` handlers** across the templates. Worst: `saas/owner_settings.html`,
+  `saas/owner_invoice_detail.html`, `technician_portal/job_form.html`.
+- **8 `href="javascript:…"`** — `404.html`, `500.html`, and six `removeFilter(...)` filter
+  chips in `technician_portal/job_list.html`. All trivial; they are listed here so nobody
+  has to find them twice.
+- **The `Optimistic.rollback` question has to be answered first, not after.** `CLAUDE.md`
+  *requires* inline `onclick` on optimistic rows because rollback restores a row's saved
+  `innerHTML` and throws away listeners bound to the old nodes. **Event delegation on a
+  stable ancestor survives `innerHTML` replacement** — which is precisely why the inline
+  rule exists, and is the obvious answer. Whoever does S18b changes the CLAUDE.md rule in
+  the same PR or it grows back.
+
+`style-src-attr 'unsafe-inline'` is *not* on that list. Clearing 226 style attributes buys
+much less than clearing 195 handlers, and some of them cannot be cleared at all.
+
+## How this was verified
+
+Not by reading the settings module back. `manage.py runserver --noreload` plus a
+headless-but-rendering Chrome driven over CDP (the recipe in the S17 notes), logged in
+through the real login form so the session cookie was the browser's, walking twelve pages
+and collecting `Log.entryAdded` entries with `source: security`. Then the loop closed the
+other way: inject an un-nonced `<script>` from the console and watch
+`WARNING … csp_views CSP violation: script-src-elem blocked=inline` appear in the server
+log. **A report-only policy whose reports never arrive is worth nothing, and nothing in a
+Django test suite can tell you they do.**
+
+Each guard was also run red before being trusted: the nonce-coverage test against a template
+with the attribute removed, and the staging tripwire under `CSP_REPORT_ONLY=False`.
+
+## Still open, re-dated 2026-08-31
+
+Unchanged by this session: the `InAppCopy` message-copy sweep, the invoice's Python-built
+plain-text half, safe drive-away time (**still Drake's call, still do not add it without
+him**), and emoji in the three staff-only surfaces.
+
+**And production is still behind** — see the section above this one. Nothing in S18a changes
+that, except to add one more merged-but-undeployed thing to the pile. A report-only CSP that
+is not deployed reports nothing at all.

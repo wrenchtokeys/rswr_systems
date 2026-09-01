@@ -4,7 +4,7 @@
 {% block title %}Complete Your Profile - RS Systems{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
 /* Smooth transitions for conditional sections */
 .conditional-section {
     transition: all 0.3s ease;
@@ -265,7 +265,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize form visibility
     toggleCompanyForm();

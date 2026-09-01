@@ -11,7 +11,7 @@
     <script src="{% static 'js/view-transitions.js' %}?v=1"></script>
     {% block extra_head %}{% endblock %}
     {% block extra_css %}{% endblock %}
-    <style>
+    <style nonce="{{ csp_nonce }}">
         body { font-family: 'Inter', system-ui, sans-serif; }
         /* Hide scrollbar on mobile bottom nav */
         .bottom-nav-scroll::-webkit-scrollbar { display: none; }
@@ -316,7 +316,7 @@
         </div>
     </div>
 
-    <script>
+    <script nonce="{{ csp_nonce }}">
         // Close dropdown when clicking outside
         document.addEventListener('click', function(e) {
             const dropdown = document.getElementById('customer-dropdown');
@@ -328,7 +328,7 @@
 
     <!-- Flatpickr DateTime Picker -->
     <script src="{% static 'js/vendor/flatpickr.min.js' %}"></script>
-    <script>
+    <script nonce="{{ csp_nonce }}">
         // Defaulting an empty datetime-local to "now" is OPT-IN, via
         // data-default-now. It used to apply to every such input on every
         // page, which made "Optional -- leave blank to keep this job
