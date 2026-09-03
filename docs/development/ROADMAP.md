@@ -1,20 +1,38 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: August 11, 2026 (stale-doc sweep — March-era "next up" items reconciled against what actually shipped).*
+*Last Updated: September 2, 2026 (brought current from the 2026-09-01 direction review).*
 
-> **Scope note.** This file is the long-horizon view. The near-term work queues live in
-> `docs/strategy/` and are the ones to read before starting a session:
-> `UI_MAGIC_SESSIONS.md` (S11–S17 open), `FIELD_OPS_SESSIONS.md` (tech notifications +
-> scheduling, all TODO), `IMPROVEMENT_SESSIONS.md` (blocked on the Path A/B fork).
+> **Merged, not deployed (keep this line current — a deploy note without an expiry is a
+> snapshot):** production runs `966a31da`, deployed **2026-08-31 23:46 UTC**. On `main`
+> and **not** on prod as of 2026-09-02: **#238** (four individual-customer field fixes),
+> **#239** (toll-free v4 docs), **#240** (report-only CSP), **#241/#242** (photo-ML docs),
+> **#243** (customer photo download), **#244** (test-suite arc + baseline). `eb deploy`
+> ships the current branch's HEAD — `git checkout main && git pull` first.
+
+> **Scope note.** This file is the long-horizon view. The direction — Path A with a
+> B-ready spine — is in `docs/strategy/PRODUCT_DIRECTION.md` (September 2026; awaiting
+> Drake's sign-off). The near-term work queues live in `docs/strategy/` and are the ones to
+> read before starting a session: `IMPROVEMENT_SESSIONS.md` (now carries a Status line per
+> session; B3/B5/B6 are the spine), `FIELD_OPS_SESSIONS.md` (S11–S14 scheduling UX open),
+> `PHOTO_ML_SESSIONS.md` (P8 is its last code), `UI_MAGIC_SESSIONS.md` (arc clear; sweeps
+> parked), `JOB_QUEUE_SESSIONS.md` (Q5/Q6 parked), `TEST_SUITE_SESSIONS.md`.
 > For dated detail on anything below, `CHANGELOG.md` is canonical.
 
 ---
 
 ## ✅ Completed
 
-### Aug 2026 — see `CHANGELOG.md` for the full record
+### Aug–Sep 2026 — see `CHANGELOG.md` for the full record
 Condensed, because these closed out items this file used to list as pending:
+- **Technician assignment notifications** (FIELD_OPS N1 #179, N3 #204) — an assigned tech is told, and six lifecycle emails that had never sent now send. Texts (N2) still wait on the toll-free number (v4 submitted 2026-08-31).
+- **Scheduling & dispatch, first cut** (FIELD_OPS S1–S5, S7–S10; PRs #188–#214) — `scheduled_for`, day view, dispatch board, working hours, swap, quick-add from the schedule, customer requests carrying when + where.
+- **Job queue** (#220/#221) — "Manual" assignment finally means unassigned; the Unassigned queue + manager alerts.
+- **UI "magic" S11–S18a** (#209/#210/#223/#229/#233/#235/#240) — skeletons + optimistic rows, auth pages, the `{% icon %}` tag and a Font-Awesome-free chrome, Tailwind source out of `static/`, landing reveal bug, report-only CSP.
+- **Photo ML P1–P7** (#211–#243) — tap-to-crop, suggester, backfill queue, break-framed photos on the invoice and portal, before/after exhibit, customer photo download.
+- **Email chassis** (#200/#202/#206/#208) — one chassis for every audience, replacement lifecycle emails, receipts, bell + history.
+- **Mygrant quotes** (#184/#186/#194) — per-shop encrypted credentials + live glass pricing, dark until the Mygrant IT callback.
+- **Test suite** (#244) — 80 min → 16 with `tblib`; committed baseline at `docs/strategy/test_baseline_main.txt`.
 - **Billing & subscription hardening** (PRs #166/#171/#172/#173) — EB cron had never executed (four silent bugs), Stripe Basil payload shapes, webhook idempotency + reconcile sweeps, `past_due` read-only at 14 days, platform fee resolution, real plan limits.
 - **Payment reliability** (PRs #148/#149) — webhook 500 hotfix, manual-payment guard, reconcile cron, verified payment-complete landing.
 - **UI "magic" overhaul S1–S10** (PRs #160/#162/#163/#164/#167/#168/#169) — self-hosted assets, design tokens, brand palette, dashboard/jobs/job-form redesigns, motion, view transitions.
@@ -28,12 +46,6 @@ Condensed, because these closed out items this file used to list as pending:
 - **Rewards bug fixes** — 4 bugs fixed from code review (is_active filter, context, routing, unique constraint)
 - **Bug fix sprint** — CODE-164 through CODE-175 (tenant isolation in rewards, race conditions, N+1 queries, admin delete_queryset gaps)
 - **PR #98** — merged
-
-### v2.10 — Loyalty System + Bug Fix Sprint (March 24, 2026)
-- **Loyalty Phase 1** — PointTransaction ledger, LoyaltyConfig (per-tenant configurable), LoyaltyService, points in customer nav, points history page
-- **Rewards bug fixes** — 4 bugs fixed from code review (is_active filter, context, routing, unique constraint)
-- **Bug fix sprint** — CODE-164 through CODE-175 (tenant isolation in rewards, race conditions, N+1 queries, admin delete_queryset gaps)
-- **PR #98** — open, pending merge
 
 ### v2.9 — Mobile UX + FAB + Stripe Connect Live (March 23, 2026)
 - **Stripe Connect approved and live** — charges_enabled, payouts_enabled, real payments flowing
@@ -76,27 +88,41 @@ Unified permissions, billing/invoicing lifecycle, SaaS subscription billing, Str
 
 ## 🔴 High Priority (Do Now)
 
-### Technician assignment notifications
-- **Status:** Broken — an assigned tech is told nothing. Four stacked blockers, each verified.
-- **Action:** Sessions N1–N3 in [`../strategy/FIELD_OPS_SESSIONS.md`](/docs/strategy/FIELD_OPS_SESSIONS.md)
+### Deploy `main`, and confirm The Glass Guy can take a payment
+- **Status:** seven PRs merged, not deployed (line at the top). The Glass Guy's Stripe Connect was still pending in mid-August; unconfirmed since.
+- **Action:** Drake deploys; a read-only Connect check on prod follows. If Connect is still pending, that is the next session — it outranks everything below.
+
+### P8 — close the world-readable media bucket
+- **Status:** customers' damage photos are readable by anyone who guesses a phone filename. P7 (#243) built the app-served download that closing it requires.
+- **Action:** `docs/strategy/PHOTO_ML_SESSIONS.md` §P8, right after #243 is on prod.
+
+### Landing page credibility + a front door
+- **Status:** the "500+ Jobs Tracked" trust bar reads as "nobody uses this"; the product shot is an HTML mock; nothing on the site captures a lead.
+- **Action:** `IMPROVEMENT_SESSIONS.md` C1 (own PR, no decision needed), then the website lead widget (`proposals/website-integration-widget.md`, the one March draft kept as the acquisition item).
 
 ### Pre-existing test-suite failures
-- **Status:** ~90–105 failures on `main`. Sessions must compare against a baseline instead of counting absolutes, which makes real regressions easy to miss.
-- **Action:** Triage and fix in batches; mostly SES mocks and seed-data drift.
+- **Status:** ~93 red on a clean `main`, baseline committed at `docs/strategy/test_baseline_main.txt`; `scripts/test_guards.sh --full` (PR #245) diffs against it and fails only on regressions.
+- **Action:** the honesty half of `docs/strategy/TEST_SUITE_SESSIONS.md`.
 
 ### Customer portal test coverage
-- **Status:** 30+ views, thin coverage. Anything building on those views is building on sand.
+- **Status:** 30+ views, thin coverage. Anything building on those views is building on sand — and B3 (quotes) will.
 
 *(Resolved: Sentry — `SENTRY_DSN` set and verified in prod 2026-08-09. Tailwind CDN — removed in
-PR #160; there are now zero third-party asset hosts and CLAUDE.md forbids reintroducing them.)*
+PR #160; there are now zero third-party asset hosts and CLAUDE.md forbids reintroducing them.
+Technician assignment notifications — N1 #179 and N3 #204, deployed 2026-08-24.)*
 
 ---
 
 ## 🟡 Next Up
 
-### Scheduling & dispatch
-- The largest missing capability: repairs carry a date but there is no booked time, day view, or dispatch board.
-- → Sessions S1–S6 in [`../strategy/FIELD_OPS_SESSIONS.md`](/docs/strategy/FIELD_OPS_SESSIONS.md)
+### The spine — quotes, claim tracking, price book
+- The three things a medium shop asks for in its first demo that need no NAGS licence and no EDI. One session each, after the fork in `PRODUCT_DIRECTION.md` carries Drake's name.
+- **Quote → job** (B3), **Tier 1 insurance claim tracking with short-payment reconciliation** (B5), **shop-owned price book seeded from history** (B6) — all in [`../strategy/IMPROVEMENT_SESSIONS.md`](/docs/strategy/IMPROVEMENT_SESSIONS.md)
+
+### Scheduling UX (second cut)
+- *Shipped:* booked time, day view, dispatch board, working hours, swap, quick-add (S1–S10).
+- *Remaining:* the move primitive + inline time edit, the ordered day list with drag-to-move, schedule on the dashboard, multi-tech moves.
+- → Sessions S11–S14 in [`../strategy/FIELD_OPS_SESSIONS.md`](/docs/strategy/FIELD_OPS_SESSIONS.md)
 
 ### Loyalty System Phase 3-4
 - Phase 3: Tiers (Pro-only — Bronze/Silver/Gold/Platinum, point multipliers)
@@ -175,11 +201,11 @@ Items folded in from the deleted `docs/TODO.md` that weren't already tracked her
 
 ### Missing operational features (proposals needed)
 - **Customer communication log** — no record of calls/texts/conversations per customer; shops track this in their heads
-- **Scheduling / calendar** — repairs have a date but no calendar view, time slots, or route planning; minimum viable: daily view of who's going where. **Now planned in detail** → [`../strategy/FIELD_OPS_SESSIONS.md`](/docs/strategy/FIELD_OPS_SESSIONS.md) sessions S1–S5
-- **Estimates / quotes** — no quote workflow before a repair (quote → customer approves → converts to repair)
+- **Scheduling / calendar** — *shipped* as FIELD_OPS S1–S10 (booked time, day view, dispatch board); route planning stays backlog (S6)
+- **Estimates / quotes** — no quote workflow before a repair (quote → customer approves → converts to repair). **Now spine feature 1** → `IMPROVEMENT_SESSIONS.md` B3
 
 ### Infrastructure / code health
-- **Test coverage gaps** — customer portal (30+ views, ~16 tests), ConnectService payment routing lightly tested. Pre-existing failures have grown to **~90–105** on `main` (mostly SES mocks and seed-data drift): always compare against a baseline, never count absolutes
+- **Test coverage gaps** — customer portal (30+ views, ~16 tests), ConnectService payment routing lightly tested. **~93** pre-existing failures on `main`, baseline committed (`docs/strategy/test_baseline_main.txt`): always compare against it, never count absolutes
 - **Missing `db_index` on frequently filtered fields** — `queue_status` on Repair; `status` on Invoice, CustomerInvitation, ReviewRequest, RewardRedemption; `is_active` on Tenant, Technician, etc. Not urgent at current data size; address before scale
 - **Admin fieldsets missing `tenant`** (low priority) — Repair, Replacement, Customer, Invoice, TaxRate, UnitRepairCount, DeliveryLog show `tenant` in list views but not fieldsets; admin UX gap only
 - **Security admin models not registered** (low priority) — `LoginAttempt`, `SecurityAuditLog`, `customer_portal.ApprovalToken` have no admin registration; likely intentional

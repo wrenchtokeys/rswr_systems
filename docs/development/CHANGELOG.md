@@ -14,6 +14,568 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-09-01 — Test suite: `--parallel` works, 80 min to 16 min (PR #244)
+
+Merged, not yet deployed as of 2026-09-02. The same is true of every other
+2026-09-01 entry below (#238 through #243); none carries a migration.
+
+### Fixed
+- **`manage.py test --parallel` crashed on the first failing test**
+  (`TypeError: cannot pickle 'traceback' object`). `tblib` is now in
+  `requirements.txt`. Full suite: 4,799s serial to 967s at `--parallel 8`.
+
+### Technical
+- `docs/strategy/TEST_SUITE_SESSIONS.md` is the arc's living doc;
+  `docs/strategy/test_baseline_main.txt` commits the 93-line FAIL/ERROR
+  baseline from a clean `main`. CLAUDE.md's Running Tests section rewritten.
+
+---
+
+## 2026-09-01 — P7: let the customer keep the photos (PR #243)
+
+### Added
+- **Every photo on an invoice downloads as one ZIP** from the public invoice
+  page (`/invoice/<id>/<token>/photos.zip`, the same HMAC gate as `/pdf/`),
+  and every job page, customer portal and shop alike, gets a per-job button
+  (`/app/repairs/<id>/photos.zip`, `/tech/repairs/<id>/photos.zip`, and the
+  replacement twins). Entries are named for filing:
+  `INV-1042_Unit-4521_2026-08-14_Before.jpg` for a fleet,
+  `INV-1042_2019-Ford-F-150_2026-08-14_Before.jpg` for an individual
+  (`get_vehicle_label()`, so "Unit" never appears). The customer's own
+  submitted photo is included as `Customer-submitted`.
+- `apps/technician_portal/services/photo_archive.py`: bytes come from
+  storage, never the photo's public URL; a photo missing from storage is
+  skipped and the ZIP carries a `README.txt` naming it; no `<a download>`
+  (ignored cross-origin). No migration. Photos in the invoice PDF stay
+  unbuilt by decision.
+
+### Technical
+- Found while specifying P7: **the S3 media bucket is world-readable** and
+  filenames are the phone's originals, so the invoice token protects the
+  page, not the photos. Recorded as the arc's next piece of work, sequenced
+  after P7 so closing it does not remove the only save path.
+  `docs/strategy/PHOTO_ML_SESSIONS.md` brought current (#241, #242): P5/P4b
+  held as TODO by Drake's call.
+
+---
+
+## 2026-09-01 — Strict Content-Security-Policy, shipped report-only (UI_MAGIC S18a, PR #240)
+
+### Security
+- **A real CSP header**, sent as `Content-Security-Policy-Report-Only`:
+  `default-src 'self'`, `frame-ancestors 'none'`, `object-src 'none'`,
+  nonced `script-src` / `style-src` with Cloudflare Turnstile as the only
+  third-party host, `script-src-attr 'none'`, `style-src-attr
+  'unsafe-inline'` (226 `style="…"` attributes exist; a style attribute
+  cannot execute code), `report-uri /csp-report/`. `common/csp_middleware.py`
+  builds it per request; `{{ csp_nonce }}` from `common/context_processors.py`;
+  `/csp-report/` (`common/csp_views.py`) deduplicates in-process.
+- **Report-only is the deliverable.** 195 inline `on*` handlers and 8
+  `href="javascript:…"` remain, and CLAUDE.md's optimistic-row rule requires
+  inline `onclick`; a nonce cannot cover an attribute.
+  `tests/test_csp.py::StagingTests` fails if `CSP_REPORT_ONLY=False` while
+  any inline handler remains.
+
+### Technical
+- 60 templates gained `nonce="{{ csp_nonce }}"`; the one `<style>` built in
+  Python is `{% tenant_brand_css %}`. Settings `CSP_ENABLED`,
+  `CSP_REPORT_ONLY`, `CSP_REPORT_URI`. CLAUDE.md gains a CSP section.
+
+---
+
+## 2026-09-01 — Toll-free registration v4 submitted (PR #239)
+
+### Fixed
+- **Version 3 was denied on 2026-08-26 and sat unnoticed for five days**: the
+  registration read `REQUIRES_UPDATES`, and the denial reasons live on the
+  version, not the registration. Two reasons: the support email
+  (`drake@rockstarwindshield.repair`, inherited from a v1 copied off the
+  other shop's approved registration) matched neither the company name nor
+  `rssystems.io`; and the v3 screenshot was staged with the consent box
+  ticked, which a reviewer reads as pre-selected (the shipping card was
+  never pre-checked).
+- `scripts/submit_tollfree_registration.py`: explicit `BASE_VERSION`,
+  `SUPPORT_EMAIL = support@rssystems.io` with a hard assert that its domain
+  equals `companyInfo.website`. Version 4 is `REVIEWING` (submitted
+  2026-08-31, 20/20 fields, screenshot rendered from the real template in
+  its default state). Per-version table in `FIELD_OPS_SESSIONS.md`
+  Appendix A. No product code changed.
+
+---
+
+## 2026-09-01 — Four field-reported bugs from an individual-customer job (PR #238)
+
+### Fixed
+- **Editing an individual's repair was impossible (CODE-282).**
+  `update_repair` omitted `customer_types_json`, so the fleet/individual
+  toggle died on a JS SyntaxError; `RepairForm.clean()` then demanded
+  make/model although a quick-job individual's vehicle legitimately lives as
+  free text in `unit_number`. Shared `_customer_type_context` helper,
+  validation accepts `unit_number` as the vehicle, input relabeled
+  "Vehicle".
+- **Tax exemption never reached the live invoice.** `sync_lines_for_service`
+  synced price only; `InvoiceLineItem.taxable` is now synced too and totals
+  recalculated. The invoice's tax rate stays frozen.
+- **"Also text it" claimed to work while SMS is dark.** Toggle copy and the
+  "number isn't live yet" banner are honest regardless of toggle state.
+- **No way to add an email at send time (CODE-283).** The shared send-confirm
+  modal silently downgraded to "Save as Draft" for email-less customers; it
+  now offers an inline email input, forwarded as `submitted_email` through
+  the existing `InvoiceSendService` capture.
+
+---
+
+## 2026-08-31 — Photo-ML P6.1 + P6.2: aim the blind crop, pair before and after (PR #236, carrying #234)
+
+Deployed to production 2026-08-31 23:46 UTC (`966a31da`), together with S16a
+and S17 below; migration delta zero. Counted live afterwards: the marks
+reach 20 invoices; census 78 crops, `repairable=73`, `not_repairable=0`.
+
+### Changed
+- **An unmarked damage photo is framed on (41%, 61%) instead of dead centre.**
+  P3.1 measured the 73 cold marks from the backfill queue: technicians tap
+  left and low (a chip is photographed from the driver's seat). The constant
+  halves the median framing error (9.3 vs 17.6, leave-one-out) at zero
+  computation. `BLIND_FOCUS_POSITION` in `photo_crops.py`, copied into
+  `app.css` (`.photo-blind-focus`) and the public invoice page's own
+  `<style>`; `tests/test_photo_blind_focus.py` keeps the copies identical
+  and proves the class survives the purge. A marked photo still wins.
+- **The before and after photos are one exhibit** on the public invoice page:
+  `_public_invoice_photos` returns `(pairs, tiles)`; a job with both photos
+  renders as one `.photo-pair` figure captioned once; no placeholder for a
+  missing after photo. A replacement's pair reads *Damage* / *New glass*.
+  The after photo is never reframed.
+
+### Technical
+- Census against production: 76 of 82 repairs with any photo have both
+  shots, so the P6.3 completion prompt is not built.
+
+---
+
+## 2026-08-31 — UI magic: the landing page stops hiding itself, the Tailwind source leaves `static/` (S16a, S17; PRs #235, #233; #237 docs)
+
+Deployed to production 2026-08-31 23:46 UTC (`966a31da`).
+
+### Fixed
+- **Clicking Pricing on the landing page landed on plan cards at opacity
+  0.28.** Six blocks shipped at `opacity: 0` behind an `IntersectionObserver`;
+  the nav's own `#pricing` anchor teleports past it, and the hero's
+  dashboard mock carried `data-reveal` too. 33 lines out of
+  `templates/landing.html`; `tests/test_landing_visibility.py` asserts the
+  rule; CLAUDE.md says nothing ships hidden waiting on script to reveal it.
+- **`collectstatic` collected and served the uncompiled Tailwind source**
+  (`/static/css/src/input.css` returned 200), and the duplicate copy made a
+  relative `url()` unresolvable under manifest storage, which is why the
+  Inter `@font-face` had been inlined in `head_assets.html` since S1. Source
+  moved to `assets/css/input.css`; `@font-face` is back in the stylesheet;
+  `tests/test_css_pipeline.py` turns the deploy failure into a unit test.
+  Drive-by: `app.css` was stale on `main` (`.pt-2\.5` never compiled).
+
+---
+
+## 2026-08-27 — Photo-ML P6, P4a.1, P3.1: the mark reaches the customer, the backlog gets a queue (PRs #222, #224, #232)
+
+### Added
+- **The public invoice and customer portal frame each damage photo on its
+  marked break.** `focus_positions_for(job)` in `services/photo_crops.py`
+  returns `object-position` values from the tap; the served file is always
+  the untouched original. A portrait phone photo lost ~53% of its height to
+  the old blind centre-crop, so a chip 17% down the frame was not on the
+  invoice at all. The after photo is never reframed.
+- **`/tech/photos/mark/`** puts every unmarked damage photo in one queue: tap,
+  Enter, next, driving P2's existing endpoint. No new model or migration.
+  Production had 77 eligible photos and 1 marked.
+
+### Fixed
+- Replacement line items contributed no photos to the public invoice, and
+  every individual's invoice captioned photos with a bare `Unit` from the
+  raw `unit_number`; now `get_vehicle_label()`.
+
+### Technical
+- **P3.1 (docs only, #232):** Drake marked the backlog cold, 1 to 73
+  confirmed crops. The saliency suggester beats the centre guess on 21 of
+  27, but all 72 marks cluster at (41, 61) and that constant halves the
+  error for free. Became P6.1. Prod ran the P4a.1 branch directly on
+  2026-08-27, so the queue was live before the P6 framing (2026-08-31).
+
+---
+
+## 2026-08-27 — The `{% icon %}` tag, and the chrome stops using Font Awesome (UI_MAGIC S13a, S13b; PRs #223, #229; #227 re-landed)
+
+Deployed to production 2026-08-27, a cut that carried S11, S12, S13a and the
+2026-08-25/26 work. S13b, S16a, S17 and the customer-facing photo framing
+waited for the 2026-08-31 deploy.
+
+### Added
+- **`{% icon 'name' %}`** (`{% load ui %}`): 70 line icons plus ~40 aliases in
+  `core/icons.py`, 24×24 stroke-only, rendered inline as a 1em SVG with Font
+  Awesome's `-0.125em` baseline so it drops into the slot an `<i>` occupied.
+  An unknown name raises under `DEBUG`. `tests/test_icon_tag.py` enforces
+  the drawing rules.
+
+### Changed
+- **The chrome is migrated**: both app shells, every `templates/includes/*`
+  and `templates/components/*`, 101 call sites, `fas` 1,311 to 1,214.
+  Everything else still renders Font Awesome. `fa-hand-holding-usd` aliased
+  to `dollar-sign`, `file-invoice` to `receipt`, `car` redrawn front-on.
+
+### Fixed
+- **No `<i class="fas">` could ever be responsively hidden**: `.fas {
+  display: inline-block }` is linked after `app.css` and beats Tailwind's
+  `hidden`. `{% load %}` above `{% extends %}` 500s the page
+  (`support/base_topic.html` hit it). Both rules are in CLAUDE.md.
+- #227 was merged into its stacked base ten seconds after that base merged,
+  so `main` never received it; #229 cherry-picked the same commits.
+
+---
+
+## 2026-08-27 — The Job Assignment setting kept two of its four promises (JOB_QUEUE Q1–Q4; PRs #220, #221)
+
+### Fixed
+- **"Manual" assigned everything anyway, and "Primary Tech First" had the
+  same hole with no primary set.** `GlassService.technician` is NOT NULL, so
+  "nobody has picked this yet" was not a state the schema could hold.
+  CODE-279: a `needs_assignment` flag (migration
+  `technician_portal/0060_add_needs_assignment`) rather than a nullable FK.
+  It drives the job list's "Needs assignment" filter (which previously
+  matched nothing, ever), suppresses the false "you've been assigned"
+  notification, alerts managers instead, and clears itself in `save()`.
+  `select_technician()` lets in-app creation consult the shop's strategy.
+- **Round Robin sent everything to the same person (CODE-278).** The rotation
+  anchored on the job it was assigning.
+- **The queue drains (CODE-280).** Approving a queued job takes it, but only
+  if the approver can do that kind of work. Leaving the queue is a first
+  assignment, not a reassignment.
+- **Managers only heard about the queue on the dashboard (CODE-281).**
+  `core/0034` seeds a `needs_assignment` template (HIGH with
+  `channels_override: ['in_app', 'email']`), sent once per
+  `repair_batch_id`, never naming the provisional technician.
+  **Shop-visible on deploy**: managers start receiving email when a customer
+  request lands unassigned.
+
+---
+
+## 2026-08-27 — technician_portal migration leaf saga (PRs #225, #226, #228, #230, #231)
+
+### Fixed
+- **`main` could not migrate, test, or run system checks, three times in one
+  day.** #219 (Photo-ML P4a) and #220/#221 (job queue) each added a
+  `technician_portal/0060_*` from a `main` that lacked the other: two leaf
+  nodes. #225 and #226 each added an empty `0061` merge node twenty-four
+  seconds apart (two leaves again); #228 and #230 each deleted one of them
+  (no `0061` at all); #231 restored
+  `0061_merge_needs_assignment_and_photocrop` verbatim. Production never
+  hit it.
+
+### Technical
+- `tests/test_migration_graph.py` (#225) asserts one leaf migration per app.
+  It went red at every round and prevented none, because **this repo had no
+  CI**; `.github/workflows/migration-graph.yml` (#231) now runs it on PRs
+  and pushes to `main` (reports only, unless added to branch protection).
+
+---
+
+## 2026-08-26 — Tap-to-crop: labeled break close-ups, on every photo, pre-suggested, both classes (Photo-ML P1 to P4a; PRs #211, #215, #217, #219; #218 re-landed)
+
+### Added
+- **P1: one tap on the break at upload time.** A modal shows the damage photo
+  full-size and asks for one tap; the server crops a square around it into
+  a `RepairPhotoCrop` row (migration `technician_portal/0057`), storing the
+  tap as a percent of the EXIF-upright dimensions plus a derived JPEG. The
+  original is never modified; Skip uploads as before; a crop failure never
+  blocks saving a job (`services/photo_crops.py` fails open). These crops
+  plus the job's outcome are training data for a repairable-vs-not
+  classifier (`docs/strategy/PHOTO_ML_SESSIONS.md`).
+- **P2: every damage photo can be marked.** "Mark the break" / "Move the
+  mark" under every photo on the repair detail page
+  (`POST /tech/repairs/<id>/photo-crop/`), one tap per break on the
+  multi-break form, `manage.py retry_photo_crops` for crops whose original
+  would not open. Customers are never asked to tap.
+- **P3: the break is already marked when you open the photo.** A pure-Pillow
+  saliency suggester (`services/photo_suggest.py`; no API key, no photo
+  leaves the server, by Drake's call). `confirmed_by_human` records
+  provenance (migration `0059`); `manage.py suggest_photo_crops` sweeps the
+  backlog and never overwrites an existing crop. `PHOTO_SUGGEST_ENABLED`.
+- **P4a: both classes are collectable.** `RepairPhotoCrop` hangs off a
+  `Repair` or a `Replacement`, exactly one (`CheckConstraint`, migration
+  `0060_photocrop_replacement_fk`). Until then every crop was by
+  construction the positive class. The job form's repair-only tap gate is
+  gone; the replacement detail page gets the same control and shows the
+  customer's own photo. Labels come from what the shop did
+  (`services/photo_dataset.py`): side and rear glass is tempered, so only a
+  windshield replacement means "not repairable".
+- **`manage.py export_photo_dataset`**: images plus JSONL, read-only,
+  anonymised; prints class balance and the suggester's real correction
+  distance every run. `--from-originals` re-derives every crop
+  byte-identically from the stored coordinates.
+
+### Fixed
+- `job_create` now converts HEIC to JPEG. `audit_repair_photos --delete` used
+  the soft-delete manager and never enumerated Replacement photos. #218
+  merged into P3's branch, not `main`; #219 re-targeted the same commits.
+
+---
+
+## 2026-08-26 — Scheduling UX: "leave blank" keeps a job unscheduled, and a job goes on the schedule in one submit (FIELD_OPS S9, S10; PRs #213, #214; #212 spec)
+
+### Fixed
+- **A job nobody scheduled was born with a booking time.** `base_app.html`
+  pre-filled every empty `datetime-local` before flatpickr attached, so
+  "leave blank to keep this job unscheduled" could never be honoured. The
+  default is now opt-in via `data-default-now`: `repair_date` keeps it, the
+  three `scheduled_for` inputs do not. **Behaviour change**: `QuickJobForm`
+  and `ReplacementForm` jobs come out unscheduled unless someone types a
+  time.
+- **A booked REQUESTED job vanished from both lists**: REQUESTED joins
+  `DAY_STATUSES`; booking does not promote it.
+
+### Added
+- **`+ Add job` on the schedule page.** Who / what / when in a modal,
+  `POST /tech/schedule/quick-job/` (JSON, gated on `sees_whole_shop`),
+  reusing the customer typeahead; no match means the typed name becomes a
+  new person. Creation goes through `save()`; the time is written by S4's
+  `confirm_appointment`; a booking failure rolls the job back.
+  `job_create`'s ~150 inline lines moved to `services/quick_job.py`.
+
+---
+
+## 2026-08-25 — Skeletons, optimistic rows, and auth pages leave the marketing shell (UI_MAGIC S11, S12; PRs #210, #209)
+
+### Added
+- **The jobs and invoices lists no longer go quiet on filter, sort, search
+  or page change.** `static/js/list-loading.js` clones the live rows and
+  swaps each text run for a `.sk-bar` of its measured width; the contract
+  is `data-skeleton-list` on both breakpoint twins. Fires only on a
+  same-pathname navigation, after 180ms of grace.
+- **Paid means paid before the round trip.** `static/js/optimistic.js` gives
+  a row `begin` / `commit` / `rollback`; `owner_invoice_bulk_action` returns
+  `paid_ids` / `skipped_ids` so a partial success reconciles row by row.
+  Money is never animated. `{% status_badge … optimistic=True %}` is opt-in.
+
+### Changed
+- **`/login/` said "RS Systems" seven times.** Login and the four
+  password-reset pages moved to `base_auth.html`; brand painted once;
+  `templates/includes/auth_footer.html` keeps Terms and Privacy reachable.
+  A shop-scoped login now themes to the shop.
+
+---
+
+## 2026-08-25 — Email chassis quality pass, and the bell joins it (UI_MAGIC Outbound; PRs #208, #206; #207 docs)
+
+### Changed
+- **The invoice email reads like a bill.** A real fleet invoice was 19
+  identical hairline rows with every $50 line as bold as the $1,337 total.
+  Now: amount first (`components/amount.html`), a receipt block
+  (`components/receipt.html`) grouping items under their unit or vehicle,
+  only Total due emphasized, thousands separators. `customer_invitation.html`
+  rebuilt on the chassis; `payment_received.html` leads with a green amount
+  paid; `_send_batch_invoice_email` delegates to `InvoiceEmailService` (it
+  said "please find attached" while attaching nothing).
+- **The bell dropdown and both notification history pages render the same
+  row** (`templates/components/notification_row.html`,
+  `core/templatetags/notifications_ui.py`). Unread is one signal, a 6px
+  brand dot. `short_age` replaces `timesince`'s "0 minutes ago".
+
+### Fixed
+- **The 30-second poll ate its own click handlers** (`innerHTML` replaced the
+  rows they were bound to) and interpolated notification text raw; the
+  endpoint now returns Django-escaped HTML from the shared partial.
+  Technician `mark_all_read` never invalidated its cache. The customer
+  notification history was Bootstrap markup on an app that never shipped
+  Bootstrap.
+- **Tailwind was purging the tone tables in `core/templatetags/`** (the
+  config never scanned `.py`), so `bg-yellow-200`, the "Customer Requested"
+  pill, was absent from the built `app.css` app-wide.
+
+### Added
+- **`python manage.py preview_emails [--out DIR] [--tenant slug]`** renders
+  all 23 emails locally through the real services. Use it before any email
+  change.
+
+### Technical
+- Toll-free registration v3 submitted 2026-08-25 (#207).
+
+---
+
+## 2026-08-25 — The text sign-up nobody could see (PR #205)
+
+### Fixed
+- **The SMS opt-in card on the public invoice page had been deployed since
+  2026-08-13 and was never reachable**: it was gated on `Customer.phone`, an
+  optional field, so every invoice to an email-only customer rendered no
+  sign-up. The card is now offered to any customer not already opted in;
+  with no number on file the customer types their own mobile (stronger
+  first-party consent). The number is saved only when the shop has nothing
+  usable; invalid entry records nothing.
+
+---
+
+## 2026-08-24 — Dispatch board and technician working hours (FIELD_OPS S5, S8; PRs #197, #201, #199; #198 spec)
+
+Deployed to production 2026-08-24 22:47 CDT (`68dc31e9`), a cumulative
+deploy that carried #197, #198, #200, #201, #202, #203, #204 and #205.
+
+### Added
+- **Assign and schedule in one motion.** `POST /tech/schedule/dispatch/`
+  (`services/dispatch.py`) composes N1's `assign_job` with S4's
+  `confirm_appointment` in one transaction; the assignment email carries the
+  time. `data-technician-id` is a second optimistic lock. Booking needs
+  `sees_whole_shop`; reassigning additionally needs `can_assign_work`.
+- **Conflicts are informational; nothing blocks a write.** Overlap only
+  between windows narrow enough to assert a clock, a per-tech capacity line
+  ("3h of work booked into 1h"), and a flag when a booking misses what the
+  customer asked for (`services/schedule_conflicts.py`).
+- **Technician working hours.** `Technician.working_hours` had existed since
+  migration `0007` with zero readers and writers; `{}` means undeclared,
+  never "never works" (`covers()` returns `None`).
+  `services/working_hours.py`, a Settings, My Team editor on its own
+  endpoint, a fourth conflict signal ("Marcus is off Saturdays"), a truer
+  capacity denominator, "Off today" instead of "Nothing scheduled". No
+  migration.
+
+### Fixed
+- **`/app/services/` returned 500 `NoReverseMatch`** for a "several breaks,
+  I don't know how many" request (#199): one `Repair` with
+  `is_multi_break_estimate=True` and no `repair_batch_id`, but
+  `Repair.is_part_of_batch` returned True anyway. It now requires an actual
+  `repair_batch_id`.
+
+---
+
+## 2026-08-24 — Email + notifications: one chassis for every audience, the replacement lifecycle, six emails that never sent (PRs #200, #202, #204; #203 docs)
+
+### Changed
+- **Two unrelated email systems became one.** The notification templates and
+  `send_branded_email()` (24 call sites, signature unchanged) both render
+  through `templates/emails/base.html`, with components in
+  `templates/emails/components/`; status pills from
+  `core/templatetags/email_ui.py`. Subscription mail passes `platform=True`.
+- **The invoice email joins the chassis** (Drake sent himself an invoice
+  after #200 deployed and it looked the same). It was a third shell in an
+  f-string, shop-named but never shop-branded. Now
+  `templates/emails/invoice.html`, one primary action.
+
+### Added
+- **The replacement lifecycle exists.** Seven `replacement_*` templates
+  seeded by `core/0032`, wired through `handle_replacement_status_change`;
+  every one declares `channels_override` because HIGH maps to in-app + SMS.
+
+### Fixed
+- **Six repair lifecycle emails had never actually sent as email** (N3).
+  Migration 0018 seeded the repair templates with in-app fields only, so
+  `repair_completed`, `repair_pending_approval`, `repair_approved`,
+  `repair_denied`, `repair_in_progress` and `batch_approved` went out as bare
+  plain text; three also had no email channel. `core/0033` backfills the
+  bodies and adds `channels_override`. **Shop-visible**: "a repair needs
+  your approval" and "your repair is done" start emailing customers.
+- `render()` now resolves `action_url` before rendering the bodies; every
+  body guards the CTA. Blank "Repair ID: #" / bare "$" emails
+  (`{{ repair.* }}` on a flat context; `total_cost` is not a field), dead
+  buttons, dingbats and emoji, unconditional `Unit Number:` for
+  individuals: all fixed. `notify_batch_approved` had no callers, so a
+  3-break approval sent three emails; `job_display_context` read a field
+  that does not exist, so the "Damage" row had never rendered.
+- **Review-request business hours were compared in UTC**, queueing mail for
+  roughly 4 AM local.
+- Shop copy from `BillingConfig.invoice_email_template` reached only the
+  plain-text half of the invoice email; now the HTML too.
+
+---
+
+## 2026-08-18 — Customer requests carry when + where, and drag to swap (FIELD_OPS S4, S7; PRs #195, #192, #194; #193, #196 docs)
+
+Deployed to production 2026-08-18: #190 through #193 at 10:20 CDT
+(`ab5849e2`), S4 at 10:32 CDT (`c40701c9`).
+
+### Added
+- **A customer requesting work can say which day, which part of the day, and
+  where the vehicle will be.** `preferred_date` / `preferred_window`
+  (migration `technician_portal/0055`) are their own columns: **a wish is not
+  a booking**, and nothing in the request path writes `scheduled_for`. One
+  click on the "Needs scheduling" rail books it via
+  `services/schedule_booking.py` (`POST /tech/schedule/book/`), booking a
+  whole `repair_batch_id` group as one visit. No time picker by design.
+- **Drag to swap two appointments** on the day view (`services/schedule_swap.py`,
+  `POST /tech/schedule/swap/`), each job keeping its own duration;
+  multi-break batches refuse with a reason. New `job_rescheduled` template
+  (`core/0029`); one notice to the assigned tech, none for your own drag.
+- **Mygrant Connect tells the shop how to get its own API key** (#194): a
+  "Don't have an API key yet?" panel on the Parts tab with who to call and
+  the form name the rep files it under. Copy only.
+
+### Fixed
+- **The customer's "request received" email had never been sent** on any
+  migration-seeded database: `core/0009` seeded lowercase
+  `default_priority`, which matches no branch of `get_delivery_channels()`.
+  `core/0031` normalizes them. The "you're on the schedule" over-promise was
+  in five places; all now say accepted-not-yet-booked.
+
+---
+
+## 2026-08-17 — Day / agenda view: run the day from one screen (FIELD_OPS S3; PR #190; #191 S7 spec)
+
+### Added
+- **`/tech/schedule/`**, a day view over S1's `scheduled_for`. A technician
+  sees their own day in booked order with S2's map and call links; owners
+  and managers see every active tech's day grouped by technician plus a
+  "Needs scheduling" rail of unscheduled and REQUESTED work. Date
+  navigator, day boundaries in the shop's local timezone, new "Schedule"
+  nav link. Completed jobs stay, dimmed; replacements are not gated on
+  `offers_replacements` (a booked replacement is a promise).
+
+---
+
+## 2026-08-15 — The job form gets the rest of what the old repair form did, and a real booked time (FIELD_OPS S1; PRs #185, #187, #188)
+
+Deployed to production 2026-08-15.
+
+### Fixed
+- **A phone photo on the job form was a bare nginx 413.** nginx and Django cap
+  a request at 10MB; the old repair form resized to 2048px/85% first, the
+  unified job form posted raw. `static/js/image_compress.js` now serves
+  every form via `data-` attributes.
+- **The resin viscosity suggestion was missing on the job form.** It had been
+  hand-copied into `repair_form.js`; `static/js/viscosity_suggestion.js` is
+  the one shared module (`textContent` not `innerHTML` for shop-authored
+  text). Net -458 lines of duplicated JS. The duplicate-job warning also had
+  no caller on the new form.
+
+### Added
+- **`GlassService.scheduled_for` + `scheduled_window_end`** (migration
+  `technician_portal/0053`, additive). `service_date` keeps its
+  completion-timestamp semantics. The quick job form shows "Scheduled for"
+  only while "Job is already done" is unchecked. The tech dashboard's queue
+  groups into Overdue / Today / Later / Unscheduled.
+
+---
+
+## 2026-08-15 — Mygrant Connect: encrypted credentials, per-shop connection, live quotes (FIELD_OPS P1 steps 3 to 5; PRs #184, #186; #183 docs)
+
+Deployed to production 2026-08-15. `FIELD_ENCRYPTION_KEY` must be set in the
+EB environment before any shop can save credentials.
+
+### Added
+- **Credential encryption at rest**, the first in the codebase:
+  `common/encryption.py`, Fernet, key from `FIELD_ENCRYPTION_KEY`
+  (deliberately not `SECRET_KEY`). `EncryptedTextField` stores ciphertext
+  only.
+- **`MygrantConfig`** (migration `technician_portal/0052`), per-tenant only,
+  gated by `is_enabled()` on the Stripe Connect pattern. Owner Settings
+  gains a Parts tab with the connect card and a Test Connection against
+  Mygrant's staging host, never production, never an order.
+- **Get Mygrant Quote on a Replacement** whose job holds the NAGS number:
+  live SKUs from the shop's own account, and **Use as parts cost** writes
+  `parts_cost`; the Pricing card then shows profit on this job, shop-only.
+  Deliberate button only (searches can bill ~$1); the response is cached so
+  apply never fires a second search. `manage.py mygrant_quote --staging`
+  proves the pipeline the day the key arrives.
+
+### Technical
+- Portal automation rejected on MygrantGlass.com ToS §8.1 (#183); steps 1
+  and 2 (API onboarding) remain on Mygrant's rep.
+
+---
+
 ## 2026-08-15 — Field dispatch: get the tech to the vehicle (FIELD_OPS S2 / B1)
 
 ### Added

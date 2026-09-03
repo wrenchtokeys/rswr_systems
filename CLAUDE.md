@@ -492,8 +492,9 @@ Otherwise TaxService finds no rate and sets tax_rate=0.
 **When developing autonomously:**
 1. Cut a fresh branch from the latest `main`; print `git branch --show-current` before
    every test run — another Claude session may share this working tree.
-2. Run targeted tests for the changed area. The suite has ~90–105 pre-existing failures
-   on `main` — compare against a baseline, never count absolutes.
+2. Run targeted tests for the changed area. ~93 tests are red on a clean `main` — compare
+   against the committed baseline (`docs/strategy/test_baseline_main.txt`), never count
+   absolutes. `scripts/test_guards.sh --full` (PR #245) does the diff for you once it merges.
 3. Commit with a clear message. Add files by name; never `git add -A`.
 4. Push the branch and open a PR.
 

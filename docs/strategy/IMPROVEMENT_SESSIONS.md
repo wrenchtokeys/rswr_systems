@@ -2,21 +2,21 @@
 
 **Created:** 2026-08-07
 **Author:** Amelia (from a live walkthrough of the running app)
-**Status:** Proposed — pending Drake's review. **Blocked on the §1 Path A / Path B fork**; nothing
-below can be sequenced until that call is made.
-**Companion to:** `docs/strategy/PRODUCT_DIRECTION.md` (June 2026). This document does not
-supersede it; it adds an execution layout and adds two strategic items that document omits
-(insurance/TPA billing, NAGS).
+**Status:** living backlog. **The §1 fork is recorded** (2026-09-02: Path A with a B-ready
+spine, drafted and awaiting Drake's sign-off in `PRODUCT_DIRECTION.md`) — sessions can be
+sequenced against it. Every session now carries a **Status** line (added 2026-09-02).
+**Companion to:** `docs/strategy/PRODUCT_DIRECTION.md` (September 2026), which owns the
+direction; this document owns the sessions. The spine features named there are **B3, B5, B6**
+here.
 
-> **Two caveats before using this doc (added 2026-08-11).**
-> 1. **It has no per-session status column**, unlike `UI_MAGIC_SESSIONS.md` and
->    `FIELD_OPS_SESSIONS.md`. Nothing here is marked done even where the work has since shipped —
->    check `CHANGELOG.md` before starting any session. Known overlaps: **B1 (field dispatch) is
->    superseded** by `FIELD_OPS_SESSIONS.md` S2, which absorbs its execution; several Track A
->    items were resolved by the UI sessions S1–S10.
-> 2. **Line-number anchors have drifted** — the app changed substantially after 2026-08-07.
->    Re-verify every `file:line` before relying on it (Appendix A had one such anchor pointing at
->    a since-deleted symbol).
+> **Two caveats before using this doc (added 2026-08-11, revised 2026-09-02).**
+> 1. **Status lines are dated snapshots.** Each session's `**Status:**` line says what was true
+>    on the date it carries; `CHANGELOG.md` is canonical for what shipped. Known overlaps:
+>    **B1 (field dispatch) is done** as `FIELD_OPS_SESSIONS.md` S2; **A5 is done** as
+>    `UI_MAGIC_SESSIONS.md` S1; A1 was largely resolved by UI sessions S2/S3/S5–S8.
+> 2. **`file:line` anchors were replaced with symbol names on 2026-09-02** — 27 of 29 had
+>    drifted (one pointed past the end of its file). A symbol is still a claim about the code
+>    on the day it was written; grep for it before relying on it.
 
 ---
 
@@ -70,7 +70,7 @@ Plus a **public marketing surface**: `templates/landing.html`, `templates/saas/p
 signup, and the public invoice-pay page.
 
 **Two job types**, both subclassing the abstract `GlassService`
-(`apps/technician_portal/models.py:275`):
+(`class GlassService` in `apps/technician_portal/models.py`):
 - `Repair` — chip/crack. Progressively priced ($50→$40→$35…) per unit via `UnitRepairCount`.
 - `Replacement` — full glass. Priced as `parts_cost + labor_cost`, hand-entered.
 
@@ -87,9 +87,9 @@ purchase orders, no parts catalog, no timesheets, no commission tracking, no two
 messaging, no communication log.
 
 **What exists but is inert:** insurance fields on `GlassService`
-(`apps/technician_portal/models.py:381–398`: `insurance_claim`, `insurance_company`,
+(the insurance fields on `GlassService` in `apps/technician_portal/models.py`: `insurance_claim`, `insurance_company`,
 `claim_number`, `deductible`, `authorization_number`) are captured and displayed but drive no
-workflow. `Replacement.nags_number` (`:1516`) is free text with no catalog behind it.
+workflow. `Replacement.nags_number` is free text with no catalog behind it.
 `core/services/sms_service.py` sends outbound SMS via AWS SNS; nothing receives inbound.
 
 **Strategic frame used throughout:** RS Systems is currently a *very good job-tracking and
@@ -118,9 +118,18 @@ bill. Ceiling: genuinely un-leavable, much higher ACV, and the "industry standar
 Tracks A, B and C below are valuable on *either* path — do those regardless. Track D is
 Path B only, and each Track D session starts with a decision memo, not code.
 
-My recommendation: **run Tracks A → B → C now** (they are all "would have done anyway" work),
-and use that time to answer D1's market question by talking to five shops that do insurance
-volume. Decide Path B on evidence, not on ambition.
+My recommendation (2026-08-07): **run Tracks A → B → C now** (they are all "would have done
+anyway" work), and use that time to answer D1's market question by talking to five shops that
+do insurance volume. Decide Path B on evidence, not on ambition.
+
+**The decision, as recorded 2026-09-02 (drafted from the 2026-09-01 direction review, awaiting
+Drake's sign-off in `PRODUCT_DIRECTION.md` §The decision):** **Path A now, with a B-ready
+spine.** Three Track B sessions are the spine — **B3** quotes → job, **B5** Tier 1 insurance
+claim tracking with short-payment reconciliation (promoted out of D1), **B6** a shop-owned price
+book seeded from history (promoted out of D2). None needs NAGS or EDI; each is what Path B
+would stand on. D1's and D2's remaining scope (EDI, a NAGS licence) stays a memo behind the
+five interviews, which have still not been held. Nothing here is "blocked" any more; it is
+sequenced.
 
 ---
 
@@ -135,6 +144,7 @@ feels expensive." Any of them can be done in isolation, in any order.*
 
 **Goal:** One visual language for actions. A primary action looks the same everywhere.
 **Size:** M · **Depends on:** —
+**Status:** **Largely DONE** via `UI_MAGIC_SESSIONS.md` S2 (tokens), S3 (`blue-*` → `brand-*`), S5–S8 (green retired from surfaces/buttons; `.btn-*` components). 2026-09-02: the remaining item is to walk the pages named below and confirm no second accent survived; that is a check, not a session.
 
 **Why it matters.** Right now blue and green *both* mean "primary," which means neither means
 anything. On the technician dashboard's Quick Actions card, three stacked buttons are green
@@ -183,24 +193,25 @@ this is a large part of why.
 
 **Goal:** No customer ever sees a null, a raw enum, or a placeholder.
 **Size:** XS · **Depends on:** —
+**Status:** **VERIFY ON PROD** (2026-09-02). Never run as a session, but #181 (individual vs fleet) and #238 (four field-reported bugs from an individual-customer job) fixed customer-facing nulls on these surfaces. Reproduce each item below against production before doing anything.
 
 **Why it matters.** These are cheap and they're on the surface a paying fleet customer looks
 at. One of them literally prints the word "None."
 
 **Verified current state.**
-1. **`None` rendered to customers.** `templates/customer_portal/dashboard.html:241` and `:264`
+1. **`None` rendered to customers.** The services table rows in `templates/customer_portal/dashboard.html`
    render `{{ service.description|truncatechars:50 }}` with no `|default`. `description` is
    `TextField(blank=True, null=True)` on `GlassService`. A shop that creates a replacement
    without typing a description shows the customer:
    `Windshield — None`. This is a genuine product bug, reproducible without odd data.
-2. **Inconsistent enum rendering.** `templates/customer_portal/repair_detail.html:80` uses raw
+2. **Inconsistent enum rendering.** The key-info grid in `templates/customer_portal/repair_detail.html` uses raw
    `{{ repair.damage_type }}`; every other template uses `get_damage_type_display`
-   (`batch_detail.html:62`, `repair_approve.html:88`, `repair_deny.html:89`,
-   `batch_approve_confirm.html:29`, `batch_deny_confirm.html:29`). Harmless *today* because
+   (`batch_detail.html`, `repair_approve.html`, `repair_deny.html`,
+   `batch_approve_confirm.html`, `batch_deny_confirm.html`). Harmless *today* because
    `DAMAGE_TYPE_CHOICES` keys happen to equal their labels
-   (`apps/technician_portal/models.py:663–672`) — but it breaks the moment anyone shortens a
+   (`DAMAGE_TYPE_CHOICES` in `apps/technician_portal/models.py`) — but it breaks the moment anyone shortens a
    key, and it's an inconsistency a reviewer will flag.
-3. **Unit number missing from the portal home screen.** `dashboard.html:241/:264` lead with the
+3. **Unit number missing from the portal home screen.** The same services table rows lead with the
    description; `/app/services/` correctly leads with `Unit 7955`. Result: a fleet manager
    landing on the portal home sees "Rock chip, driver side lower" three times identically and
    cannot tell which truck is which. For a fleet account the unit number *is* the identity.
@@ -218,7 +229,7 @@ at. One of them literally prints the word "None."
 
 **Acceptance criteria.** A replacement with `description=None` and a repair with a blank
 description both render cleanly on `/app/` and `/app/services/`. Portal home leads with unit
-number (or vehicle) when available. `repair_detail.html:80` uses the display method.
+number (or vehicle) when available. `repair_detail.html`'s key-info grid uses the display method.
 
 **Out of scope.** Redesigning the portal home layout (see B4).
 
@@ -228,14 +239,15 @@ number (or vehicle) when available. `repair_detail.html:80` uses the display met
 
 **Goal:** A shop with no uploaded logo still looks like *that shop*, not like RS Systems.
 **Size:** XS · **Depends on:** —
+**Status:** TODO (2026-09-02). Small; slot as filler. Unchanged since 2026-08-07.
 
 **Why it matters.** The portal is the shop's brand surface in front of *their* customer.
 Custom branding is a paid Pro feature; the free-tier fallback currently advertises us instead.
 
-**Verified current state.** `templates/customer_portal/base_customer.html:40–50`. When
+**Verified current state.** The `<!-- Top Navbar -->` branding branch in `templates/customer_portal/base_customer.html` (`request.tenant.branding_enabled and request.tenant.logo`). When
 `request.tenant.logo` is set, the shop's logo renders correctly — branding works. When it is
 **not** set, the fallback is a hardcoded `RS` monogram in a `bg-brand-500` square, sitting next
-to the shop's name. The footer's "Powered by RS Systems" (`:190`, `:298`) is fine and
+to the shop's name. The footer's "Powered by RS Systems" is fine and
 deliberate; the header monogram is not.
 
 **Considerations.**
@@ -243,7 +255,7 @@ deliberate; the header monogram is not.
   `brand_color` background. Same visual weight, zero RS branding above the fold.
 - Two-letter initials from multi-word names ("Clearview Auto Glass" → `CA`) read better than
   one letter. Watch single-word shop names and non-ASCII.
-- Also check the mobile/off-canvas nav (`:184–187`) which has the same fallback pattern.
+- Also check the mobile/off-canvas nav in the same file, which has the same fallback pattern.
 - Keep the footer attribution — that's intentional product marketing and costs nothing.
 
 **Decisions needed.** Confirm the footer "Powered by RS Systems" stays on all plans (I'd keep
@@ -260,16 +272,17 @@ on their brand color in the portal header and mobile nav. No `RS` string above t
 
 **Goal:** One job appears once, in one place, with the right next action.
 **Size:** S · **Depends on:** —
+**Status:** TODO (2026-09-02) — **re-verify first**: the technician dashboard changed underneath this session (FIELD_OPS S3 day view, S5 board, JOB_QUEUE Q2 unassigned queue, UI S5–S8). The duplication described below may or may not survive.
 
 **Why it matters.** The tech dashboard is the most-used screen in the product and it currently
 shows the same jobs twice with two different verbs. That's confusing on desktop and actively
 wasteful on a phone, where it means scrolling past a list you already saw.
 
 **Verified current state.**
-- `templates/technician_portal/dashboard.html:46` — "Today's Queue," first 5 items visible,
+- `templates/technician_portal/dashboard.html`, the `todays_queue` panel — "Today's Queue," first 5 items visible,
   rest hidden behind `queue-overflow-item`. Action button is *Continue* (IN_PROGRESS) or
   *Start* (APPROVED).
-- `templates/technician_portal/dashboard.html:422–426` — a separate "🔧 In Progress" card,
+- `templates/technician_portal/dashboard.html`, the "🔧 In Progress" card further down — a separate card,
   further down, listing **the same IN_PROGRESS jobs** with a *Complete* button.
 - **"Today's Queue" is a misnomer.** It's ordered by service date and, on my seeded shop,
   contained jobs dated Jun 19, Jun 27 and Jul 6 while "today" was Aug 7. It is "my open
@@ -301,6 +314,7 @@ horizontal overflow.
 
 **Goal:** No third-party CDN in the request path.
 **Size:** S · **Depends on:** —
+**Status:** **DONE 2026-08-09** as `UI_MAGIC_SESSIONS.md` S1 (PR #160): zero third-party asset hosts, `scripts/vendor_assets.sh`, and since S18a (#240) a report-only CSP whose allowlist is `'self'` plus Turnstile. CLAUDE.md forbids reintroducing a CDN.
 
 **Why it matters.** `CLAUDE.md` already forbids the Tailwind CDN. The same reasoning —
 offline/latency/privacy/availability — applies to the three CDNs still loaded on every page,
@@ -310,7 +324,7 @@ for a mobile glass tech) feels this directly.
 **Verified current state.**
 - `templates/includes/head_assets.html` — Google Fonts (`fonts.googleapis.com`) and Font
   Awesome 6.4.0 (`cdnjs.cloudflare.com`). Loaded by **every** shell.
-- `templates/base_app.html:8` (CSS) and `:219` (JS) — flatpickr from `cdn.jsdelivr.net`.
+- `templates/base_app.html` — flatpickr CSS in `<head>` and JS at the end of `<body>`, from `cdn.jsdelivr.net` *(as of 2026-08-07; vendored by S1 as `css/vendor/flatpickr.min.css` / `js/vendor/flatpickr.min.js`)*.
 - Only three templates reference external CDNs: `base_app.html`, `head_assets.html`,
   `base_customer.html`.
 
@@ -321,7 +335,7 @@ for a mobile glass tech) feels this directly.
   **Safer first step: self-host the full package, then subset later with a verified icon
   inventory.**
 - Fonts: self-host Inter with `font-display: swap` and preload the two weights actually used.
-- flatpickr is only used for `input[type="datetime-local"]` enhancement (`base_app.html:221`).
+- flatpickr is only used for `input[type="datetime-local"]` enhancement (the bootstrap block at the end of `base_app.html`).
   Worth asking whether it earns its weight at all — native mobile date pickers are good now,
   and this is a mobile-first app. Removing it may be better than vendoring it.
 - No npm in this repo, by design. Vendor the files into `static/js/vendor/` and
@@ -342,6 +356,7 @@ for a mobile glass tech) feels this directly.
 
 **Goal:** Hitting a plan limit becomes an upgrade prompt, not a red bar.
 **Size:** S · **Depends on:** —
+**Status:** TODO (2026-09-02). Unchanged; the plan-limit machinery it builds on (`UsageService`, `check_against_plan`) shipped in #171.
 
 **Why it matters.** This is free revenue. A shop that has outgrown its plan is the single
 warmest upgrade lead you will ever have, and right now the product notices and says nothing.
@@ -349,8 +364,8 @@ warmest upgrade lead you will ever have, and right now the product notices and s
 **Verified current state.** Enforcement **does exist and works** —
 `apps/tenants/services/usage_service.py` provides `can_create_repair`, `can_add_technician`,
 `can_add_customer`, each returning `(ok, message)` with upgrade-flavored copy already written
-(e.g. `:130` "Upgrade to Pro for unlimited jobs."). It's wired through
-`apps/tenants/mixins.py:130` and `:221` (`PlanEnforcementMixin`).
+(e.g. "Upgrade to Pro for unlimited jobs."). It's wired through
+`PlanEnforcementMixin` *(since deleted — enforcement is `UsageService` directly; see CLAUDE.md "Plan limits")*.
 
 The gap is **presentation, not enforcement**: the owner dashboard stat cards render a usage bar
 that turns red when over limit ("Technicians 3 — of 2 on your plan") with **no link, no CTA,
@@ -365,8 +380,8 @@ surface.
   is and isn't possible ("you can keep your 3 technicians; you can't add a 4th until you
   upgrade").
 - Don't put a modal in the way. A dashboard card that turns into a CTA is enough.
-- Check `SubscriptionPlan.max_*` for `None` = unlimited (`usage_service.py:124`, `:147`,
-  `:170`) — an unlimited plan must render no bar at all, not a full one.
+- Check `SubscriptionPlan.max_*` for `None` = unlimited (`UsageService.can_create_repairs` / `check_against_plan` in `apps/tenants/services/usage_service.py`)
+  — an unlimited plan must render no bar at all, not a full one.
 
 **Decisions needed.** Do you want a hard block at limit, or soft (warn + allow)? Current code
 blocks. Note that hard-blocking a trial user mid-job is a churn risk.
@@ -391,6 +406,8 @@ specific copy. The `usage_service` messages are used, not duplicated.
 > `GlassService` with customer-address fallback; map/call on the dashboard job card and
 > both detail pages; links built client-side per the privacy note below.
 
+**Status:** **DONE 2026-08-15** (PR #189, deployed). Kept for the analysis; execute nothing here.
+
 **Goal:** A technician can go from the job list to the customer's door without leaving the app.
 **Size:** M · **Depends on:** —
 
@@ -401,11 +418,11 @@ which means the phone — not RS Systems — is where their day actually lives. 
 highest ratio of daily-felt value to engineering cost on the list.
 
 **Verified current state.**
-- The tech's job card (`templates/technician_portal/dashboard.html:55–110`) renders: customer
+- The tech's job card (the `todays_queue` loop in `templates/technician_portal/dashboard.html`) renders: customer
   name, unit number, service-type badge, status badge, cost, service date. **No address, no
   phone, no map link.**
 - The data mostly exists already: `Customer.phone`, `.address`, `.city`, `.state`, `.zip_code`
-  (`core/models/customer.py:75–84`).
+  (`Customer.address` / `city` / `state` / `zip_code` in `core/models/customer.py`).
 - What's missing on the model: a **per-job service address**. Mobile glass work happens where
   the vehicle is, which is frequently *not* the customer's billing address (a fleet yard, a
   job site, a driveway). There is no field for this today.
@@ -441,6 +458,7 @@ job form lets a tech set a service address different from the billing address.
 
 **Goal:** The shop can text a customer from RS Systems, and the reply comes back into it.
 **Size:** L · **Depends on:** B1 (nice-to-have, not hard)
+**Status:** TODO — memo first (2026-09-02). Transport exists (AWS End User Messaging, invoice + review texts) but is **dark until the toll-free number clears** — registration v4 submitted 2026-08-31, reviewing (`FIELD_OPS_SESSIONS.md` N4). Inbound is still nothing.
 
 **Why it matters.** Glass customers text. Right now every real conversation happens on a
 personal phone, invisible to the shop owner and unrecorded against the job. "Marcus is on his
@@ -453,7 +471,7 @@ cancel.
 **Verified current state.** `core/services/sms_service.py` — AWS SNS, outbound only, E.164
 validation, 160-char truncation, retry with backoff, per-message cost tracking
 (`SMS_COST_PER_MESSAGE = 0.00645`), delivery logging to `NotificationDeliveryLog`. Invoked from
-`core/services/notification_service.py:206–216` gated on
+`NotificationService.create_notification` in `core/services/notification_service.py`, gated on
 `preferences.receive_sms_notifications`. **There is no inbound path, no conversation model, and
 no per-tenant phone number.**
 
@@ -498,6 +516,7 @@ relevant); STOP is honored automatically; per-tenant usage is metered.
 
 **Goal:** Send a priced quote, get it approved, turn it into a job.
 **Size:** L · **Depends on:** —
+**Status:** **NEXT — spine feature 1** (`PRODUCT_DIRECTION.md`, 2026-09-02). Own session, after the fork carries Drake's name. Still no `Quote` model as of 2026-09-02. Add customer-portal view tests before building on those views (the June plan's warning stands).
 
 **Why it matters.** Named as an adoption blocker in `PRODUCT_DIRECTION.md` §Phase B. Fleet
 procurement and every insurance-adjacent workflow require a formal estimate *before*
@@ -507,7 +526,7 @@ payer.
 
 **Verified current state.** No `Quote` or `Estimate` model exists anywhere in the codebase
 (confirmed against the full model inventory). The closest existing thing is
-`Repair.is_multi_break_estimate` (`apps/technician_portal/models.py:707`), which is unrelated —
+`Repair.is_multi_break_estimate` (`apps/technician_portal/models.py`), which is unrelated —
 it flags a multi-break batch, not a customer-facing estimate.
 
 **Considerations.**
@@ -546,6 +565,7 @@ locked → declined and expired quotes are visible and don't pollute job counts 
 
 **Goal:** Every question an owner asks about a customer is answerable without leaving the page.
 **Size:** M · **Depends on:** — (composes well with B2)
+**Status:** TODO (2026-09-02). Composes with B5 (claim status on the customer page) more than with B2 now.
 
 **Why it matters.** The customer page is where an owner lands when the phone rings. Today it
 answers "who are they" and "what work have we done," but not the two questions actually asked
@@ -587,6 +607,77 @@ Retail customers don't see empty fleet-only cards. Page issues a bounded number 
 
 ---
 
+### B5 · Insurance claim tracking, Tier 1 (no EDI)
+
+**Goal:** A shop knows, for every insurance job, what was claimed, what was authorised, what
+came in, and what is still short — without leaving RS Systems.
+**Size:** M · **Depends on:** — (reads better after B3, does not need it)
+**Status:** **NEXT — spine feature 2** (`PRODUCT_DIRECTION.md`, 2026-09-02). Promoted out of D1
+tier 1; own session after the fork carries Drake's name.
+
+**Why it matters.** See D1: insurance money arrives partially, late and short, and "they paid
+$312 on a $380 claim" is where the daily pain is. That pain is independent of how the claim was
+submitted, so this is Track-B-sized and delivers most of D1's day-to-day value with no
+clearinghouse, no EDI and no licence.
+
+**Verified current state (2026-09-02).** `GlassService` already carries `insurance_claim`,
+`insurance_company`, `claim_number`, `deductible`, `authorization_number`, captured on the job
+form and displayed on detail pages. **No status, no expected-vs-received, no reconciliation
+against `Payment`.** Invoices know what was paid; nothing links a short payment back to a claim.
+
+**Considerations.** A `Claim` row (or claim fields on the invoice) with a small status set
+(submitted / authorised / paid / short / closed), expected amount vs received, and a
+short-payment line the owner can chase or write off. Claim data is sensitive — extend
+`apps/security` audit logging, never bypass it. The owner's "Owed to you" aging card is the
+natural home for "short-paid claims".
+
+**Decisions needed.** Whether the claim hangs off the job or the invoice (recommend: the
+invoice, because reconciliation is against money received). Whether the customer portal shows
+claim status (recommend: not in the first cut).
+
+**Acceptance criteria.** An owner can list open claims, see each one's short amount, and mark
+one closed; the aging card counts short-paid claims separately from unpaid invoices.
+
+**Out of scope.** Any submission path (D1 tiers 2–3), insurer-specific formats, EDI.
+
+---
+
+### B6 · Shop-owned price book
+
+**Goal:** A replacement prices itself from *this shop's* history — vehicle/glass → the price
+this shop last charged — with no licence and no catalog ingestion.
+**Size:** M · **Depends on:** —
+**Status:** **NEXT — spine feature 3** (`PRODUCT_DIRECTION.md`, 2026-09-02). Promoted out of
+D2's "much cheaper 80%"; own session after the fork carries Drake's name.
+
+**Why it matters.** See D2: the valuable part of NAGS for a small shop is not the part number,
+it is not re-typing the same price for the same glass. Progressive repair pricing already
+proves the pattern (`CustomerPricing`, the shop-level repair price ladder); replacements are
+still `parts_cost + labor_cost` hand-entered every time.
+
+**Verified current state (2026-09-02).** `Replacement.nags_number` is free text nothing reads;
+`parts_cost`, `labor_cost`, `requires_adas_calibration`, `adas_calibration_cost` are manual.
+Mygrant live quotes (`FIELD_OPS_SESSIONS.md` P1) can fill `parts_cost` with one tap when a shop
+has its own Mygrant key — dark until Mygrant's IT callback.
+
+**Considerations.** Seed the book from the shop's own completed replacements (year/make/model
++ glass position → last price, median price, count). Suggest, never silently apply — the same
+"one tap, never silent" rule P1 used. Shared reference data would be a different shape from
+everything tenant-scoped in this codebase; a *shop-owned* book stays tenant-scoped and needs
+nothing new architecturally.
+
+**Decisions needed.** Whether the book is editable as a settings page or only learned from
+history (recommend: both — learned rows, owner can pin). Whether a Mygrant quote writes into
+the book (recommend: yes, marked as a quote, not a charge).
+
+**Acceptance criteria.** Opening a replacement for a vehicle the shop has done before
+pre-fills parts and labor from the book with a visible "from your price book" note; the owner
+can see and edit the book.
+
+**Out of scope.** Any NAGS data, vehicle → glass lookup from a catalog, VIN decode.
+
+---
+
 ## Track C — Go to market
 
 ---
@@ -595,6 +686,7 @@ Retail customers don't see empty fleet-only cards. Page issues a bounded number 
 
 **Goal:** A shop owner who lands cold believes this is real software used by real shops.
 **Size:** M · **Depends on:** —
+**Status:** **NEXT — go-to-market, own PR, no decision needed** (2026-09-02; step 5 of the action plan). Trust bar out, founder story up, real screenshots for the HTML mock. `UI_MAGIC_SESSIONS.md` S14/S15 are the same work and fold in here. Verified 2026-09-01: the "500+ Jobs Tracked" bar is still on `landing.html`.
 
 **Why it matters.** The site is clean and the copy is good, but it currently *undersells the
 product and oversells the traction* — exactly backwards. The best asset (a working, genuinely
@@ -602,14 +694,14 @@ well-designed app, built by an actual shop owner) is nearly invisible, while the
 material (small numbers, filler stats) is above the fold.
 
 **Verified current state — `templates/landing.html`.**
-- **The trust bar (`:195–219`) hurts more than it helps.** Four stats: "500+ Jobs Tracked,"
+- **The trust bar (the four-stat strip under the hero in `landing.html`) hurts more than it helps.** Four stats: "500+ Jobs Tracked,"
   "$50K+ Invoiced," "100% Mobile Friendly," "24/7 Access Anywhere." The last two are not
   statistics, they're padding — and a visitor notices. The first two are small enough to read
   as "brand new, nobody uses this." Advertising modest scale is worse than advertising none.
-- **The hero product shot (`:120–190`) is a hand-built HTML mock**, not the real app — a fake
+- **The hero product shot (the mock dashboard markup in the hero of `landing.html`) is a hand-built HTML mock**, not the real app — a fake
   browser chrome with hardcoded "$8,420.00" and "47 repairs." The real owner dashboard is
   *better looking than the mock*. This is the single strangest choice on the page.
-- **One testimonial, and it's the founder** (`:353–368`). No customer proof anywhere.
+- **One testimonial, and it's the founder** (the testimonial section of `landing.html`). No customer proof anywhere.
 - **Nothing addresses switching.** No migration/import story, no "moving from GlasPac or
   spreadsheets," no comparison content. Switching cost is the #1 objection in this market and
   the site is silent on it.
@@ -626,7 +718,7 @@ material (small numbers, filler stats) is above the fold.
   use. Requires care: a shared demo tenant with reset-on-schedule and writes disabled.
 - Do not claim customer counts you don't have. "Built by a shop owner, used in his own shop
   every day" is both true and stronger than "500+ jobs."
-- Structured data (`:21–38`) already declares `AggregateOffer` 0–249. Keep it in sync with
+- The JSON-LD structured data in `landing.html`'s head already declares `AggregateOffer` 0–249. Keep it in sync with
   actual plan pricing or it's a rich-snippet liability.
 
 **Decisions needed.** Are you willing to stand up a public demo tenant? Do you have any shop
@@ -644,15 +736,16 @@ proposed in `docs/proposals/website-integration-widget.md`).
 
 **Goal:** The comparison table tells the truth, and the plan ladder justifies its own prices.
 **Size:** XS · **Depends on:** —
+**Status:** **VERIFY ON PROD** (2026-09-02). `PRICING_TIERS.md` was reduced to what the code enforces the same day; the `customer_portal` flag-rendering question below is a one-line check on production's `SubscriptionPlan.features`. Then the page is either right or it is a five-minute fix.
 
 **Why it matters.** A prospect comparing plans is the highest-intent visitor on the site. Two
 things on that table are working against the sale.
 
 **Verified current state.**
 1. **The "Customer portal" row may render as "not included" on every plan.**
-   `templates/saas/pricing.html:129` gates on `{% if plan.features.customer_portal %}`.
+   The customer-portal row of `templates/saas/pricing.html` gates on `{% if plan.features.customer_portal %}`.
    `apps/tenants/management/commands/seed_plans.py` sets `'customer_portal': True` on all four
-   plans (`:34`, `:55`, `:76`, `:97`) — **but it skips plans that already exist** ("Skipped
+   plans — **but it skips plans that already exist** ("Skipped
    'enterprise' — already exists (use --force to update)"). On a database where plans were
    created by an earlier migration seed rather than by this command, the `features` JSON has no
    `customer_portal` key at all and the row renders a dash for Starter, Pro **and** Enterprise.
@@ -703,6 +796,7 @@ the §1 fork.*
 
 **Goal (eventual):** A shop can bill a TPA from inside RS Systems.
 **Size:** XL · **Depends on:** §1 decision, and realistically B3
+**Status:** **Tier 1 promoted to B5** (2026-09-02) — claim tracking needs no EDI and no fork decision. Tiers 2–3 (assisted submission, true EDI) stay **a memo behind the five interviews**, which have not been held. Not parked; gated on business development.
 
 **Why it matters.** This is the honest answer to "why can't a shop afford to leave?" A large
 share of retail auto glass revenue is billed not to the driver but to a third-party
@@ -714,7 +808,7 @@ small-shop tool.
 
 **Verified current state.** The data model already anticipates it and does nothing with it:
 `GlassService` carries `insurance_claim` (bool), `insurance_company`, `claim_number`,
-`deductible`, `authorization_number` (`apps/technician_portal/models.py:381–398`). These are
+`deductible`, `authorization_number` (the insurance fields on `GlassService` in `apps/technician_portal/models.py`). These are
 captured on the job form and displayed on detail pages. **No workflow, no submission, no
 status tracking, no remittance reconciliation.** `EDI` appears in the codebase only as an
 incidental substring, never as a feature.
@@ -754,6 +848,7 @@ their buying decision.
 
 **Goal (eventual):** Replacements price themselves from the industry catalog.
 **Size:** XL · **Depends on:** §1 decision
+**Status:** **The shop-owned price book promoted to B6** (2026-09-02) — the "much cheaper 80%" below needs no licence and no fork decision. The NAGS licence itself stays **a memo** (get a quote; evaluate B6's results first). Mygrant live quotes (`FIELD_OPS_SESSIONS.md` P1, #186) exist and are dark pending Mygrant's IT callback — a second reason not to license anything yet.
 
 **Why it matters.** NAGS (National Auto Glass Specifications) is the pricing lingua franca of
 the industry: part numbers, list prices, labor hours, and the discount-off-list conventions
@@ -761,10 +856,10 @@ that shops and insurers negotiate against. A system that doesn't speak it makes 
 replacement a hand-priced guess — which is exactly what RS Systems does today.
 
 **Verified current state.** `Replacement.nags_number`
-(`apps/technician_portal/models.py:1516`) is a free-text `CharField` with a help_text calling
-it the "industry standard identifier." Nothing reads it. Pricing is `parts_cost + labor_cost`
-(`:1521`, `:1526`), both hand-entered by the shop. `requires_adas_calibration` and
-`adas_calibration_cost` (`:1531`, `:1535`) are likewise manual. There is no parts catalog,
+(`apps/technician_portal/models.py`) is a free-text `CharField` with a help_text calling
+it the "industry standard identifier." Nothing reads it. Pricing is `parts_cost + labor_cost`,
+both hand-entered by the shop. `requires_adas_calibration` and
+`adas_calibration_cost` are likewise manual. There is no parts catalog,
 no vehicle→glass lookup, and no inventory anywhere in the model inventory.
 
 **Considerations.**
@@ -798,7 +893,24 @@ build-vs-shop-price-book recommendation with numbers.
 
 ## §2 Suggested sequence
 
-Assuming Path A for now and one developer:
+**Revised 2026-09-02** against the recorded fork. The order the action plan actually runs is:
+deploy `main` → confirm The Glass Guy's Stripe Connect → PHOTO_ML P8 → **C1** → **B3 → B5 →
+B6** (one session each, once the fork is signed) → three non-family shops on the product and
+the five insurance interviews. Below that, the 2026-08-07 sequence still holds for the filler
+sessions, with the done ones struck.
+
+| Order | Session | Status 2026-09-02 |
+|---|---|---|
+| 1 | **C1** | NEXT — own PR |
+| 2 | **B3** | NEXT — spine 1 |
+| 3 | **B5** | NEXT — spine 2 |
+| 4 | **B6** | NEXT — spine 3 |
+| — | **C2, A2** | verify on prod, then either nothing or minutes |
+| — | **A3, A4, A6, B4** | filler; A4 needs re-verifying first |
+| — | **B2, D1, D2** | memos; B2 waits on the toll-free number |
+| ~~—~~ | ~~A1, A5, B1~~ | done |
+
+*The original sequence (2026-08-07), assuming Path A and one developer:*
 
 | Order | Session | Rationale |
 |---|---|---|
@@ -814,9 +926,9 @@ Assuming Path A for now and one developer:
 | — | **B2** | Start the *memo* early (long lead time on 10DLC); build when the memo lands. |
 | — | **D1, D2** | Interviews now, code only after the §1 fork is decided. |
 
-`PRODUCT_DIRECTION.md`'s parallel platform-health items still stand and are unchanged by this
-document: set `SENTRY_DSN` in EB, fix the pre-existing test failures, add portal test coverage
-before B3 builds on those views.
+Of `PRODUCT_DIRECTION.md`'s June platform-health items, two are closed (`SENTRY_DSN` set
+2026-08-09; the suite has a committed baseline and runs in 16 minutes since #244) and one
+stands: **add customer-portal view coverage before B3 builds on those views.**
 
 ---
 
@@ -827,11 +939,11 @@ bypassed model validation. **They are not defects. Do not "fix" them.**
 
 | Reported | Reality |
 |---|---|
-| Damage types render as raw enums (`half_moon`, `bullseye`) in the jobs list | `DAMAGE_TYPE_CHOICES` (`apps/technician_portal/models.py:663–672`) are already human-readable (`Half-Moon`, `Bull's Eye`) and `job_list.html` correctly uses `get_damage_type_display`. The seed script wrote values not in `choices`; Django's `get_FOO_display` returns the raw value in that case. **Templates are correct.** |
-| Glass position renders lowercase (`windshield`) in the portal | `GLASS_POSITION_CHOICES` keys are uppercase (`WINDSHIELD` → `Windshield`, `:1484–1495`). Same seeding cause. **Templates are correct.** |
+| Damage types render as raw enums (`half_moon`, `bullseye`) in the jobs list | `DAMAGE_TYPE_CHOICES` (`apps/technician_portal/models.py`) are already human-readable (`Half-Moon`, `Bull's Eye`) and `job_list.html` correctly uses `get_damage_type_display`. The seed script wrote values not in `choices`; Django's `get_FOO_display` returns the raw value in that case. **Templates are correct.** |
+| Glass position renders lowercase (`windshield`) in the portal | `GLASS_POSITION_CHOICES` keys are uppercase (`WINDSHIELD` → `Windshield`, in `apps/technician_portal/models.py`). Same seeding cause. **Templates are correct.** |
 | Plan limits aren't enforced (3 technicians on a 2-seat plan, no block) | Enforcement exists and works via `UsageService`. The seed created `Technician` rows directly in the ORM, bypassing the view layer. The *real*, smaller finding is A6: over-limit stat cards have no upgrade CTA. **Anchor corrected 2026-08-11:** this originally cited `PlanEnforcementMixin` (`apps/tenants/mixins.py:130`, `:221`). That mixin and `check_plan_limit` were **deleted** in PR #171 — no callers, and a third divergent copy of the logic. Call `UsageService` directly (`can_create_repairs(n)`, not `can_create_repair()`); `mixins.py` now holds only `TenantQuerysetMixin`/`TenantCreateMixin`. |
-| The customer portal isn't white-labeled — it shows the RS Systems logo | It is white-labeled when `tenant.logo` is set (`base_customer.html:40–41`). The tenant used for testing had no logo uploaded. The *real*, smaller finding is A3: the no-logo **fallback** is an RS monogram. |
-| The job-form onboarding tour renders detached/broken | The first step of each tour is an intentional element-less intro modal, which driver.js centers by design (`static/js/tours.js:19`, `:61`, `:71`). Working as built. Whether a centered intro modal over the damage diagram is the *best* first impression is a judgment call, not a bug — low priority if pursued at all. |
+| The customer portal isn't white-labeled — it shows the RS Systems logo | It is white-labeled when `tenant.logo` is set (the navbar branding branch in `base_customer.html`). The tenant used for testing had no logo uploaded. The *real*, smaller finding is A3: the no-logo **fallback** is an RS monogram. |
+| The job-form onboarding tour renders detached/broken | The first step of each tour is an intentional element-less intro modal, which driver.js centers by design (the element-less first step of each entry in `TOURS`, `static/js/tours.js`). Working as built. Whether a centered intro modal over the damage diagram is the *best* first impression is a judgment call, not a bug — low priority if pursued at all. |
 
 Also worth recording: creating a `Technician` without a corresponding `TenantMembership`
 produces a user who cannot log in, with the message *"No shop account found."* This is correct
@@ -891,3 +1003,4 @@ username — usernames are generated from first names.
 |---|---|
 | 2026-08-07 | Initial version — from a live four-audience walkthrough of the running app. |
 | 2026-08-11 | Stale-doc sweep: flagged that this file has no status tracking and that B1 is superseded by `FIELD_OPS_SESSIONS.md` S2; corrected the Appendix A anchor citing the deleted `PlanEnforcementMixin`. No session content changed. |
+| 2026-09-02 | **Brought current from the 2026-09-01 direction review.** The §1 fork is recorded (Path A + B-ready spine, awaiting Drake's sign-off in `PRODUCT_DIRECTION.md`) and "Blocked" is gone from the header. Every session has a dated **Status** line: A5 and B1 done, A1 largely done, A2 and C2 "verify on prod", C1 and B3 next. **B5** (Tier 1 claim tracking) and **B6** (shop price book) added to Track B, promoted out of D1/D2, which now hold only the licence/EDI memos. §2 re-sequenced. All 29 `file:line` anchors replaced with symbol names (27 had drifted; one pointed past EOF). Session analyses otherwise unchanged. |

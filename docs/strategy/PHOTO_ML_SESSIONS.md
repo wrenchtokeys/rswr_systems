@@ -62,21 +62,21 @@ without re-running the exploration that produced this doc.
 | P3.1 · Validate | Run the suggester against the 77 real windshield photos we now have | S | DONE (2026-08-27) — **it wins on real photos; but the (41,61) centroid beats it for free** |
 | P6.1 · Free win | Default unmarked photos to (41%, 61%) instead of dead centre | XS | **DONE and ON `main`** — merged 2026-08-31 *inside* #236; #234 closed as superseded. Halves the framing error on every photo nobody marked, forever |
 | P6.2 · Proof of work | Before/after pair on the public invoice page — one exhibit, not two tiles | S | **DONE, DEPLOYED 2026-08-31** — PR #236, squash `fb4f8b98`. **The census says the pairs are already there: 76 of 82 photographed jobs have both** |
-| P7 · Records | Let a customer **keep** the photos, not just look at them | M | **DONE 2026-09-01** — PR **#243**, branch `feat/photoml-p7-keep-the-photos`. Tokened ZIP on the public invoice, per-job download in the portal AND on the shop side. **Open, not merged, not deployed** |
-| P8 · Close the bucket | Stop serving customers' damage photos to anyone who guesses a filename | S–M | **TODO — the arc's last piece of code.** Specced 2026-09-01; gated on P7 being merged and deployed |
-| P5 · Negative class | Record the jobs we turn away — the only source of "not repairable" | M | TODO — **held open by Drake, 2026-09-01**; still the actual gate on P4b |
-| P4b · Payoff | Repairability classifier | L | BLOCKED on **P5** (or on The Glass Guy entering replacement jobs — see §The pause) |
+| P7 · Records | Let a customer **keep** the photos, not just look at them | M | **DONE 2026-09-01 — PR #243 MERGED 2026-09-01 15:12 UTC** (squash `f2506773`). Tokened ZIP on the public invoice, per-job download in the portal AND on the shop side. **Not yet deployed** as of 2026-09-02 — rides the next push of `main` |
+| P8 · Close the bucket | Stop serving customers' damage photos to anyone who guesses a filename | S–M | **TODO — the arc's last piece of code, and the one open code item that is NOT parked.** Specced 2026-09-01; P7 is merged, so this now waits only on the next deploy of `main`. A security fix, not a feature |
+| P5 · Negative class | Record the jobs we turn away — the only source of "not repairable" | M | **PARKED** — held open by Drake, 2026-09-01; the structural reason: **zero negatives, accruing at zero**, because the one shop entering data does no replacements. Revisit when a shop that does replacements is on the platform. Still the actual gate on P4b. **Ask before touching; do not close it out on the strength of this row** |
+| P4b · Payoff | Repairability classifier | L | **PARKED** behind P5 (or behind The Glass Guy entering replacement jobs — see §The pause). Same structural reason, same rule: ask Drake first |
 
 **Suggested sequence, as revised 2026-09-01:**
 P1 → P2 → P3 → P4a → P6 → P4a.1 → P3.1 → P6.1 → P6.2 → **P7 → P8** → **P5** → P4b.
 Everything up to and including P6.2 is done, deployed and confirmed serving in
-production (2026-08-31). **P7 is built** (2026-09-01, PR #243) and awaiting
-merge and a deploy. **P8 — closing the world-readable media bucket — is now a
+production (2026-08-31). **P7 is merged** (#243, 2026-09-01) and awaits the next
+deploy of `main`. **P8 — closing the world-readable media bucket — is now a
 specced session** rather than a line in P7's Notes, and it is the last code
 this arc has to write; it is deliberately sequenced *after* P7 reaches
 production, because closing the bucket removes the only way a customer can
 save a photo until P7's download exists. **P5 is a decision**, held open by
-Drake on 2026-09-01 (see §The pause), and P4b is blocked behind it.
+Drake on 2026-09-01 (see §The pause), and P4b is parked behind it.
 Note that P3.1's
 method was revised on 2026-08-27 by a dry run against production: **mark
 cold, score afterwards**, rather than sweeping first. See P3.1 for the
@@ -121,7 +121,8 @@ one decision held):**
 the break, on the invoice and in the portal, plus the before/after exhibit —
 is finished, shipped and confirmed serving. **P7 finished it properly**: those
 photos can now be *kept*, as a named ZIP, from the public invoice and from
-every job page on both sides. It is written, tested and open as **PR #243**.
+every job page on both sides. It is merged as **PR #243** (2026-09-01) and
+reaches customers with the next deploy of `main`.
 
 **One piece of code is left in this arc, and it is not a feature: P8, closing
 the media bucket.** P7 was the prerequisite and P7 exists, so the last thing
@@ -228,7 +229,7 @@ branches and this was a deploy-time choice.
 | ~~P6.1~~ | **Merged** (inside #236; #234 closed as superseded) — the measured `41% 61%` default for unmarked photos. See its section. |
 | ~~P6.2~~ | **Merged** (#236, squash `fb4f8b98`) — the before/after pair. |
 | ~~DEPLOY `main`~~ | **DONE 2026-08-31 23:46 UTC.** Prod runs `966a31da` off `main`; `fb4f8b98` verified inside it by ancestry, and `object-position:41% 61%` verified in the stylesheet production serves. 20 invoices now carry a marked job. The item this document called "the highest-value action in the arc" for five days is closed. |
-| **→ #243 (P7)** | **Built 2026-09-01, open.** One control saves every photo on an invoice as a named ZIP, and every job page (customer *and* shop) has the same button. 29 tests. **Merge it and deploy it** — and note that it gates P8 below, so this is not a "whenever" merge. |
+| ~~#243 (P7)~~ | **Merged 2026-09-01.** One control saves every photo on an invoice as a named ZIP, and every job page (customer *and* shop) has the same button. 29 tests. **Not deployed yet** — and it gates P8 below, so the next deploy of `main` is not a "whenever" deploy. |
 | **→ P8 · close the media bucket** | **The last code in the arc, now specced** (its own section below, with the production facts). Photos are world-readable because of a **single bucket-policy statement** — `PublicReadMediaOnly` on `media/*` — so the fix is to narrow that statement to the branding prefixes and serve `repair_photos` through the app, the way P7's ZIP already reads bytes. **Starts only once #243 is deployed**, or it takes away the customer's only save path. |
 | **P5 / P4b** | **`TODO`, held by Drake's call of 2026-09-01** — not dropped, not scheduled. He was asked directly whether the classifier is still wanted now that the customer-facing half has shipped, and chose to keep both open and decide later. **Do not open P5 on the strength of this document; ask again.** |
 | **The live second source** | The Glass Guy (tenant 15) is **likely** to start entering jobs. A windshield replacement with a photo is a negative-class row and P4a already made that expressible — **no code needed**, so watch `export_photo_dataset --stats-only` rather than building for it. |
@@ -244,8 +245,8 @@ curl -I https://rssystems.io/health/
 ```
 
 
-**What is left, in one line:** **merge and deploy P7 (#243), then do P8 —
-close the media bucket** — and that is the end of the code. Everything through
+**What is left, in one line:** **deploy `main` (P7, #243, is merged), then do
+P8 — close the media bucket** — and that is the end of the code. Everything through
 P6.2 is merged, deployed and confirmed serving; P5 is held open by choice and
 P4b sits behind it, both gated on the business producing a job it turned away
 rather than on anything in this repository. See §The pause for the census, and
@@ -1586,7 +1587,7 @@ Tailwind source, the compiled `app.css` and the portal template, plus
 checked out at `main` itself. Neither PR carried a migration.
 
 
-# P7 · Let the customer keep the photos — DONE · **built 2026-09-01, PR #243, branch `feat/photoml-p7-keep-the-photos`**
+# P7 · Let the customer keep the photos — DONE · **built 2026-09-01, PR #243 merged 2026-09-01 (squash `f2506773`), not yet deployed as of 2026-09-02**
 
 **Where this came from.** Drake, 2026-09-01, immediately after the deploy
 landed: *"how customers can save their repair photos instead of only getting
@@ -1770,7 +1771,8 @@ customer could save a photo (right-click on an unsigned URL). P7 had to ship
 first so that the save path exists before the public path closes — and it now
 does, reading bytes through storage rather than over HTTP. **That ordering is
 also the gate on this session: P8 does not start until P7 is merged and
-deployed** (PR #243 as of 2026-09-01).
+deployed** — merged 2026-09-01 (#243); the deploy is the remaining half as of
+2026-09-02.
 
 **What is actually public — verified against production, 2026-09-01, read-only**
 
@@ -2022,8 +2024,8 @@ and did not move the count.
   verified in the stylesheet production serves. 20 invoices carry a marked
   job. The arc's first purpose is now being delivered to customers, which it
   had never once been while this section was being written.
-- **P7 and P8 are not waiting on data.** P7 (keep the photos) is written and
-  open as #243; P8 (close the bucket) is specced and gated on P7 reaching
+- **P7 and P8 are not waiting on data.** P7 (keep the photos) is merged
+  (#243, 2026-09-01); P8 (close the bucket) is specced and gated on P7 reaching
   production. Neither has anything to do with the classifier or the census —
   they are the customer-facing half finishing itself, and they should not be
   held up by a decision about P5.
@@ -2074,7 +2076,7 @@ not, and not by an amount of time that will fix itself.**
 | Purpose | State | The number that says so |
 |---|---|---|
 | **1 · A close-up of the break the customer can see** | **Delivered, and reaching real customers since the 2026-08-31 deploy** | **20 invoices** frame their damage photo on a break a technician tapped (62 line items, 75 marked repairs). Every *unmarked* photo in the product, past and future, is aimed at the measured **(41%, 61%)** instead of dead centre. **76 of 82** photographed repairs carry a before *and* an after, rendered as one exhibit |
-| **1b · …and can keep** | **Built, not yet merged** (#243) | Five routes and six surfaces serve a named ZIP: `INV-1042_Unit-4521_2026-08-14_Before.jpg`, or the vehicle for an individual. Bytes read through storage, so it survives P8 |
+| **1b · …and can keep** | **Merged 2026-09-01** (#243), **not yet deployed** as of 2026-09-02 | Five routes and six surfaces serve a named ZIP: `INV-1042_Unit-4521_2026-08-14_Before.jpg`, or the vehicle for an individual. Bytes read through storage, so it survives P8 |
 | **2 · A repairable-vs-not training set** | **Not delivered** | `repairable=73`, **`not_repairable=0`**, accruing at **0/month**. The classifier was never trained and must not be until a second class exists |
 
 **What the arc actually produced, as opposed to what it set out to produce:**
@@ -2099,7 +2101,7 @@ says when it is finished.
 
 | # | Item | Kind | Owner | Done when |
 |---|---|---|---|---|
-| 1 | **Merge #243 (P7)** | code, written | Drake | Squashed onto `main` |
+| ~~1~~ | ~~**Merge #243 (P7)**~~ | code | — | **DONE 2026-09-01 15:12 UTC** — squash `f2506773` on `main` |
 | 2 | **Deploy `main`** | ops | any session | `git checkout main && git pull` first (`sc: git` ships the *current branch*), then `eb deploy rs-systems-production`; `photos.zip` returns a ZIP on the public invoice route with a valid token. **Item 3 must not start before this** |
 | 3 | **P8 · close the media bucket** | code, specced | one session | Anonymous `curl -I` of `media/repair_photos/**` → **403**, of `media/tenants/logos/**` → **200**, and every photo surface still renders |
 | 4 | **P5 / P4b — ask, then decide** | decision | Drake | Either scheduled, or marked **DROPPED with the reason written down**. Held since 2026-09-01; **do not decide either way on the strength of this document** |
@@ -2205,3 +2207,4 @@ time**, not after a deploy, and expect the answer to reorder the plan.
 | 2026-09-01 | **P7 executed — the photos are now keepable.** One control on the public invoice page saves every photo on that invoice as a ZIP through the same HMAC gate as `/pdf/`, and every job page — customer portal *and* shop — has the same button. Files arrive named `INV-1042_Unit-4521_2026-08-14_Before.jpg`, or `…_2019-Ford-F-150_…` for an individual, because the name is built from `get_vehicle_label()` and the word "Unit" cannot reach a retail customer's filename. **Drake's three calls, taken up front:** photos in the invoice PDF stay unbuilt and stay their own decision; the customer's own submitted photo *is* in the archive (it is theirs); the shop gets the same button, because the shop is who a customer phones asking for the photos. New shared module `services/photo_archive.py`, no migration; `_public_invoice_jobs` extracted so the page and the ZIP can never disagree about which jobs an invoice has, and `_job_access` extracted so the shop download cannot be laxer than the crop endpoint next to it. Bytes are read through storage — a test patches `FieldFile.url` to raise and the ZIP still builds — which is both correct today and the precondition for closing the bucket. A photo missing from storage is skipped and named in a `README.txt` inside the ZIP rather than silently dropped. 29 new tests; the 190 in the adjacent photo/CSP/icon/CSS suites re-run green. **The bucket is now the arc's only open piece of work that is not a decision.** |
 | 2026-09-01 | **P8 added — the bucket is the arc's last piece of code, and it is smaller than it looked.** With P7 built, the exposure it uncovered was specced as its own session against production facts rather than left as a paragraph in P7's Notes. What the audit found: the photos are public because of **one bucket-policy statement** (`PublicReadMediaOnly`, `s3:GetObject` for `*` on `media/*`), object ACLs are **already blocked** (`BucketOwnerEnforced`, `BlockPublicAcls`), **static files are not in this bucket** so no CSS can break, and the sensitive prefix is **235 objects** against 2 shop logos. So the fix is to narrow one `Resource` line — keeping `tenants/logos/` and `email_branding/` public because email `<img>` tags are opened days later — and serve `repair_photos` through the app the way P7's ZIP already reads bytes. Recommendation recorded as **app-served over presigned**, because signed URLs expire and this repo has already paid for that once (`repair_completed.html:12` says why photos left that email). Three traps written down with line numbers: the invoice PDF still fetches the shop's logo by anonymous `urlretrieve` (`invoice_service.py:239`) — the last place the app fetches its own media over the network; `_absolute_media_url` would sign email logos if `AWS_S3_CUSTOM_DOMAIN` were dropped globally; and `img-src` is derived at runtime from `MEDIA_URL`, whose own docstring notes that getting it wrong fails photos on production only. **Sequenced after #243 deploys, not after it merges.** |
 | 2026-09-01 | **The document is finished being written.** Added **§Closing the arc**: the honest scorecard (purpose 1 — the customer-visible close-up — is delivered and reaching customers, **20 invoices** framed on a tapped break and every unmarked photo aimed at the measured (41%, 61%); purpose 2 — the training set — is **not**, at `not_repairable=0` accruing 0/month), the arc's real cost (9 merged PRs, 5 service modules, 4 migrations, **230 tests**, one CI workflow), and a four-item checklist with an owner on each: merge #243, deploy `main`, do P8, and **ask Drake about P5/P4b** — where a written-down `DROPPED` closes the item just as well as building it. Also recorded what must **outlive** this file: (41,61) is measured rather than chosen, photo bytes are read through storage and never over HTTP (the invoice PDF's `urlretrieve` logo fetch is the last exception), and the bucket's prefix split is deliberate — none of which any test explains, so they belong in CLAUDE.md the day P8 lands. Two corrections to §0 while in here: the test inventory omitted `test_photo_closeup_visible.py` (41) and `test_photo_blind_focus.py` (6) entirely, so a session reading the primer would not have known to run the two suites guarding P6 and P6.1. **The lesson recorded for the next arc:** this one was reopened three times by the same question — *what does the person on the other end get?* — and never once by a bug; ask it at spec time. |
+| 2026-09-02 | **Status refresh from the direction review.** #243 (P7) merged 2026-09-01 15:12 UTC as `f2506773`; every line that said "open, not merged" now says merged, not deployed (prod is still `966a31da`, which predates it). P5 and P4b are marked **PARKED** with the structural reason spelled out on their rows — zero negatives, accruing at zero — and Drake's hold stands: ask before touching, do not close them from this document. P8 stays the one open code item, waiting only on the deploy. §Closing the arc item 1 is struck. No spec content changed. |
