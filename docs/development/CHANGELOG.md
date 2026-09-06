@@ -14,10 +14,24 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-09-03 — Living docs brought current; test guard script (PRs #245, #246)
+
+Deployed 2026-09-06 19:30 UTC as `61273602` together with #238–#244 (#245's script
+and doc edits are not on prod; nothing in it runs there).
+
+### Technical
+- `docs/strategy/PRODUCT_DIRECTION.md` rewritten to one page from the 2026-09-01
+  direction review: Path A with a B-ready spine (B3 quotes, B5 claim tracking, B6
+  price book), drafted awaiting Drake's sign-off. Every `IMPROVEMENT_SESSIONS.md`
+  session carries a dated Status line; `ROADMAP.md`, `PRICING_TIERS.md`, the
+  proposals README and the four arc docs brought current. (#246)
+- `scripts/test_guards.sh` holds the guard-set module list, `--parallel` and the
+  output filter; `--full` diffs the suite against the committed baseline. (#245)
+
 ## 2026-09-01 — Test suite: `--parallel` works, 80 min to 16 min (PR #244)
 
-Merged, not yet deployed as of 2026-09-02. The same is true of every other
-2026-09-01 entry below (#238 through #243); none carries a migration.
+Deployed 2026-09-06 (prod `61273602`), as was every other 2026-09-01 entry
+below (#238 through #243); none carries a migration.
 
 ### Fixed
 - **`manage.py test --parallel` crashed on the first failing test**

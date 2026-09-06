@@ -1,6 +1,6 @@
 # RS Systems — Product Direction (September 2026)
 
-**Last updated:** 2026-09-02 (rewritten to one page from the 2026-09-01 direction review)
+**Last updated:** 2026-09-06 (deploy landed; Connect check done — see §Where things stand)
 **Status:** Path A with a B-ready spine — **drafted, awaiting Drake's sign-off.** Until he
 writes his name and a date under §The decision, treat it as the working assumption every
 session plans against, not as a decision.
@@ -38,17 +38,21 @@ section; every other doc points here rather than restating it.
 ## Where things stand (2026-09-02)
 
 - **Users are two shops, both family**: Rockstar Windshield Repair and The Glass Guy
-  (tenant 15). No third-party shop has signed up. The Glass Guy's Stripe Connect was still
-  pending in mid-August; **if that is still true, the one real customer cannot take a
-  payment, and confirming it outranks everything on this page.**
+  (tenant 15). No third-party shop has signed up. **The Glass Guy cannot take a payment
+  (verified 2026-09-06, read-only, on prod and against Stripe live):** the Express account
+  `acct_1U1J241qIkbmw59d` was created 2026-08-06 and the onboarding form was **never
+  filled in** — `details_submitted=False`, every requirement still due (address, tax ID,
+  representative, bank account, ToS). The shop has 0 invoices. **No code fixes this**; the
+  owner resumes onboarding from Settings → Payments. It stays the top item, owned by Drake.
 - **The foundation is real and is not the constraint.** All three Stripe legs with webhook
   durability, cron that runs, tenant isolation swept, soft delete, loyalty, warranty, review
   requests, SMS transport (dark until the toll-free number clears), a report-only CSP, zero
   third-party asset hosts, a 16-minute suite with a committed baseline.
 - **Nothing brings a stranger to the signup page.** The landing page still shows the
   "500+ Jobs Tracked" trust bar and an HTML mock instead of screenshots.
-- **Production runs `966a31da` (deployed 2026-08-31 23:46 UTC).** Seven PRs merged since
-  (#238–#244) are on `main` and not deployed; `ROADMAP.md` keeps that line current.
+- **Production runs `61273602` (deployed 2026-09-06 19:30 UTC).** That is #238–#244 plus
+  the doc refresh (#246); the only thing on `main` it lacks is #245, which is docs and
+  `scripts/test_guards.sh` — no runtime code. `ROADMAP.md` keeps that line current.
 
 ## The June plan, scored
 
@@ -72,12 +76,13 @@ corrects.
 
 ## What happens next, in order
 
-1. **Deploy `main`** (Drake). `git checkout main && git pull` first — `eb deploy` ships the
-   current branch's HEAD.
-2. **Confirm The Glass Guy can take a payment** (read-only Connect check on prod). If not,
-   that is the next session.
-3. **P8 — close the world-readable media bucket** (`PHOTO_ML_SESSIONS.md`). A security fix,
-   not a feature; ships right after P7 is on prod.
+1. ~~**Deploy `main`**~~ — **done 2026-09-06** (prod `61273602`).
+2. ~~**Confirm The Glass Guy can take a payment**~~ — **checked 2026-09-06: he cannot.**
+   Onboarding was never completed (§Where things stand). Not a session — a form his dad
+   fills in. Drake owns the nudge; nothing below waits on it.
+3. **P8 — close the world-readable media bucket** (`PHOTO_ML_SESSIONS.md`). **Unblocked
+   2026-09-06** — P7 is on prod, so this is the next code session. A security fix, not a
+   feature.
 4. **Landing-page credibility** (`IMPROVEMENT_SESSIONS.md` C1): trust bar out, founder
    story up, real screenshots. Needs no decision.
 5. **The three spine features, one session each**, after §The decision carries a name.
@@ -106,4 +111,5 @@ Not features shipped. These are the only numbers that say the direction is worki
 | Date | Change |
 |---|---|
 | 2026-06-12 | Initial version — post-stabilization direction for Q3 2026 (90-day plan: growth quick wins → adoption gaps → engagement depth). |
+| 2026-09-06 | Steps 1–2 of §What happens next closed: `main` deployed (`61273602`, 19:30 UTC) and The Glass Guy's Connect verified on prod + Stripe live — never onboarded, every requirement still due, 0 invoices. Recorded as an owner task, not a session; P8 promoted to the next code session. Sign-off line still blank. |
 | 2026-09-02 | Rewritten to one page from the 2026-09-01 direction review. Records the Path A + B-ready-spine decision as a draft awaiting sign-off, scores the June plan, replaces feature-shipping criteria with strangers-paying criteria, and deletes the stale platform-health items (Sentry set 2026-08-09, Tailwind CDN gone since PR #160, suite baseline committed in #244). |
