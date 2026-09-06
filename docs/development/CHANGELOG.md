@@ -16,9 +16,11 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ## 2026-09-06 — P8: damage photos are served by the app, not a public bucket (PR #248)
 
-Open, not merged. No migration. The bucket-policy edit that makes the photos
-private is **not** in this PR — it follows the deploy (`PHOTO_ML_SESSIONS.md`
-§P8 Notes has the commands and the rollback).
+**Merged `969a4035` and deployed 2026-09-06 22:00 UTC.** No migration. The
+bucket-policy edit that makes the photos private followed at 22:04 UTC:
+`PublicReadMediaOnly` narrowed from `media/*` to the two branding prefixes;
+anonymous `repair_photos/**` → 403, `tenants/logos/**` → 200, every app route
+still 200 (`PHOTO_ML_SESSIONS.md` §P8 Notes has the commands and the rollback).
 
 ### Security
 - **Every `<img>` of a customer's damage photo pointed at S3, and the bucket
