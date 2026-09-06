@@ -164,6 +164,16 @@ There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are ven
 - **Platform-owned surfaces keep literal `blue-*`**: `landing.html`, `saas/pricing.html`, `saas/base_public.html`, terms, privacy, `components/plan_card.html`, and `templates/admin/**`. A shop's colour must never leak onto RS Systems' own brand.
 - Green means money (paid/collected/completed) — it is not a surface, header, or button colour. See `docs/strategy/UI_MAGIC_PLAN.md`.
 
+### Landing page imagery
+The product shots on `templates/landing.html` are captures of the real app, written to
+`static/images/landing/` by `python scripts/landing_shots.py` (seeds `manage.py
+seed_demo_shop` into a throwaway DB, drives headless Chrome). **Never hand-author a mock
+of an app screen** — the last one drifted from the dashboard twice with nobody editing
+either file (UI_MAGIC S14). Re-run the script after a visible change to the owner
+dashboard, jobs list, New Job form or customer portal home, and commit the WebPs.
+`tests/test_landing_credibility.py` also rejects filler statistics ("500+ …", "24/7") on
+that page; a claim there must be something a visitor can check.
+
 ### Multi-line template comments
 `{# … #}` is **single-line only** — a multi-line one renders as visible text on every page.
 Use `{% comment %}…{% endcomment %}`.

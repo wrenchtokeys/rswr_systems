@@ -686,7 +686,7 @@ can see and edit the book.
 
 **Goal:** A shop owner who lands cold believes this is real software used by real shops.
 **Size:** M · **Depends on:** —
-**Status:** **NEXT — go-to-market, own PR, no decision needed** (2026-09-02; step 5 of the action plan). Trust bar out, founder story up, real screenshots for the HTML mock. `UI_MAGIC_SESSIONS.md` S14/S15 are the same work and fold in here. Verified 2026-09-01: the "500+ Jobs Tracked" bar is still on `landing.html`.
+**Status:** **DONE 2026-09-06 — PR #250 open** (was step 4 of the action plan). Trust bar out, founder's note directly under the hero, four captures of the real app in place of the HTML mock, a switching section, two overclaims fixed. `UI_MAGIC_SESSIONS.md` S14/S15 folded in and closed there. What was **not** done, deliberately: no public read-only demo login (the "decisions needed" question — needs a hosted tenant with writes disabled and a reset schedule; a separate session, and Drake's call) and no second-shop quote, because there is no second shop. Copy wants Drake's eye. See §C1 Notes below.
 
 **Why it matters.** The site is clean and the copy is good, but it currently *undersells the
 product and oversells the traction* — exactly backwards. The best asset (a working, genuinely
@@ -729,6 +729,26 @@ fold. At least one page or section addressing "how do I switch."
 
 **Out of scope.** SEO content programs, paid acquisition, the embeddable lead widget (already
 proposed in `docs/proposals/website-integration-widget.md`).
+
+**C1 Notes (2026-09-06, PR #250).**
+- **The screenshots are one command.** `python scripts/landing_shots.py` migrates a throwaway
+  SQLite DB, builds the fictional *Clearview Auto Glass* shop with `manage.py seed_demo_shop`
+  (Appendix B's recipe, automated: ~60 jobs over 60 days, invoices sent/paid/overdue, three
+  techs, five fleets, seven individuals, a portal contact with a replacement awaiting
+  approval), starts the dev server, drives the installed Chrome headless over the DevTools
+  protocol, logs in with a real session cookie, and writes four WebPs to
+  `static/images/landing/`. Nothing leaves 127.0.0.1. Re-run after any visible change to the
+  owner dashboard, jobs list, New Job form or customer portal home, and commit the output.
+- **"Export your data anytime" was dropped from the S15 claim list**: the only export is the
+  AR aging CSV, so it would have been the new filler. The four claims used are each checkable
+  on the site or the terms page.
+- **The switching section promises help, not an importer.** "Send your customer list through
+  the contact form and you'll hear back from the person who built this" is a manual import by
+  Drake. Flagged in the PR for his eye; if he'd rather not, the sentence comes out and the
+  section still stands.
+- Acceptance criteria: no filler statistics ✅ · real product imagery ✅ · founder story above
+  the fold ✅ (hero pill + the note under the hero shot) · a section addressing "how do I
+  switch" ✅. Guarded by `tests/test_landing_credibility.py`.
 
 ---
 
@@ -901,7 +921,7 @@ sessions, with the done ones struck.
 
 | Order | Session | Status 2026-09-02 |
 |---|---|---|
-| 1 | **C1** | NEXT — own PR |
+| ~~1~~ | ~~**C1**~~ | **DONE 2026-09-06**, PR #250 open |
 | 2 | **B3** | NEXT — spine 1 |
 | 3 | **B5** | NEXT — spine 2 |
 | 4 | **B6** | NEXT — spine 3 |
@@ -1003,4 +1023,5 @@ username — usernames are generated from first names.
 |---|---|
 | 2026-08-07 | Initial version — from a live four-audience walkthrough of the running app. |
 | 2026-08-11 | Stale-doc sweep: flagged that this file has no status tracking and that B1 is superseded by `FIELD_OPS_SESSIONS.md` S2; corrected the Appendix A anchor citing the deleted `PlanEnforcementMixin`. No session content changed. |
+| 2026-09-06 | **C1 done** (PR #250): status line, notes and §2 row updated. Screenshots are regenerable by `scripts/landing_shots.py`; Appendix B's seeding recipe now has a command form (`seed_demo_shop`). |
 | 2026-09-02 | **Brought current from the 2026-09-01 direction review.** The §1 fork is recorded (Path A + B-ready spine, awaiting Drake's sign-off in `PRODUCT_DIRECTION.md`) and "Blocked" is gone from the header. Every session has a dated **Status** line: A5 and B1 done, A1 largely done, A2 and C2 "verify on prod", C1 and B3 next. **B5** (Tier 1 claim tracking) and **B6** (shop price book) added to Track B, promoted out of D1/D2, which now hold only the licence/EDI memos. §2 re-sequenced. All 29 `file:line` anchors replaced with symbol names (27 had drifted; one pointed past EOF). Session analyses otherwise unchanged. |
