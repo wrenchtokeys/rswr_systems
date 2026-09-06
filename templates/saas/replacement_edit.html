@@ -1,4 +1,5 @@
 {% extends "saas/base_owner.html" %}
+{% load photo_tags %}
 
 {% block title %}Edit Replacement #{{ replacement.id }} | RS Systems{% endblock %}
 
@@ -180,7 +181,7 @@
                         <label class="block text-sm font-medium text-gray-700 mb-1">Before Photo</label>
                         {% if replacement.damage_photo_before %}
                         <div class="mb-2">
-                            <img src="{{ replacement.damage_photo_before.url }}" alt="Current before photo" class="w-32 h-32 object-cover rounded-lg">
+                            <img src="{% shop_photo_url replacement 'damage_photo_before' %}" alt="Current before photo" class="w-32 h-32 object-cover rounded-lg">
                             <p class="text-xs text-gray-500 mt-1">Current photo</p>
                         </div>
                         {% endif %}
@@ -190,7 +191,7 @@
                         <label class="block text-sm font-medium text-gray-700 mb-1">After Photo</label>
                         {% if replacement.damage_photo_after %}
                         <div class="mb-2">
-                            <img src="{{ replacement.damage_photo_after.url }}" alt="Current after photo" class="w-32 h-32 object-cover rounded-lg">
+                            <img src="{% shop_photo_url replacement 'damage_photo_after' %}" alt="Current after photo" class="w-32 h-32 object-cover rounded-lg">
                             <p class="text-xs text-gray-500 mt-1">Current photo</p>
                         </div>
                         {% endif %}

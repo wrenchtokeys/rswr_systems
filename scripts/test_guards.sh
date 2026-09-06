@@ -25,6 +25,7 @@ cd "$(dirname "$0")/.."
 GUARDS=(
   tests.test_css_pipeline           # Tailwind build is committed and current
   tests.test_photo_blind_focus      # photo ML crop defaults
+  tests.test_photo_serving          # photos are routes, never storage URLs (P8)
   tests.test_landing_visibility     # public pages render logged-out
   tests.test_migration_graph        # no duplicate/divergent migration heads
   tests.test_view_transitions       # nav shell markup

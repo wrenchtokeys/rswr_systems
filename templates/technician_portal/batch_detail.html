@@ -1,5 +1,6 @@
 {% extends "base_app.html" %}
 {% load ui %}
+{% load photo_tags %}
 
 {% block title %}Batch Repair | RS Systems{% endblock %}
 
@@ -159,13 +160,13 @@
                     {% if repair.damage_photo_before %}
                     <div>
                         <p class="text-xs text-gray-500 mb-1">Before:</p>
-                        <img src="{{ repair.damage_photo_before.url }}" alt="Before" class="max-w-full max-h-72 rounded-lg border border-gray-200" loading="lazy" decoding="async">
+                        <img src="{% shop_photo_url repair 'damage_photo_before' %}" alt="Before" class="max-w-full max-h-72 rounded-lg border border-gray-200" loading="lazy" decoding="async">
                     </div>
                     {% endif %}
                     {% if repair.damage_photo_after %}
                     <div>
                         <p class="text-xs text-gray-500 mb-1">After:</p>
-                        <img src="{{ repair.damage_photo_after.url }}" alt="After" class="max-w-full max-h-72 rounded-lg border border-gray-200" loading="lazy" decoding="async">
+                        <img src="{% shop_photo_url repair 'damage_photo_after' %}" alt="After" class="max-w-full max-h-72 rounded-lg border border-gray-200" loading="lazy" decoding="async">
                     </div>
                     {% endif %}
                 </div>

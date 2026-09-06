@@ -2122,6 +2122,36 @@ def job_photos_zip(request, job_id, kind='repair'):
 
 
 @technician_required
+def job_photo(request, job_id, field, kind='repair', thumb=False):
+    """One of a job's photos, streamed through the app (P8).
+
+    This is what every shop-side `<img>` of a damage photo points at now
+    that the media bucket's `repair_photos/*` prefix is private. Same gate as
+    the ZIP and the crop endpoints (`_job_access`) — a photo route laxer than
+    the crop endpoints would leak one shop's photos to another just as
+    effectively. `thumb=True` serves the crop's saved close-up instead of
+    the original.
+    """
+    from apps.technician_portal.services.photo_crops import SOURCE_FIELDS
+    from apps.technician_portal.services.photo_serving import (
+        crop_for, photo_response,
+    )
+    tenant = getattr(request, 'tenant', None)
+    model = Replacement if kind == 'replacement' else Repair
+    qs = model.objects.filter(tenant=tenant) if tenant else model.objects.none()
+    job = get_object_or_404(qs, id=job_id)
+
+    _technician, allowed = _job_access(request, job, kind=kind, tenant=tenant)
+    if not allowed or field not in SOURCE_FIELDS:
+        raise Http404("No such photo.")
+
+    if thumb:
+        crop = crop_for(job, field)
+        return photo_response(crop.cropped_image if crop else None)
+    return photo_response(getattr(job, field, None))
+
+
+@technician_required
 def save_photo_crop(request, repair_id, kind='repair'):
     """Record a tap on a photo that is already on the job.
 
@@ -2187,8 +2217,9 @@ def save_photo_crop(request, repair_id, kind='repair'):
 
     # A tap on an unreadable original still counts: the row is on record and
     # retry_photo_crops will produce the image once the file is readable.
+    from apps.technician_portal.services.photo_serving import shop_crop_url
     return JsonResponse({
         'success': True,
         'cropped': bool(crop.cropped_image),
-        'crop_url': crop.cropped_image.url if crop.cropped_image else '',
+        'crop_url': shop_crop_url(crop),
     })

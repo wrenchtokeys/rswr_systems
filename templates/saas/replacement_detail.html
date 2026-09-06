@@ -1,5 +1,5 @@
 {% extends "saas/base_owner.html" %}
-{% load static ui %}
+{% load static ui photo_tags %}
 
 {% block title %}Replacement #{{ replacement.id }} | RS Systems{% endblock %}
 
@@ -263,25 +263,27 @@
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     {% if replacement.customer_submitted_photo %}
+                    {% shop_photo_url replacement 'customer_submitted_photo' as customer_photo_src %}
                     <div>
                         <p class="text-xs text-gray-500 mb-2">From the customer</p>
-                        <img src="{{ replacement.customer_submitted_photo.url }}" alt="Customer submitted photo"
+                        <img src="{{ customer_photo_src }}" alt="Customer submitted photo"
                              class="rounded-lg w-full object-cover" loading="lazy" decoding="async">
-                        {% include "technician_portal/partials/photo_crop_control.html" with field="customer_submitted_photo" photo_url=replacement.customer_submitted_photo.url crop=photo_crops.customer_submitted_photo prompt="Tap the damage" %}
+                        {% include "technician_portal/partials/photo_crop_control.html" with field="customer_submitted_photo" photo_url=customer_photo_src crop=photo_crops.customer_submitted_photo prompt="Tap the damage" %}
                     </div>
                     {% endif %}
                     {% if replacement.damage_photo_before %}
+                    {% shop_photo_url replacement 'damage_photo_before' as before_photo_src %}
                     <div>
                         <p class="text-xs text-gray-500 mb-2">Before</p>
-                        <img src="{{ replacement.damage_photo_before.url }}" alt="Before" class="rounded-lg w-full object-cover"
+                        <img src="{{ before_photo_src }}" alt="Before" class="rounded-lg w-full object-cover"
                              loading="lazy" decoding="async">
-                        {% include "technician_portal/partials/photo_crop_control.html" with field="damage_photo_before" photo_url=replacement.damage_photo_before.url crop=photo_crops.damage_photo_before prompt="Tap the damage" %}
+                        {% include "technician_portal/partials/photo_crop_control.html" with field="damage_photo_before" photo_url=before_photo_src crop=photo_crops.damage_photo_before prompt="Tap the damage" %}
                     </div>
                     {% endif %}
                     {% if replacement.damage_photo_after %}
                     <div>
                         <p class="text-xs text-gray-500 mb-2">After</p>
-                        <img src="{{ replacement.damage_photo_after.url }}" alt="After" class="rounded-lg w-full object-cover"
+                        <img src="{% shop_photo_url replacement 'damage_photo_after' %}" alt="After" class="rounded-lg w-full object-cover"
                              loading="lazy" decoding="async">
                     </div>
                     {% endif %}

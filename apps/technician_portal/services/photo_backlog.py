@@ -94,8 +94,10 @@ class BacklogItem:
 
     @property
     def photo_url(self):
-        photo = getattr(self.job, self.source_field, None)
-        return photo.url if photo else ''
+        # The shop-side route, not the storage URL — the queue is a shop
+        # page and the media bucket's repair_photos/* prefix is private (P8).
+        from apps.technician_portal.services.photo_serving import shop_photo_url
+        return shop_photo_url(self.job, self.source_field)
 
     @property
     def prompt(self):

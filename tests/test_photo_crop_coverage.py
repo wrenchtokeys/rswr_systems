@@ -19,6 +19,7 @@ from PIL import Image
 
 from apps.technician_portal.models import Repair, RepairPhotoCrop, Technician
 from apps.technician_portal.services.photo_crops import save_crop_for
+from apps.technician_portal.services.photo_serving import shop_crop_url
 from apps.tenants.models import Tenant, TenantMembership
 from core.models import Customer
 
@@ -199,7 +200,7 @@ class DetailPageCropUiTests(TapCropTestCase):
         crop = save_crop_for(repair, 'damage_photo_before', 33.0, 66.0)
         content = self.client.get(
             reverse('repair_detail', args=[repair.id])).content.decode()
-        self.assertIn(crop.cropped_image.url, content)
+        self.assertIn(shop_crop_url(crop), content)
         self.assertIn('data-crop-at-x="33.00"', content)
         self.assertIn('data-crop-at-y="66.00"', content)
         self.assertIn('Move the mark', content)

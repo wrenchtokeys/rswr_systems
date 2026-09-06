@@ -1,5 +1,6 @@
 {% extends "base_app.html" %}
 {% load static %}
+{% load photo_tags %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/components/form-fields.css' %}">
@@ -472,10 +473,10 @@
                                     <i class="fas fa-check-circle text-green-500 mr-1"></i>
                                     Current photo on file:
                                 </p>
-                                <img src="{{ form.instance.damage_photo_before.url }}"
+                                <img src="{% shop_photo_url form.instance 'damage_photo_before' %}"
                                      alt="Current before photo"
                                      class="max-h-40 rounded-lg shadow-sm cursor-pointer"
-                                     onclick="openImageModal('{{ form.instance.damage_photo_before.url }}', 'Before Photo')">
+                                     onclick="openImageModal('{% shop_photo_url form.instance 'damage_photo_before' %}', 'Before Photo')">
                                 <p class="text-xs text-gray-500 mt-2">Upload a new photo below to replace, or leave empty to keep this one</p>
                             </div>
                             {% endif %}
@@ -516,10 +517,10 @@
                                     <i class="fas fa-check-circle text-green-500 mr-1"></i>
                                     Current photo on file:
                                 </p>
-                                <img src="{{ form.instance.damage_photo_after.url }}"
+                                <img src="{% shop_photo_url form.instance 'damage_photo_after' %}"
                                      alt="Current after photo"
                                      class="max-h-40 rounded-lg shadow-sm cursor-pointer"
-                                     onclick="openImageModal('{{ form.instance.damage_photo_after.url }}', 'After Photo')">
+                                     onclick="openImageModal('{% shop_photo_url form.instance 'damage_photo_after' %}', 'After Photo')">
                                 <p class="text-xs text-gray-500 mt-2">Upload a new photo below to replace, or leave empty to keep this one</p>
                             </div>
                             {% endif %}
@@ -556,7 +557,7 @@
                                 <span class="field-badge field-badge-optional">Read-Only</span>
                             </label>
                             <div class="photo-preview-container">
-                                <img src="{{ form.customer_submitted_photo.value.url }}"
+                                <img src="{% shop_photo_url form.instance 'customer_submitted_photo' %}"
                                      alt="Customer photo"
                                      class="photo-preview-image">
                                 <div class="photo-preview-info">

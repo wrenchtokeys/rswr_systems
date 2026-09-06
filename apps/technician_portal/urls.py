@@ -41,6 +41,17 @@ urlpatterns = [
     path('repairs/<int:job_id>/photos.zip', views.job_photos_zip, name='repair_photos_zip'),
     path('replacements/<int:job_id>/photos.zip', views.job_photos_zip,
          {'kind': 'replacement'}, name='replacement_photos_zip'),
+    # The photos themselves, served through the app (P8): the media bucket's
+    # repair_photos/* prefix is private, so every <img> on the shop side
+    # points here. Same gate as the ZIP above.
+    path('repairs/<int:job_id>/photos/<str:field>/', views.job_photo,
+         name='repair_photo'),
+    path('repairs/<int:job_id>/photos/<str:field>/thumb/', views.job_photo,
+         {'thumb': True}, name='repair_crop_thumb'),
+    path('replacements/<int:job_id>/photos/<str:field>/', views.job_photo,
+         {'kind': 'replacement'}, name='replacement_photo'),
+    path('replacements/<int:job_id>/photos/<str:field>/thumb/', views.job_photo,
+         {'kind': 'replacement', 'thumb': True}, name='replacement_crop_thumb'),
     path('repairs/<int:repair_id>/photo-crop/', views.save_photo_crop, name='save_photo_crop'),
     path('repairs/<int:repair_id>/photo-crop/suggest/', views.suggest_photo_crop, name='suggest_photo_crop'),
     # Replacements carry the same GlassService photo fields, and they are the

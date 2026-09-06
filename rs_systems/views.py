@@ -15,7 +15,7 @@ from django.views.decorators.cache import never_cache
 from django.utils.http import url_has_allowed_host_and_scheme
 from apps.technician_portal.forms import TechnicianRegistrationForm
 from django.contrib import messages
-from django.http import HttpResponse, HttpResponseNotFound, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseNotFound, JsonResponse
 from django.conf import settings
 import logging
 
@@ -631,7 +631,10 @@ def _resolve_public_invoice(invoice_id, token, request=None, record_view=True):
 
 
 from apps.technician_portal.services.photo_crops import (
-    UNZOOMED_SOURCE_FIELDS, focus_positions_for,
+    SOURCE_FIELDS, UNZOOMED_SOURCE_FIELDS, focus_positions_for,
+)
+from apps.technician_portal.services.photo_serving import (
+    photo_response, public_photo_url,
 )
 
 
@@ -717,6 +720,7 @@ def _public_invoice_photos(invoice):
     """
     pairs = []
     tiles = []
+    token = generate_payment_token(invoice.id)
     try:
         for kind, job in _public_invoice_jobs(invoice):
             focus_positions = focus_positions_for(job)
@@ -728,10 +732,10 @@ def _public_invoice_photos(invoice):
                 field = getattr(job, source_field, None)
                 if not field:
                     return None
-                try:
-                    url = field.url
-                except Exception:
-                    return None
+                # The app route, not the storage URL: the media bucket's
+                # repair_photos/* prefix is private (P8). Same token as the
+                # page, so the photo is exactly as reachable as the invoice.
+                url = public_photo_url(invoice.id, token, job, source_field)
                 return {
                     'url': url,
                     'label': label,
@@ -903,6 +907,28 @@ def public_invoice_pdf(request, invoice_id, token):
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="Invoice_{invoice.invoice_number}.pdf"'
     return response
+
+
+def public_invoice_photo(request, invoice_id, token, kind, job_id, field):
+    """One photo on this invoice, streamed through the app (P8). Same token.
+
+    The media bucket's repair_photos/* prefix is private, so the page's
+    `<img>` tags point here. The gate is the page's own — a valid token —
+    plus the job must actually be billed on this invoice, which is the same
+    traversal the page and the ZIP use (`_public_invoice_jobs`), so a photo
+    the page never showed cannot be fetched through it. Does not record a
+    view: the page already did, and an `<img>` is not a click.
+    """
+    invoice = _resolve_public_invoice(invoice_id, token, request=request,
+                                      record_view=False)
+    if invoice is None:
+        raise Http404("No such invoice.")
+    if field not in SOURCE_FIELDS:
+        raise Http404("No such photo.")
+    for job_kind, job in _public_invoice_jobs(invoice):
+        if job_kind == kind and job.pk == job_id:
+            return photo_response(getattr(job, field, None))
+    raise Http404("No such photo on this invoice.")
 
 
 def public_invoice_photos_zip(request, invoice_id, token):

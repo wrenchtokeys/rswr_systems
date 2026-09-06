@@ -1,3 +1,4 @@
+{% load photo_tags %}
 {% comment %}
 The "mark the break" control that sits under a photo on a job's detail
 page — repair or replacement. Driven by static/js/photo_crop_detail.js,
@@ -16,9 +17,9 @@ the tech should get the chance to disagree.
 {% endcomment %}
 <div class="mt-2 flex items-center justify-center gap-2">
     {% if crop and crop.cropped_image %}
-    {% comment %}A re-tap rewrites the crop at the same filename, so the URL
-    carries the row's revision or the browser shows the old close-up.{% endcomment %}
-    <img src="{{ crop.cropped_image.url }}?v={{ crop.updated_at|date:'U' }}" alt="Saved close-up of the break"
+    {% comment %}The app route, versioned by the row: a re-tap rewrites the crop
+    at the same filename, so without it the browser shows the old close-up.{% endcomment %}
+    <img src="{% crop_thumb_url crop %}" alt="Saved close-up of the break"
          class="h-10 w-10 rounded object-cover border border-gray-200 shrink-0"
          loading="lazy" decoding="async"
          data-crop-thumb="{{ field }}">

@@ -20,7 +20,6 @@ never assets. See docs/strategy/PHOTO_ML_SESSIONS.md.
 import uuid
 from decimal import Decimal
 
-from django.test import override_settings
 from django.urls import reverse
 
 from apps.billing.models import BillingConfig, Invoice, InvoiceLineItem
@@ -31,6 +30,9 @@ from apps.technician_portal.services.photo_crops import (
 )
 from core.models import Customer
 from django.contrib.auth.models import User
+from apps.technician_portal.services.photo_serving import (
+    customer_photo_url, public_photo_url,
+)
 from rs_systems.views import _public_invoice_photos, generate_payment_token
 
 from tests.test_photo_dataset import ReplacementCropMixin
@@ -66,6 +68,16 @@ class PhotoInvoiceTestCase(ReplacementCropMixin, TapCropTestCase):
     def get_public_invoice(self, invoice):
         token = generate_payment_token(invoice.id)
         return self.client.get(f'/invoice/{invoice.id}/{token}/')
+
+    def public_url(self, invoice, job, field='damage_photo_before'):
+        """The app route the public page renders for one of a job's photos.
+
+        Since P8 the page never prints a storage URL: the media bucket is
+        private and every photo is served by the app under the invoice's
+        own token.
+        """
+        return public_photo_url(
+            invoice.id, generate_payment_token(invoice.id), job, field)
 
     # P6.2 split the flat photo list into (pairs, tiles): a job with both a
     # before and an after photo is one exhibit, everything else is a tile in
@@ -158,7 +170,7 @@ class InvoicePhotoFramingTests(PhotoInvoiceTestCase):
         self.assertTrue(photos[0]['reframe'])
 
         html = self.get_public_invoice(invoice).content.decode()
-        self.assertIn(repair.damage_photo_before.url, html)
+        self.assertIn(self.public_url(invoice, repair), html)
         # No tap, so no inline attribute — the default comes from the sheet.
         self.assertNotIn('style="object-position', html)
         self.assertIn('class="blind-focus"', html)
@@ -182,7 +194,7 @@ class InvoicePhotoFramingTests(PhotoInvoiceTestCase):
         self.add_line(invoice, repair)
 
         photos = self.photo_tiles(invoice)
-        self.assertEqual(photos[0]['url'], repair.damage_photo_before.url)
+        self.assertEqual(photos[0]['url'], self.public_url(invoice, repair))
 
         html = self.get_public_invoice(invoice).content.decode()
         self.assertNotIn('repair_photos/crops/', html)
@@ -229,8 +241,8 @@ class InvoiceReplacementPhotoTests(PhotoInvoiceTestCase):
         self.add_line(invoice, replacement)
 
         urls = {p['url'] for p in self.photo_tiles(invoice)}
-        self.assertEqual(urls, {repair.damage_photo_before.url,
-                                replacement.damage_photo_before.url})
+        self.assertEqual(urls, {self.public_url(invoice, repair),
+                                self.public_url(invoice, replacement)})
 
     def test_a_job_billed_on_two_lines_is_still_one_job(self):
         repair = self.make_repair(damage_photo_before=real_jpeg())
@@ -316,18 +328,22 @@ class InvoicePhotoIsolationTests(PhotoInvoiceTestCase):
         self.add_line(invoice, mine)
 
         urls = {p['url'] for p in self.photo_tiles(invoice)}
-        self.assertEqual(urls, {mine.damage_photo_before.url})
-        self.assertNotIn(theirs.damage_photo_before.url, urls)
+        self.assertEqual(urls, {self.public_url(invoice, mine)})
+        self.assertNotIn(self.public_url(invoice, theirs), urls)
 
-    def test_a_photo_whose_storage_is_broken_is_skipped_not_fatal(self):
+    def test_a_photo_whose_storage_is_broken_is_a_404_not_a_500(self):
+        """Since P8 the page links the app route, so a file the shop deleted
+        out of storage is a broken tile on the customer's screen — never a
+        500 on the invoice, and never a 500 on the photo route either."""
         repair = self.make_repair(damage_photo_before=real_jpeg())
         invoice = self.make_invoice()
         self.add_line(invoice, repair)
+        field = repair.damage_photo_before
+        field.storage.delete(field.name)
 
-        with override_settings(MEDIA_URL=None):
-            photos = self.photo_tiles(invoice)
-        self.assertEqual(photos, [])
         self.assertEqual(self.get_public_invoice(invoice).status_code, 200)
+        response = self.client.get(self.public_url(invoice, repair))
+        self.assertEqual(response.status_code, 404)
 
 
 class PortalRepairDetailFramingTests(PhotoInvoiceTestCase):
@@ -362,7 +378,7 @@ class PortalRepairDetailFramingTests(PhotoInvoiceTestCase):
         aimed at (41%, 61%) by `.photo-blind-focus` rather than dead centre."""
         repair = self.make_repair(damage_photo_before=real_jpeg())
         html = self.portal_get(repair).content.decode()
-        self.assertIn(repair.damage_photo_before.url, html)
+        self.assertIn(customer_photo_url(repair, 'damage_photo_before'), html)
         self.assertNotIn('style="object-position', html)
         self.assertIn('photo-blind-focus', html)
 
@@ -387,9 +403,9 @@ class InvoiceBeforeAfterPairTests(PhotoInvoiceTestCase):
         self.assertEqual(len(pairs), 1)
         self.assertEqual(tiles, [])
         self.assertEqual(pairs[0]['before']['url'],
-                         repair.damage_photo_before.url)
+                         self.public_url(invoice, repair))
         self.assertEqual(pairs[0]['after']['url'],
-                         repair.damage_photo_after.url)
+                         self.public_url(invoice, repair, 'damage_photo_after'))
         self.assertEqual(pairs[0]['before']['label'], 'Before')
         self.assertEqual(pairs[0]['after']['label'], 'After')
 
@@ -402,8 +418,8 @@ class InvoiceBeforeAfterPairTests(PhotoInvoiceTestCase):
         html = self.get_public_invoice(invoice).content.decode()
         self.assertIn('class="photo-pair"', html)
         self.assertIn('class="photo-pair-frames"', html)
-        self.assertIn(repair.damage_photo_before.url, html)
-        self.assertIn(repair.damage_photo_after.url, html)
+        self.assertIn(self.public_url(invoice, repair), html)
+        self.assertIn(self.public_url(invoice, repair, 'damage_photo_after'), html)
         self.assertIn('>Before</span>', html)
         self.assertIn('>After</span>', html)
 
@@ -608,15 +624,22 @@ class InvoicePairCompositionTests(PhotoInvoiceTestCase):
 
         self.assertEqual(len(self.photo_pairs(invoice)), 1)
 
-    def test_broken_storage_is_still_skipped_not_fatal(self):
+    def test_broken_storage_is_still_not_fatal(self):
+        """Building the page links the photos; it does not read them (P8).
+        A pair whose files are gone still renders, and each photo is a 404
+        on its own route rather than a 500 anywhere."""
         repair = self.make_repair(damage_photo_before=real_jpeg(),
                                   damage_photo_after=real_jpeg())
         invoice = self.make_invoice()
         self.add_line(invoice, repair)
+        for field in (repair.damage_photo_before, repair.damage_photo_after):
+            field.storage.delete(field.name)
 
-        with override_settings(MEDIA_URL=None):
-            self.assertEqual(_public_invoice_photos(invoice), ([], []))
+        self.assertEqual(len(self.photo_pairs(invoice)), 1)
         self.assertEqual(self.get_public_invoice(invoice).status_code, 200)
+        for field in ('damage_photo_before', 'damage_photo_after'):
+            response = self.client.get(self.public_url(invoice, repair, field))
+            self.assertEqual(response.status_code, 404)
 
 
 class InvoiceReplacementPairLanguageTests(PhotoInvoiceTestCase):

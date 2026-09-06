@@ -1,5 +1,6 @@
 {% extends "customer_portal/base_customer.html" %}
 {% load ui %}
+{% load photo_tags %}
 
 {% block title %}Replacement #{{ replacement.id }} | RS Systems{% endblock %}
 
@@ -252,13 +253,13 @@
                 {% if replacement.damage_photo_before %}
                 <div>
                     <p class="text-xs text-gray-500 mb-2">Before</p>
-                    <img src="{{ replacement.damage_photo_before.url }}" alt="Before" class="rounded-lg w-full object-cover">
+                    <img src="{% customer_photo_url replacement 'damage_photo_before' %}" alt="Before" class="rounded-lg w-full object-cover">
                 </div>
                 {% endif %}
                 {% if replacement.damage_photo_after %}
                 <div>
                     <p class="text-xs text-gray-500 mb-2">After</p>
-                    <img src="{{ replacement.damage_photo_after.url }}" alt="After" class="rounded-lg w-full object-cover">
+                    <img src="{% customer_photo_url replacement 'damage_photo_after' %}" alt="After" class="rounded-lg w-full object-cover">
                 </div>
                 {% endif %}
             </div>

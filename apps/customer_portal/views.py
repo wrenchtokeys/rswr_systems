@@ -817,6 +817,44 @@ def customer_replacement_photos_zip(request, replacement_id):
         return redirect('profile_creation')
 
 
+def _customer_photo(request, model, pk, field):
+    """One of a job's photos, streamed through the app (P8).
+
+    The media bucket's repair_photos/* prefix is private, so every <img> in
+    the portal points here. Same scoping as the detail page and the ZIP:
+    the job must belong to this customer at this shop.
+    """
+    from apps.technician_portal.services.photo_crops import SOURCE_FIELDS
+    from apps.technician_portal.services.photo_serving import photo_response
+    customer_user = _get_customer_user_for_tenant(request)
+    customer = customer_user.customer
+    job = get_object_or_404(model, id=pk, customer=customer,
+                            tenant=customer.tenant)
+    if field not in SOURCE_FIELDS:
+        raise Http404("No such photo.")
+    return photo_response(getattr(job, field, None))
+
+
+@customer_required
+def customer_repair_photo(request, repair_id, field):
+    """One photo on one repair."""
+    try:
+        return _customer_photo(request, Repair, repair_id, field)
+    except (CustomerUser.DoesNotExist, AttributeError):
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+@customer_required
+def customer_replacement_photo(request, replacement_id, field):
+    """One photo on one replacement."""
+    try:
+        return _customer_photo(request, Replacement, replacement_id, field)
+    except (CustomerUser.DoesNotExist, AttributeError):
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
 @customer_required
 def customer_apply_reward(request, repair_id):
     """POST-only: customer applies a monetary reward to a repair before invoicing."""
