@@ -1,14 +1,13 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: September 2, 2026 (brought current from the 2026-09-01 direction review).*
+*Last Updated: September 6, 2026 (main deployed; Glass Guy Connect verified never onboarded).*
 
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
-> snapshot):** production runs `966a31da`, deployed **2026-08-31 23:46 UTC**. On `main`
-> and **not** on prod as of 2026-09-02: **#238** (four individual-customer field fixes),
-> **#239** (toll-free v4 docs), **#240** (report-only CSP), **#241/#242** (photo-ML docs),
-> **#243** (customer photo download), **#244** (test-suite arc + baseline). `eb deploy`
-> ships the current branch's HEAD — `git checkout main && git pull` first.
+> snapshot):** production runs `61273602`, deployed **2026-09-06 19:30 UTC** — #238
+> through #244 and #246 are live. The only merged PR not on prod is **#245**
+> (`scripts/test_guards.sh` + docs; no runtime code). `eb deploy` ships the current
+> branch's HEAD — `git checkout main && git pull` first.
 
 > **Scope note.** This file is the long-horizon view. The direction — Path A with a
 > B-ready spine — is in `docs/strategy/PRODUCT_DIRECTION.md` (September 2026; awaiting
@@ -88,9 +87,9 @@ Unified permissions, billing/invoicing lifecycle, SaaS subscription billing, Str
 
 ## 🔴 High Priority (Do Now)
 
-### Deploy `main`, and confirm The Glass Guy can take a payment
-- **Status:** seven PRs merged, not deployed (line at the top). The Glass Guy's Stripe Connect was still pending in mid-August; unconfirmed since.
-- **Action:** Drake deploys; a read-only Connect check on prod follows. If Connect is still pending, that is the next session — it outranks everything below.
+### The Glass Guy cannot take a payment — owner task, not a session
+- **Status:** `main` deployed 2026-09-06. Connect checked the same day, read-only, on prod and against Stripe live: Express account created 2026-08-06, **onboarding never completed** (`details_submitted=False`, every requirement still due — address, tax ID, representative, bank account, ToS). 0 invoices on the tenant.
+- **Action:** Drake's dad resumes onboarding from Settings → Payments. No code moves this; the queue below does not wait on it.
 
 ### P8 — close the world-readable media bucket
 - **Status:** customers' damage photos are readable by anyone who guesses a phone filename. P7 (#243) built the app-served download that closing it requires.
