@@ -50,9 +50,9 @@ section; every other doc points here rather than restating it.
   third-party asset hosts, a 16-minute suite with a committed baseline.
 - **Nothing brings a stranger to the signup page.** The landing page still shows the
   "500+ Jobs Tracked" trust bar and an HTML mock instead of screenshots.
-- **Production runs `61273602` (deployed 2026-09-06 19:30 UTC).** That is #238–#244 plus
-  the doc refresh (#246); the only thing on `main` it lacks is #245, which is docs and
-  `scripts/test_guards.sh` — no runtime code. `ROADMAP.md` keeps that line current.
+- **Production runs `969a4035` (deployed 2026-09-06 22:00 UTC)** — everything through
+  #248 (P8). Customers' damage photos are no longer world-readable as of 22:04 UTC.
+  `ROADMAP.md` keeps that line current.
 
 ## The June plan, scored
 
@@ -80,10 +80,9 @@ corrects.
 2. ~~**Confirm The Glass Guy can take a payment**~~ — **checked 2026-09-06: he cannot.**
    Onboarding was never completed (§Where things stand). Not a session — a form his dad
    fills in. Drake owns the nudge; nothing below waits on it.
-3. **P8 — close the world-readable media bucket** (`PHOTO_ML_SESSIONS.md`). **App half
-   built 2026-09-06 (PR #248, open)**: photos are app-served behind the ZIP's gates. What
-   remains is deploying it and then one bucket-policy edit (runbook in §P8 Notes) — ops,
-   not a session. A security fix, not a feature.
+3. ~~**P8 — close the world-readable media bucket**~~ — **done 2026-09-06** (#248 deployed
+   22:00 UTC, bucket policy narrowed 22:04 UTC; anonymous damage photo → 403). The
+   photo-ML arc has no code left.
 4. **Landing-page credibility** (`IMPROVEMENT_SESSIONS.md` C1): trust bar out, founder
    story up, real screenshots. Needs no decision.
 5. **The three spine features, one session each**, after §The decision carries a name.
@@ -112,6 +111,7 @@ Not features shipped. These are the only numbers that say the direction is worki
 | Date | Change |
 |---|---|
 | 2026-06-12 | Initial version — post-stabilization direction for Q3 2026 (90-day plan: growth quick wins → adoption gaps → engagement depth). |
+| 2026-09-06 | Step 3 (P8) closed: #248 merged + deployed 22:00 UTC, bucket policy narrowed 22:04 UTC. Next in order is C1 (landing credibility). Sign-off line still blank. |
 | 2026-09-06 | Step 3 (P8) built as PR #248 — the application half; the bucket-policy edit is sequenced after its deploy and recorded as an ops step, not a session. Sign-off line still blank. |
 | 2026-09-06 | Steps 1–2 of §What happens next closed: `main` deployed (`61273602`, 19:30 UTC) and The Glass Guy's Connect verified on prod + Stripe live — never onboarded, every requirement still due, 0 invoices. Recorded as an owner task, not a session; P8 promoted to the next code session. Sign-off line still blank. |
 | 2026-09-02 | Rewritten to one page from the 2026-09-01 direction review. Records the Path A + B-ready-spine decision as a draft awaiting sign-off, scores the June plan, replaces feature-shipping criteria with strangers-paying criteria, and deletes the stale platform-health items (Sentry set 2026-08-09, Tailwind CDN gone since PR #160, suite baseline committed in #244). |

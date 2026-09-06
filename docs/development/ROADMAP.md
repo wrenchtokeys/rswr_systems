@@ -1,14 +1,15 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: September 6, 2026 (main deployed; Glass Guy Connect verified never onboarded).*
+*Last Updated: September 6, 2026 (P8 deployed and the media bucket closed; Glass Guy Connect verified never onboarded).*
 
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
-> snapshot):** production runs `61273602`, deployed **2026-09-06 19:30 UTC** — #238
-> through #244 and #246 are live. The only merged PR not on prod is **#245**
-> (`scripts/test_guards.sh` + docs; no runtime code). **PR #248 (P8 app half) is open**
-> and is the next deploy — and the bucket-policy edit waits on it. `eb deploy` ships
-> the current branch's HEAD — `git checkout main && git pull` first.
+> snapshot):** production runs `969a4035`, deployed **2026-09-06 22:00 UTC** — everything
+> merged through #248 (P8) is live, and the media bucket's `repair_photos/*` prefix went
+> private at 22:04 UTC the same day. Only docs PRs after #248 are unmerged-to-prod, and they
+> carry no runtime code. `eb deploy` ships the current branch's HEAD — `git checkout main &&
+> git pull` first (or a `deploy-main` branch at `origin/main` when `main` is held by another
+> worktree).
 
 > **Scope note.** This file is the long-horizon view. The direction — Path A with a
 > B-ready spine — is in `docs/strategy/PRODUCT_DIRECTION.md` (September 2026; awaiting
@@ -92,9 +93,9 @@ Unified permissions, billing/invoicing lifecycle, SaaS subscription billing, Str
 - **Status:** `main` deployed 2026-09-06. Connect checked the same day, read-only, on prod and against Stripe live: Express account created 2026-08-06, **onboarding never completed** (`details_submitted=False`, every requirement still due — address, tax ID, representative, bank account, ToS). 0 invoices on the tenant.
 - **Action:** Drake's dad resumes onboarding from Settings → Payments. No code moves this; the queue below does not wait on it.
 
-### P8 — close the world-readable media bucket
-- **Status:** **app half built 2026-09-06 (PR #248, open).** Every damage photo is served by the app behind the ZIP's gates; nothing rendered depends on the bucket being public. The photos are still public until the policy edit is made.
-- **Action:** merge + deploy PR #248, confirm photos on prod, then the one-command bucket-policy edit in `PHOTO_ML_SESSIONS.md` §P8 Notes (with rollback). That edit is the last step in the arc.
+### ~~P8 — close the world-readable media bucket~~ — DONE 2026-09-06
+- **Status:** #248 deployed 22:00 UTC; bucket policy narrowed 22:04 UTC. Anonymous damage photo → 403, shop logo → 200, every app route still serves. The photo-ML arc has no code left.
+- **Found on the way (own session, not urgent):** the web process's `SECRET_KEY` differs from the EB-configured value (50 vs 53 chars) — HMAC tokens minted through `run-cron.sh` do not validate on the site. Details in `PHOTO_ML_SESSIONS.md` §P8 Notes.
 
 ### Landing page credibility + a front door
 - **Status:** the "500+ Jobs Tracked" trust bar reads as "nobody uses this"; the product shot is an HTML mock; nothing on the site captures a lead.
