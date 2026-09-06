@@ -592,6 +592,11 @@ DEFAULT_FROM_EMAIL=notifications@rssystems.io
 
 ## Documentation
 
+**Read before starting a session:** `docs/strategy/PRODUCT_DIRECTION.md` (the direction and
+the ordered "what happens next"; one page) and `docs/development/ROADMAP.md` (its top line
+says what is merged but not on prod). The session queues are `docs/strategy/*_SESSIONS.md`;
+each session carries a dated Status line — take the next `NEXT`, not the first interesting one.
+
 - `docs/deployment/AWS_DEPLOYMENT.md` — AWS/EB deployment guide
 - `docs/deployment/STRIPE_ARCHITECTURE.md` — platform vs shop (Connect Express) money flows, live price IDs, webhooks, platform fee resolution + the NULL-vs-0.00 repair
 - `docs/deployment/PRODUCTION_CHECKLIST.md` — pre/post deploy verification
