@@ -1,7 +1,7 @@
 # Test Suite Sessions — making 4,730 tests something anybody runs
 
 **Created:** 2026-08-31
-**Revised:** 2026-09-01 — T3 is done, and it changed the order of everything else
+**Revised:** 2026-09-01 — T3 and T7 are done; T2 is next
 **Author:** Claude (working session with Drake)
 **Status:** living document — update statuses and Notes as sessions complete
 **Companions:** every other arc in `docs/strategy/` depends on this one and none
@@ -47,15 +47,15 @@ able to execute exactly one session using only §0 and that session's table.
 | Phase | Session | Size | Status |
 |---|---|---|---|
 | B — Make it fast | T3 · `--parallel` crashes on the first failing test | ~~M~~ **XS** | **DONE 2026-09-01** — `tblib` |
-| C — Make it findable | T7 · The guard set belongs in the repo, not in prose | S | TODO — **start here** |
-| A — Make it honest | T2 · Run the suite in CI, advisory, parallel | S–M | TODO |
+| C — Make it findable | T7 · The guard set belongs in the repo, not in prose | S | **DONE 2026-09-01** — `scripts/test_guards.sh` |
+| A — Make it honest | T2 · Run the suite in CI, advisory, parallel | S–M | TODO — **start here** |
 | A — Make it honest | T1 · Triage the 93 failures on clean `main` | **L** | TODO |
 | B — Make it fast | T3b · The isolation bugs `--parallel` exposed | M | TODO |
 | B — Make it fast | T4 · A cheap tenant factory | M | **HOLD — re-measure first** |
 | B — Make it fast | T5 · `setUp` → `setUpTestData` sweep | L | **HOLD — re-measure first** |
 | B — Make it fast | T6 · `SimpleTestCase` where there is no database | M | **HOLD — re-measure first** |
 
-**Suggested sequence: T7 → T2 → T1, then stop and re-measure before any of
+**Suggested sequence: ~~T7~~ → T2 → T1, then stop and re-measure before any of
 Phase B.**
 
 **The old order was T2 → T1 → T3, and the argument for it is dead.** It ran:
@@ -69,10 +69,11 @@ the failing command once and reading its last four lines**, which say
 
 Why the current order:
 
-1. **T7 first because it is half a day and it is the only session that pays out
-   on the day it lands.** Every other arc in `docs/strategy/` is retyping module
-   lists right now; the `$MODULES` trap below has already cost 45 minutes once
-   and will again. It also has no dependencies.
+1. ~~**T7 first because it is half a day and it is the only session that pays
+   out on the day it lands.**~~ **Done 2026-09-01.** It was half a day, and
+   `scripts/test_guards.sh` now owns the module list; the four arcs that were
+   retyping it point at the script. T2 inherits a `--full` mode that already
+   does the baseline diff, so the workflow file has one command in it.
 2. **T2 second because it is now S–M, not M.** With `--parallel` working, a
    16-minute advisory check on `pull_request` is a short workflow file. It stops
    the *next* red test landing, which is what makes T1 finite work instead of
@@ -120,6 +121,7 @@ planned around an 80-minute number that a `pip install` deleted the next day.
 | Full suite, serial | 4,799s — **80 minutes** |
 | **Full suite, `--parallel 8`** | **967s — 16 minutes** (5× faster) |
 | Red on clean `main` | **93** (57 failures + 36 errors) across 41 modules |
+| Re-measured 2026-09-01 at `00b27ded` | 4,759 tests · **847s** · **91 red** (55F + 36E) — 2 of the 93 are intermittent, see T3b |
 | Tests running in CI | **1 module** (`test_migration_graph`) |
 | Test tooling | plain Django runner + `tblib`. No pytest, no factory_boy |
 | Merged PRs, Aug 2026 | **104** — ~3.5/day, gated on nothing |
@@ -191,7 +193,9 @@ broken file — the worst twelve:
 
 **The full sorted list is committed at `docs/strategy/test_baseline_main.txt`.**
 Do not regenerate it to find out what is red — read it. Regenerate it (16
-minutes) only when you have *changed* what is red:
+minutes) only when you have *changed* what is red. `scripts/test_guards.sh
+--full` runs the suite and does this diff for you, exiting non-zero only on
+regressions; by hand it is:
 
 ```bash
 python manage.py test --parallel 8 tests 2>&1 \
@@ -230,7 +234,11 @@ replayed into memory on every run. Measured: 30.2s cold, 29.9s with `--keepdb`,
 confirm it either way — the absence of that file *is* the confirmation. On
 Postgres `--keepdb` is real; that is one of the arguments for T2 using Postgres.
 
-**`export` the module list, not just `MODULES=`.** The known recipe says to run
+**`export` the module list, not just `MODULES=` — or better, don't hand-roll
+one.** `scripts/test_guards.sh` exists precisely so this trap cannot fire: a
+bash array inside a script cannot word-split and cannot fail to cross a subshell
+boundary. What follows applies when you insist on doing it by hand.
+The known recipe says to run
 multi-module test commands under `bash -c` (zsh does not word-split an unquoted
 `$MODULES`). That is half the fix. Without `export`, the variable does not cross
 into the `bash -c` subshell, `$MODULES` expands to **nothing**, and
@@ -264,7 +272,8 @@ templates; a raw full-suite run overflows the tool-result buffer and silently
 keeps only the tail. `| grep -E "^(FAIL|ERROR): |^Ran |^FAILED|^OK"`.
 
 **Baseline, don't count.** With 93 red on a clean `main`, a raw failure count
-from a branch tells you nothing at all. The baseline is committed — diff against
+from a branch tells you nothing at all. `scripts/test_guards.sh --full` is the
+whole recipe now. The baseline is committed — diff against
 `docs/strategy/test_baseline_main.txt` rather than building a second worktree:
 
 ```bash
@@ -464,6 +473,28 @@ prediction: **the same tree gives 91 red serially and 93 red at `--parallel 8`**
 with tests moving in both directions. Some of this suite depends on execution
 order or on being the only writer.
 
+**Two named instances, found for free on 2026-09-01** while validating
+`scripts/test_guards.sh --full` on `main` at `00b27ded`:
+
+```
+FAIL: test_answer_yes_enables_tax_and_stores_rate
+      (tests.bug_fixes.test_code103_billing_location_missing_taxrate.TaxSettingsFormTest)
+FAIL: test_in_sync_job_reports_no_drift
+      (tests.test_sync_job_prices_command.SyncJobPricesCommandTests)
+```
+
+Both are in the committed baseline as red; both passed on that run, and both
+pass when their module is run alone. Nothing in `6ad8b59d..00b27ded` touches
+tax rates or price sync — those commits are the photo-ML doc and this file — so
+they were not *fixed*, they are **intermittent under parallel sharding**. Start
+T3b here: two reproducible-ish tests beat a symmetric-difference hunt.
+
+**They stay in `test_baseline_main.txt` on purpose.** Removing a flaky-red test
+from the baseline makes every future run where it flakes red report a
+*regression that nobody caused* — which is the failure mode that teaches people
+to ignore the diff. A baseline should shrink when a test is fixed, not when it
+happens to pass.
+
 **The suspects, cheapest first:** `django.core.cache` (LocMem is per-process, so
 a test that warms a cache another test reads is order-dependent), module-level
 caches and singletons, files written to a fixed path, and the 4
@@ -549,7 +580,65 @@ a class that needed the DB fails immediately and loudly.
 
 # Phase C — Make it findable
 
-## T7 · The guard set belongs in the repo, not in prose — S
+## T7 · The guard set belongs in the repo, not in prose — DONE 2026-09-01
+
+**Shipped:** `scripts/test_guards.sh`, option 1 from the plan below, with the
+`--full` mode the 2026-09-01 note argued for.
+
+```bash
+scripts/test_guards.sh                    # guard set — 162 tests, ~25s
+scripts/test_guards.sh tests.test_foo     # guard set + the module you touched
+scripts/test_guards.sh --full             # whole suite, diffed vs the baseline
+scripts/test_guards.sh --list             # the modules, one per line
+```
+
+`--full` exits non-zero **only on regressions** against
+`docs/strategy/test_baseline_main.txt`, and prints the fixes separately so a
+shrinking baseline is visible rather than silent. Fast mode exits non-zero on
+any red, because the guard set carries no known failures.
+
+**The docs that were retyping the list now point at the script:** `CLAUDE.md`
+(Running Tests, rewritten), `UI_MAGIC_SESSIONS.md` (its `/tmp/baseline` worktree
+replay is gone — `--full` replaces it), `FIELD_OPS_SESSIONS.md` §5, and
+`JOB_QUEUE_SESSIONS.md` §3. `PHOTO_ML_SESSIONS.md` keeps its one-line
+`test_migration_graph` pre-deploy check on purpose: that is a deploy gate, not a
+guard set.
+
+### Notes
+
+**Both the "cheapest first" options were the same cost, so the tiebreak was
+where the list wants to live.** A `tests/guards/` package would have made
+`manage.py test tests.guards` the command, which is tidier — but it puts the
+list somewhere `--full` can't also live, and `--full` turned out to be the half
+of this session that matters. A script can hold both modes and the baseline
+diff. It also matches `scripts/build_css.sh` and `scripts/vendor_assets.sh`.
+
+**Two pre-flight checks earn their lines.** The script refuses to start if
+`tblib` is missing (the T3 crash, with the fix printed) and warns if
+`LOCAL_DATABASE_URL`/`USE_AWS_DB` is set (the baseline is SQLite; a stale URL in
+a shell profile silently redirects the run and every diff line is then garbage).
+Both are one-line checks against traps this arc has already paid for.
+
+**Re-measured, per this file's own rule.** The guard set is still 162 tests and
+still green on `main` at `00b27ded` — but it is **~25s wall at `--parallel 8`**,
+not the ~39s serial this section recorded. 8.7s of that is tests; the other 16s
+is the fixed per-process startup cost from §0, which no amount of parallelism
+removes. Below ~20 modules that 16s is most of the run.
+
+**What T2 inherits.** The CI workflow is now `scripts/test_guards.sh --full` and
+a non-zero exit means regression, not red — which is exactly the semantics an
+advisory check wants, and the semantics a *required* check will want after T1.
+It also means CI and a laptop cannot drift apart in what they run.
+
+**Open question T7 deliberately did not settle:** the script runs `tests`, so it
+gates 90% of the suite and calls it the suite (§0, the 496 methods outside
+`tests/`). Adding them is one word in the script; deciding whether they should
+be in the gate is T2's call, and it belongs with the CI decision, not here.
+
+---
+
+<details>
+<summary>The original T7 plan, kept for the reasoning</summary>
 
 Today the fast set is a list of module paths living in prose and in session
 memory, retyped by hand each time. That is how the `$MODULES` incident happened,
@@ -591,13 +680,17 @@ fast path over the list above, and a `--full` that runs the suite and diffs the
 baseline for you. Then the fast set is what you use while editing and the full
 diff is what you run before pushing, and neither is retyped from prose.
 
+</details>
+
 ---
 
 # Where this stands — 2026-09-01
 
-**T3 is done.** `tblib` is in `requirements.txt`, `CLAUDE.md`'s Running Tests
-section is rewritten, and `docs/strategy/test_baseline_main.txt` now holds the
-93-line failure set so nobody regenerates it by hand. Everything else is TODO.
+**T3 and T7 are done.** `tblib` is in `requirements.txt`;
+`docs/strategy/test_baseline_main.txt` holds the 93-line failure set so nobody
+regenerates it by hand; and `scripts/test_guards.sh` now owns the guard-set
+module list and the baseline diff, so no strategy doc carries either any more.
+Everything else is TODO.
 
 **The numbers that matter:** 4,730 tests, **1 in CI**, **93 red**, 16 minutes
 to find out. The middle two are the arc; the last one is no longer an excuse.
@@ -612,5 +705,7 @@ confidently argued, and wrong at the root. **Do not re-plan this arc from the
 prose here. Re-run the measurement, and when a tool crashes, read everything it
 printed before you theorise.**
 
-**Start with T7**, then T2, then T1 — and treat Phase B as unproven until a
-single module's before-and-after says otherwise.
+**Start with T2**, then T1 — and treat Phase B as unproven until a single
+module's before-and-after says otherwise. T2 is now a workflow file whose run
+step is `scripts/test_guards.sh --full`, with one real decision inside it:
+whether the gate runs `tests` or the whole 5,226 (§0).

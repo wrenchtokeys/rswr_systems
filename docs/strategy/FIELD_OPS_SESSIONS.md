@@ -110,7 +110,7 @@ Sizes: **S** ≈ half a day · **M** ≈ 1–2 days · **L** ≈ 3–5 days.
 2. Another Claude session may share this working tree. Print `git branch --show-current` before every test run; never `git add -A` (add files by name).
 3. Read §0 plus your session's table. Do not read the whole document to do one session.
 4. Re-verify the session's "Verified current state" anchors before coding — line numbers drift.
-5. Run the targeted tests named in the session, plus the fast smoke set (`python manage.py test tests.test_primary_contact tests.test_e2e_today`). The full suite has ~90–105 pre-existing failures on main — **compare against a main baseline, never count absolutes**.
+5. Run the targeted tests named in the session, plus `scripts/test_guards.sh` (guard set, ~25s; pass your module as an argument to run both). Before pushing, `scripts/test_guards.sh --full` — it diffs the whole suite against `docs/strategy/test_baseline_main.txt` and exits non-zero only on regressions. The suite has ~93 pre-existing failures on `main`: **compare against the baseline, never count absolutes**.
 6. When done: flip the status in the index table, and write what you learned under the session's **Notes** heading. That's what makes this a living doc.
 
 ---

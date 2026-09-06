@@ -170,51 +170,64 @@ Use `{% comment %}…{% endcomment %}`.
 
 ### Running Tests
 
-**Always pass `--parallel`.** The suite is 4,693 tests and takes **80 minutes**
-single-process; at `--parallel 8` it takes **20**. This works only because
-`tblib` is in `requirements.txt` — without it Django's parallel runner cannot
-pickle a failing test's traceback and the whole run dies printing nothing (see
-the comment on that pin). If you see `TypeError: cannot pickle 'traceback'
-object`, your venv is stale: `pip install -r requirements.txt`.
+**Use `scripts/test_guards.sh`.** It holds the guard-set module list, passes
+`--parallel`, and applies the output filter, so none of that gets retyped.
+
+```bash
+scripts/test_guards.sh                    # guard set — 162 tests, ~25s. Green means green.
+scripts/test_guards.sh tests.test_foo     # guard set + the module you touched
+scripts/test_guards.sh --full             # whole suite (~16 min), diffed against the baseline
+scripts/test_guards.sh --list             # the guard modules, one per line
+```
+
+Fast mode while editing; `--full` before you push — it is the only mode that
+catches a break the guard set does not cover. `--full` exits non-zero **only on
+regressions against `docs/strategy/test_baseline_main.txt`**, which is the
+question you actually have; a raw failure count is not.
+
+**Always pass `--parallel`** when you run `manage.py test` directly. The suite
+is 4,730 tests and takes **80 minutes** single-process; at `--parallel 8` it
+takes **16**. This works only because `tblib` is in `requirements.txt` — without
+it Django's parallel runner cannot pickle a failing test's traceback and the
+whole run dies printing nothing (see the comment on that pin). If you see
+`TypeError: cannot pickle 'traceback' object`, your venv is stale:
+`pip install -r requirements.txt`.
 
 ```bash
 export DJANGO_SETTINGS_MODULE=rs_systems.settings.development
-
-# Full suite — ~20 min, ~90 pre-existing failures (see below)
-python manage.py test --parallel 8 tests 2>&1 \
-  | grep -E "^(FAIL|ERROR): |^Ran |^FAILED|^OK"
-
-# Fast smoke tests (use these during dev)
-python manage.py test --parallel 4 tests.test_primary_contact tests.test_e2e_today
 
 # Specific test file / single test
 python manage.py test tests.test_step5_nav
 python manage.py test tests.test_e2e_today.SubscriptionEnforcementTests.test_trial_user_can_access_dashboard
 ```
 
-**Pipe every full run through that `grep`.** Assertion messages here dump whole
-templates; a raw run overflows the tool-result buffer and silently keeps only
-the tail.
+**Pipe every full run through `grep -E "^(FAIL|ERROR): |^Ran |^FAILED|^OK"`.**
+Assertion messages here dump whole templates; a raw run overflows the
+tool-result buffer and silently keeps only the tail. `test_guards.sh` does this
+for you.
 
-**~90 tests are red on a clean `main`** — compare, never count. The current
-sorted baseline is committed at `docs/strategy/test_baseline_main.txt`; diff
-your run's `FAIL:`/`ERROR:` lines against it and only `comm -23` output
-(regressions) means anything. Regenerating it costs 20 minutes, not the hour
-the old note assumed. Full arc for fixing this: `docs/strategy/TEST_SUITE_SESSIONS.md`.
+**~93 tests are red on a clean `main`** — compare, never count. The sorted
+baseline is committed at `docs/strategy/test_baseline_main.txt`; only `comm -23`
+output (regressions) means anything, and `--full` computes it. Regenerate the
+baseline when you *change* what is red, not to find out what is red. Full arc:
+`docs/strategy/TEST_SUITE_SESSIONS.md`.
 
-**Multi-module runs must `export` the variable and run under `bash -c`.** zsh
-does not word-split an unquoted `$MODULES`, and without `export` the variable
-never reaches the subshell — `manage.py test` then silently runs the **entire
-suite** instead of your seven modules. It does not error; it looks exactly like
-a hang, and it has cost 45 minutes before.
+**Hand-rolled multi-module runs must `export` the variable and run under
+`bash -c`.** zsh does not word-split an unquoted `$MODULES`, and without
+`export` the variable never reaches the subshell — `manage.py test` then
+silently runs the **entire suite** instead of your seven modules. It does not
+error; it looks exactly like a hang, and it has cost 45 minutes before. This
+trap is the reason `test_guards.sh` exists: a bash array inside a script cannot
+word-split and cannot fail to cross a subshell boundary. Prefer the script.
 
 **No Postgres creds are needed.** Neither `USE_AWS_DB` nor `LOCAL_DATABASE_URL`
 set means SQLite (`rs_systems/settings/development.py`), which is what tests run
 on locally. The `amelia_test` Postgres URL this section used to export does not
 authenticate on any current machine — only export a database URL if you
-specifically want to test against Postgres.
+specifically want to test against Postgres, and note that a stale one in your
+shell profile silently redirects the whole run.
 
-Test files live in `tests/` (top-level). **~495 test methods also live outside
+Test files live in `tests/` (top-level). **~496 test methods also live outside
 it** — `core/tests/`, `apps/billing/tests/`, and five `apps/*/tests.py` — and
 `manage.py test tests` does not run them. `manage.py test` with no argument
 does. The canonical suite is `tests/`, but don't mistake a green `tests` run

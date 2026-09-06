@@ -76,14 +76,15 @@ branch sits unmerged again, check for the same collision before opening the PR.
    is merged, branch from it and say so in the PR body.
 2. Read §0 plus your session's table. Re-verify the `file:line` anchors before
    coding — the code moves.
-3. Tests: the Postgres credentials in `CLAUDE.md` (`amelia_test`) are rejected
-   on this machine, so `manage.py test` falls back to sqlite. **Diff against a
-   `main` baseline; never read anything into an absolute failure count** —
-   ~76 `tests/bug_fixes` tests fail on unmodified `origin/main` under sqlite.
-   Prefer targeted modules: the full `tests.bug_fixes` sweep takes over an hour
-   when another session is running its own suites. Use
-   `~/projects/rs_systems_branch2/venv/bin/python` — this worktree has no venv.
-   Don't let a run straddle midnight; several invoice/report tests are
+3. Tests: run `scripts/test_guards.sh` (guard set, ~25s) with your session's
+   modules appended, and `scripts/test_guards.sh --full` before pushing — it
+   diffs the whole suite against `docs/strategy/test_baseline_main.txt` and
+   exits non-zero only on regressions. **Never read anything into an absolute
+   failure count**; ~93 tests are red on unmodified `origin/main`. Tests run on
+   sqlite (the `amelia_test` Postgres creds are rejected on this machine, and
+   the baseline was taken on sqlite — so leave `LOCAL_DATABASE_URL` unset).
+   Use `~/projects/rs_systems_branch2/venv/bin/python` — this worktree has no
+   venv. Don't let a run straddle midnight; several invoice/report tests are
    date-sensitive.
 4. Commit files by name; never `git add -A`. Open a PR against `main`.
 5. When done: flip the status in the index table and write what you learned

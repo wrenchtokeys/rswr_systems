@@ -82,29 +82,19 @@ STORAGES = {"default": {"BACKEND": "django.core.files.storage.FileSystemStorage"
 PY
 PYTHONPATH=/tmp DJANGO_SETTINGS_MODULE=manifest_check_settings python manage.py collectstatic --noinput
 
-# 3. Smoke tests, then the full suite
-python manage.py test tests.test_primary_contact tests.test_e2e_today tests.test_step5_nav
-python manage.py test tests/ -v 1
+# 3. Tests — the guard set while editing, the full diff before you push
+scripts/test_guards.sh
+scripts/test_guards.sh --full
 ```
 
-**The suite has ~103 pre-existing failures. Compare, never count.** On SQLite the full
-suite is 3507 tests / ~66 min and ends `FAILED (failures=70, errors=33)` — on a clean
-`main` too (verified 2026-08-09; the two failure sets are byte-identical). They're mostly
-DB-index introspection and SES-mock tests. So a green run is not the bar; **an unchanged
-failure set** is:
+**The suite has ~93 pre-existing failures. Compare, never count.** A green run is
+not the bar; **an unchanged failure set** is. `scripts/test_guards.sh --full` runs
+the suite (~16 min at `--parallel 8`) and diffs `FAIL:`/`ERROR:` against the
+committed baseline at `docs/strategy/test_baseline_main.txt`, exiting non-zero
+only on regressions. That replaces the hand-rolled `/tmp/baseline` worktree
+replay this section used to carry — and the module list that went with it. The
+arc is `docs/strategy/TEST_SUITE_SESSIONS.md`; don't re-derive the recipe here.
 
-```bash
-# Extract the failing modules from your run, then replay just those on main.
-grep -E "^(FAIL|ERROR): " yours.log | sed -E 's/^(FAIL|ERROR): [^ ]+ \((.*)\)$/\2/' \
-  | sed 's/\.[^.]*$//' | sed 's/\.[^.]*$//' | sort -u > modules.txt
-git worktree add /tmp/baseline main
-# NOTE: run this under bash — zsh does not word-split unquoted $MODULES and you
-# will get one bogus "module not found" test instead of the whole list.
-bash -c 'cd /tmp/baseline && python manage.py test $(tr "\n" " " < modules.txt)'
-# Then diff the two sorted "FAIL:/ERROR:" lists. Anything only in yours is a regression.
-```
-
-Replaying only the failing modules takes ~7 min instead of another full hour.
 
 ### Traps this work has already hit — don't repeat them
 
