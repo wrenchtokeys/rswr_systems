@@ -14,6 +14,37 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-09-06 — P8: damage photos are served by the app, not a public bucket (PR #248)
+
+Open, not merged. No migration. The bucket-policy edit that makes the photos
+private is **not** in this PR — it follows the deploy (`PHOTO_ML_SESSIONS.md`
+§P8 Notes has the commands and the rollback).
+
+### Security
+- **Every `<img>` of a customer's damage photo pointed at S3, and the bucket
+  policy makes `media/*` world-readable** — access control was "know the
+  filename", and the filenames are the phone's sequential originals. A photo
+  is now a route, gated like the P7 ZIP on the same surface: shop
+  (`/tech/…/photos/<field>/`, `_job_access`), portal (`/app/…/photos/<field>/`,
+  customer scoping), public invoice
+  (`/invoice/<id>/<token>/photos/<kind>/<job>/<field>/`, the invoice token
+  plus the job must be billed on it). Bytes stream through `field.open()`.
+
+### Changed
+- Ten templates, the mark queue and the crop-save JSON render routes instead
+  of storage URLs, via a new `{% load photo_tags %}` library. No `<img>`
+  class changed. `Cache-Control: private, max-age=86400` with a `?v=` from the
+  stored filename, so a replaced photo is never served stale.
+- The invoice PDF reads the shop logo through storage instead of fetching its
+  public URL — the last place the app downloaded its own media.
+
+### Technical
+- `apps/technician_portal/services/photo_serving.py`; `tests/test_photo_serving.py`
+  (39 tests, in the guard set) including a source scan that fails on any
+  photo-field `.url` in `templates/` or app code. CLAUDE.md gains the rule.
+
+---
+
 ## 2026-09-03 — Living docs brought current; test guard script (PRs #245, #246)
 
 Deployed 2026-09-06 19:30 UTC as `61273602` together with #238–#244 (#245's script

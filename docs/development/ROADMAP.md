@@ -6,8 +6,9 @@
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
 > snapshot):** production runs `61273602`, deployed **2026-09-06 19:30 UTC** — #238
 > through #244 and #246 are live. The only merged PR not on prod is **#245**
-> (`scripts/test_guards.sh` + docs; no runtime code). `eb deploy` ships the current
-> branch's HEAD — `git checkout main && git pull` first.
+> (`scripts/test_guards.sh` + docs; no runtime code). **PR #248 (P8 app half) is open**
+> and is the next deploy — and the bucket-policy edit waits on it. `eb deploy` ships
+> the current branch's HEAD — `git checkout main && git pull` first.
 
 > **Scope note.** This file is the long-horizon view. The direction — Path A with a
 > B-ready spine — is in `docs/strategy/PRODUCT_DIRECTION.md` (September 2026; awaiting
@@ -92,8 +93,8 @@ Unified permissions, billing/invoicing lifecycle, SaaS subscription billing, Str
 - **Action:** Drake's dad resumes onboarding from Settings → Payments. No code moves this; the queue below does not wait on it.
 
 ### P8 — close the world-readable media bucket
-- **Status:** customers' damage photos are readable by anyone who guesses a phone filename. P7 (#243) built the app-served download that closing it requires.
-- **Action:** `docs/strategy/PHOTO_ML_SESSIONS.md` §P8, right after #243 is on prod.
+- **Status:** **app half built 2026-09-06 (PR #248, open).** Every damage photo is served by the app behind the ZIP's gates; nothing rendered depends on the bucket being public. The photos are still public until the policy edit is made.
+- **Action:** merge + deploy PR #248, confirm photos on prod, then the one-command bucket-policy edit in `PHOTO_ML_SESSIONS.md` §P8 Notes (with rollback). That edit is the last step in the arc.
 
 ### Landing page credibility + a front door
 - **Status:** the "500+ Jobs Tracked" trust bar reads as "nobody uses this"; the product shot is an HTML mock; nothing on the site captures a lead.
