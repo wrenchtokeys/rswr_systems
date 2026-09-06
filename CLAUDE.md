@@ -367,6 +367,23 @@ in `services/photo_dataset.py` from what the shop *did*; note that side and
 rear glass is tempered and always replaced, so only a **windshield**
 replacement means "not repairable". See `docs/strategy/PHOTO_ML_SESSIONS.md`.
 
+**Damage photos are routes, not files (P8).** Never render `.url` on
+`damage_photo_before` / `damage_photo_after` / `customer_submitted_photo` /
+`cropped_image` — the media bucket's `repair_photos/*` prefix is private (or is
+about to be), and that URL is the S3 address of a customer's vehicle at their
+home. Use `{% load photo_tags %}`: `{% shop_photo_url job 'damage_photo_before' %}`
+on the shop side, `{% customer_photo_url … %}` in the portal, `{% crop_thumb_url
+crop %}` for a close-up; the public invoice builds its token-carrying URLs in
+`rs_systems.views`. The routes stream `field.open()` behind the same gate as the
+P7 ZIP on that surface (`services/photo_serving.py`). **Read photo bytes through
+storage, never by fetching the photo's own URL** — that also goes for the invoice
+PDF's logo. `tenants/logos/` and `email_branding/` stay public **on purpose**
+(they are `<img src>` in email, opened days later with no session), which is why
+`AWS_S3_CUSTOM_DOMAIN` stays set and `img-src` still names the S3 origin. Never
+widen the bucket's `PublicReadMediaOnly` statement back to `media/*`; no test can
+see it. `tests/test_photo_serving.py` fails the build on a photo-field `.url` in a
+template or app module.
+
 **Multi-Break Batch Repairs**: Multiple repairs for same unit in one session. Each break is a separate `Repair` linked via `repair_batch_id` (UUID). Progressive pricing: Break N priced as repair #(existing_count + N). Created atomically. URL: `/tech/repairs/create-multi-break/`.
 
 **Progressive Pricing**: Repair cost decreases per unit: $50→$40→$35→$30→$25. Tracked via `UnitRepairCount`. Configurable at shop level and per-customer. With progressive off, the shop sets a single flat "Price per repair" (`repair_price_1`); `calculate_batch_pricing` honors the toggle too. Custom prices are per-job (and per-break in multi-break) — authorization is `is_manager` (`can_override_pricing` is deprecated: nothing ever set it).

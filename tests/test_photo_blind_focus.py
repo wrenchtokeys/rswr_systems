@@ -130,9 +130,9 @@ class BlindFocusAppliesOnlyToDamageTests(SimpleTestCase):
         html = PORTAL_PAGE.read_text()
 
         before = [ln for ln in html.splitlines()
-                  if 'repair.damage_photo_before.url' in ln and '<img' in ln]
+                  if "'damage_photo_before'" in ln and '<img' in ln]
         after = [ln for ln in html.splitlines()
-                 if 'repair.damage_photo_after.url' in ln and '<img' in ln]
+                 if "'damage_photo_after'" in ln and '<img' in ln]
         self.assertEqual(len(before), 1, 'expected one before-photo <img>')
         self.assertEqual(len(after), 1, 'expected one after-photo <img>')
 

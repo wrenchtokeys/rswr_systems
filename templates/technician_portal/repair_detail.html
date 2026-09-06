@@ -1,6 +1,7 @@
 {% extends "base_app.html" %}
 {% load static %}
 {% load billing_tags %}
+{% load photo_tags %}
 {% load ui %}
 
 {% block content %}
@@ -594,6 +595,7 @@
                 <div id="photoContent" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     <!-- Customer Submitted Photo (if exists) -->
                     {% if repair.customer_submitted_photo %}
+                    {% shop_photo_url repair 'customer_submitted_photo' as customer_photo_src %}
                     <div class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
                         <div class="px-3 py-2 text-center border-b border-gray-100">
                             <h6 class="text-sm font-medium text-gray-900 flex items-center justify-center">
@@ -603,21 +605,22 @@
                         </div>
                         <div class="p-2 text-center">
                             <div class="photo-container">
-                                <img src="{{ repair.customer_submitted_photo.url }}"
+                                <img src="{{ customer_photo_src }}"
                                      alt="Customer submitted photo"
                                      class="w-full h-auto max-h-80 object-contain rounded-lg shadow-sm cursor-pointer"
-                                     onclick="openImageModal('{{ repair.customer_submitted_photo.url }}', 'Customer Submitted Photo')"
+                                     onclick="openImageModal('{{ customer_photo_src }}', 'Customer Submitted Photo')"
                                      loading="lazy"
                                      decoding="async">
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Click to view full size</p>
-                            {% include "technician_portal/partials/photo_crop_control.html" with field="customer_submitted_photo" photo_url=repair.customer_submitted_photo.url crop=photo_crops.customer_submitted_photo prompt="Tap the break" %}
+                            {% include "technician_portal/partials/photo_crop_control.html" with field="customer_submitted_photo" photo_url=customer_photo_src crop=photo_crops.customer_submitted_photo prompt="Tap the break" %}
                         </div>
                     </div>
                     {% endif %}
 
                     <!-- Technician Before Photo -->
                     {% if repair.damage_photo_before %}
+                    {% shop_photo_url repair 'damage_photo_before' as before_photo_src %}
                     <div class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
                         <div class="px-3 py-2 text-center border-b border-gray-100">
                             <h6 class="text-sm font-medium text-gray-900 flex items-center justify-center">
@@ -626,21 +629,22 @@
                         </div>
                         <div class="p-2 text-center">
                             <div class="photo-container">
-                                <img src="{{ repair.damage_photo_before.url }}"
+                                <img src="{{ before_photo_src }}"
                                      alt="Initial damage photo"
                                      class="w-full h-auto max-h-80 object-contain rounded-lg shadow-sm cursor-pointer"
-                                     onclick="openImageModal('{{ repair.damage_photo_before.url }}', 'Initial Damage Photo')"
+                                     onclick="openImageModal('{{ before_photo_src }}', 'Initial Damage Photo')"
                                      loading="lazy"
                                      decoding="async">
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Click to view full size</p>
-                            {% include "technician_portal/partials/photo_crop_control.html" with field="damage_photo_before" photo_url=repair.damage_photo_before.url crop=photo_crops.damage_photo_before prompt="Tap the break" %}
+                            {% include "technician_portal/partials/photo_crop_control.html" with field="damage_photo_before" photo_url=before_photo_src crop=photo_crops.damage_photo_before prompt="Tap the break" %}
                         </div>
                     </div>
                     {% endif %}
 
                     <!-- Technician After Photo -->
                     {% if repair.damage_photo_after %}
+                    {% shop_photo_url repair 'damage_photo_after' as after_photo_src %}
                     <div class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
                         <div class="px-3 py-2 text-center border-b border-gray-100">
                             <h6 class="text-sm font-medium text-gray-900 flex items-center justify-center">
@@ -649,15 +653,15 @@
                         </div>
                         <div class="p-2 text-center">
                             <div class="photo-container">
-                                <img src="{{ repair.damage_photo_after.url }}"
+                                <img src="{{ after_photo_src }}"
                                      alt="Completed repair photo"
                                      class="w-full h-auto max-h-80 object-contain rounded-lg shadow-sm cursor-pointer"
-                                     onclick="openImageModal('{{ repair.damage_photo_after.url }}', 'Completed Repair Photo')"
+                                     onclick="openImageModal('{{ after_photo_src }}', 'Completed Repair Photo')"
                                      loading="lazy"
                                      decoding="async">
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Click to view full size</p>
-                            {% include "technician_portal/partials/photo_crop_control.html" with field="damage_photo_after" photo_url=repair.damage_photo_after.url crop=photo_crops.damage_photo_after prompt="Tap the repaired spot" %}
+                            {% include "technician_portal/partials/photo_crop_control.html" with field="damage_photo_after" photo_url=after_photo_src crop=photo_crops.damage_photo_after prompt="Tap the repaired spot" %}
                         </div>
                     </div>
                     {% endif %}

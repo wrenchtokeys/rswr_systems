@@ -57,6 +57,7 @@ from .repairs import (
     save_photo_crop,
     suggest_photo_crop,
     job_photos_zip,
+    job_photo,
 )
 
 # Unmarked-photo backfill queue (P4a.1)

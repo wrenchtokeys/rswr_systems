@@ -15,7 +15,6 @@ Updated: 2026-01-27 - Royal blue styling, logo support
 import io
 import logging
 import os
-import urllib.request
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Optional, Dict, Any, Tuple
@@ -190,57 +189,41 @@ class InvoiceService:
         self.HEADER_COLOR = brand_color or "#4299E1"
         self.PRIMARY_COLOR = brand_color or "#2C5282"
         if branded and self.tenant.logo:
+            # The FieldFile, so the PDF reads the bytes through storage.
+            # `logo_url` is kept for callers that only want to know a logo
+            # exists; nothing fetches it.
+            self.logo_file = self.tenant.logo
             try:
                 self.logo_url = self.tenant.logo.url
             except Exception as e:
                 print(f"Could not load logo URL: {e}")
-    
+
     def _get_logo_for_pdf(self, max_width=3*inch, max_height=1.2*inch):
         """
         Get logo as a ReportLab Image object, properly sized.
-        Supports local files and S3/remote URLs.
-        
+
+        Reads the logo through the storage backend (`FieldFile.open()`), the
+        same way the P7 photo ZIP reads photos — never by fetching the
+        logo's own URL over HTTP. That anonymous round trip was the last
+        place the app downloaded its own media from the network (P8), and
+        it only worked because the logo prefix happened to be public.
+
         Returns:
             RLImage or None if no logo available
         """
-        import tempfile
-        
-        if not hasattr(self, 'logo_path') and not hasattr(self, 'logo_url'):
+        if not getattr(self, 'logo_path', None) and not getattr(self, 'logo_file', None):
             return None
-            
+
         try:
             img = None
-            
+
             # Try local path first
-            if hasattr(self, 'logo_path') and self.logo_path and os.path.exists(self.logo_path):
+            if getattr(self, 'logo_path', None) and os.path.exists(self.logo_path):
                 img = RLImage(self.logo_path)
-            elif hasattr(self, 'logo_url') and self.logo_url:
-                url = self.logo_url
-                
-                # Make sure we have a full URL
-                if url.startswith('//'):
-                    url = 'https:' + url
-                elif not url.startswith('http'):
-                    # Try to build full URL from S3 settings
-                    s3_domain = getattr(settings, 'AWS_S3_CUSTOM_DOMAIN', None)
-                    if s3_domain:
-                        url = f'https://{s3_domain}/{url.lstrip("/")}'
-                    else:
-                        # Local media URL — construct full path
-                        media_root = getattr(settings, 'MEDIA_ROOT', '')
-                        full_path = os.path.join(media_root, url.lstrip('/media/'))
-                        if os.path.exists(full_path):
-                            img = RLImage(full_path)
-                
-                # Download from URL if we haven't loaded yet
-                if img is None and url.startswith('http'):
-                    tmp = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
-                    try:
-                        urllib.request.urlretrieve(url, tmp.name)
-                        img = RLImage(tmp.name)
-                    finally:
-                        tmp.close()
-            
+            elif getattr(self, 'logo_file', None):
+                with self.logo_file.open('rb') as handle:
+                    img = RLImage(io.BytesIO(handle.read()))
+
             if img is None:
                 return None
             
@@ -430,8 +413,11 @@ class InvoiceService:
             final_cost=discounted['final_cost'],
             discount_description=discounted['discount_description'] if discounted['discount_applied'] else '',
             has_photos=repair.has_photos(),
-            before_photo_url=repair.damage_photo_before.url if repair.damage_photo_before else None,
-            after_photo_url=repair.damage_photo_after.url if repair.damage_photo_after else None,
+            # No storage URLs: the bucket is private (P8) and nothing renders
+            # these — photos live on the public invoice page, served by the
+            # app. `repair_obj` is how a renderer reaches the files.
+            before_photo_url=None,
+            after_photo_url=None,
             repair_obj=repair,
         )
     
@@ -632,14 +618,9 @@ class InvoiceService:
                 final_cost=li.amount if li.amount is not None else original_cost - discount,
                 discount_description=f'Discount ${discount}' if discount else '',
                 has_photos=bool(repair and repair.has_photos()),
-                before_photo_url=(
-                    repair.damage_photo_before.url
-                    if repair and repair.damage_photo_before else None
-                ),
-                after_photo_url=(
-                    repair.damage_photo_after.url
-                    if repair and repair.damage_photo_after else None
-                ),
+                # No storage URLs — see _build_line_item.
+                before_photo_url=None,
+                after_photo_url=None,
                 repair_obj=repair,
                 replacement_obj=li.replacement,
             ))
