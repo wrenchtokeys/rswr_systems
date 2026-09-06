@@ -43,17 +43,18 @@ Each proposal includes:
 | [Reward Redemption UX](reward-redemption-ux-overhaul.md) | Phase 1 shipped (CODE-210) | `preferred_date`/`preferred_time` on physical rewards, auto-restore points on denial |
 | [Manager Settings Roadmap](MANAGER_SETTINGS_ROADMAP.md) | Phase 1 shipped (Nov 2025) | Manager settings dashboard live; later phases pending |
 
-### 🟡 Awaiting Review
-*All four have sat unreviewed since March 2026. Treat them as a cold backlog, not as pending work —
-the live queues are in `docs/strategy/`. If any is still wanted, re-verify it against the current
-code before building; the app has changed a great deal since they were written.*
+### 🟡 Decide (Drake) — the four March drafts
+*Unreviewed since March 2026. The 2026-09-01 direction review recommends keeping ONE as the
+acquisition item and archiving the other three under `docs/archive/proposals/`. They stay here
+until Drake confirms; nothing moves on the strength of this table. If any is kept, re-verify it
+against the current code before building — the app has changed a great deal since March.*
 
-| Proposal | Status | Notes |
+| Proposal | Recommendation | Notes |
 |----------|--------|-------|
-| [Website Integration Widget](website-integration-widget.md) | Draft (Mar 2026) | Embeddable quote form for shop websites |
-| [Repair Form Efficiency](repair-form-efficiency.md) | Draft (Mar 2026) | 12 ideas for repair form, 7 for replacement, 5 for multi-break. **Partly overtaken** by the unified job form and UI sessions S6/S7 |
-| [AI Plan Recommendation](ai-plan-recommendation.md) | Draft (Mar 2026) | Rule-based plan suggestions during trial |
-| [AI Email Template Assistant](ai-email-template-assistant.md) | Draft (Mar 2026) | AI-generated email templates per shop |
+| [Website Integration Widget](website-integration-widget.md) | **Keep** — the acquisition item | Embeddable quote form for shop websites. The only proposal that brings a stranger to the signup page; sequenced after landing credibility (`IMPROVEMENT_SESSIONS.md` C1) |
+| [Repair Form Efficiency](repair-form-efficiency.md) | **Archive** | 12 ideas for repair form, 7 for replacement, 5 for multi-break. Overtaken by the unified job form, UI S6/S7 and the job-form parity pass (#187) |
+| [AI Plan Recommendation](ai-plan-recommendation.md) | **Archive** | Rule-based plan suggestions during trial. No acquisition/adoption case; plan flags barely gate anything (`PRICING_TIERS.md`) |
+| [AI Email Template Assistant](ai-email-template-assistant.md) | **Archive** | AI-generated email templates per shop. The email chassis (#200/#208) made the templates house-styled and fixed; per-shop generation cuts against `SES_OPERATIONS.md` |
 
 ### 📋 Future
 | Proposal | Status | Notes |
@@ -64,12 +65,18 @@ code before building; the app has changed a great deal since they were written.*
 This directory is for **proposals** — ideas awaiting a yes/no. Work that has been approved and
 sequenced lives in `docs/strategy/`, and those are the files to read before starting a session:
 
+*Refreshed 2026-09-02 from the strategy docs.*
+
 | Doc | What's open |
 |---|---|
-| [`UI_MAGIC_SESSIONS.md`](../strategy/UI_MAGIC_SESSIONS.md) | S11–S17 TODO (S1–S10 shipped) |
-| [`FIELD_OPS_SESSIONS.md`](../strategy/FIELD_OPS_SESSIONS.md) | N1–N3 + S1–S5 TODO — tech notifications, scheduling, dispatch |
-| [`IMPROVEMENT_SESSIONS.md`](../strategy/IMPROVEMENT_SESSIONS.md) | Whole doc pending Drake's Path A/B decision (§1) |
-| [`BILLING_RELIABILITY_PLAN.md`](../strategy/BILLING_RELIABILITY_PLAN.md) | "Still to do" — text-to-pay, in-person card |
+| [`PRODUCT_DIRECTION.md`](../strategy/PRODUCT_DIRECTION.md) | **The direction** — Path A with a B-ready spine, drafted, awaiting Drake's sign-off; the ordered "what happens next" list |
+| [`IMPROVEMENT_SESSIONS.md`](../strategy/IMPROVEMENT_SESSIONS.md) | Status line on every session (2026-09-02). **Next:** C1 landing credibility, then the spine — B3 quotes, B5 claim tracking, B6 price book. A5/B1 done; A2/C2 verify on prod; D1/D2 memos wait on interviews |
+| [`PHOTO_ML_SESSIONS.md`](../strategy/PHOTO_ML_SESSIONS.md) | **P8 — close the world-readable media bucket** (its last code; after #243 deploys). P5/P4b parked, held by Drake |
+| [`FIELD_OPS_SESSIONS.md`](../strategy/FIELD_OPS_SESSIONS.md) | S11–S14 scheduling UX (sequenced after the spine). N2 texts wait on the toll-free number (v4 reviewing). P1 Mygrant waits on their IT callback. Two N3 copy decisions wait on Drake |
+| [`UI_MAGIC_SESSIONS.md`](../strategy/UI_MAGIC_SESSIONS.md) | Arc clear through S18a. S14/S15 fold into C1; the S13 sweep, S16 remainder and S18b are **parked pending users** |
+| [`JOB_QUEUE_SESSIONS.md`](../strategy/JOB_QUEUE_SESSIONS.md) | Q1–Q4 shipped and deployed; Q5/Q6 parked |
+| [`TEST_SUITE_SESSIONS.md`](../strategy/TEST_SUITE_SESSIONS.md) | 16-minute suite with a committed baseline; the "honesty half" (make the 93 red tests green or gone) is open. T7 guard script = PR #245 |
+| [`BILLING_RELIABILITY_PLAN.md`](../strategy/BILLING_RELIABILITY_PLAN.md) | "Still to do" — `set_stripe_prices --verify` after billing deploys, text-to-pay, in-person card |
 
 ## How This Works
 I add proposals here when I spot opportunities during autonomous work. Drake reviews and approves/rejects via PR comments or chat. Nothing gets built until approved.

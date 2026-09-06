@@ -13,7 +13,7 @@ This file is the **work queue** for making field operations real: a technician f
 |-------|---------|------|--------|
 | N — The tech finds out | N1 · Assignment notifications that deliver | M | DONE (2026-08-12, PR #179) |
 | N — The tech finds out | N2 · Fix dead verification SMS + tech texts | S | TODO (prod effect blocked on N4 — Appendix A) |
-| N — The tech finds out | N3 · Notification coverage audit | S | DONE + DEPLOYED (2026-08-24, **PR #204**, live 2026-08-24 22:47) — grew well past S; see Notes |
+| N — The tech finds out | N3 · Notification coverage audit | S | DONE + DEPLOYED (2026-08-24, **PR #204**, live 2026-08-24 22:47) — grew well past S; see Notes. **Two copy decisions still wait on Drake** (recorded 2026-09-02, see *Deliberately not done* under N3): split `repair_completed` into a customer body and an internal one; retire the `- Unit {{ unit_number }}` DB-held subjects |
 | N — The tech finds out | N4 · SMS opt-in compliance + registration v2 | S | **SUBMITTED 2026-08-31 — version 4 `REVIEWING`.** Card fixed (#205, deployed). v3 was denied 08-26 on business-email domain + a screenshot staged with the box ticked; v4 fixes both. Activation checklist in Appendix A |
 | S — Where and when | S1 · A real "booked time" | M | DONE (2026-08-15, **PR #188**) |
 | S — Where and when | S2 · Field dispatch (executes B1) | M | DONE (2026-08-15, PR #189) |
@@ -23,8 +23,8 @@ This file is the **work queue** for making field operations real: a technician f
 | S — Where and when | S6 · Routing / ETA / lot-walking | — | BACKLOG (deliberately deferred) |
 | S — Where and when | S7 · Drag to swap two appointments | M | DONE (2026-08-17, **PR #192**) |
 | S — Where and when | S8 · Technician working hours | M | DONE + DEPLOYED (2026-08-24, **PR #201**, live 2026-08-24 22:47) — built in two halves, see Notes |
-| S — Where and when | S9 · "Leave it blank" means unscheduled | S | **BUILT 2026-08-25** (branch `fix/fieldops-s9-blank-means-unscheduled`) — shipped as an opt-in attribute, not the deletion the spec called for; see Notes |
-| S — Where and when | S10 · Quick-add a job from the schedule | M | **BUILT 2026-08-25** (branch `feat/fieldops-s10-quick-add`) — also fixes the REQUESTED-vanishing bug; see Notes |
+| S — Where and when | S9 · "Leave it blank" means unscheduled | S | DONE + DEPLOYED (built 2026-08-25, **PR #213** merged 2026-08-26, on prod since the 2026-08-27 cut) — shipped as an opt-in attribute, not the deletion the spec called for; see Notes |
+| S — Where and when | S10 · Quick-add a job from the schedule | M | DONE + DEPLOYED (built 2026-08-25, **PR #214** merged 2026-08-26, on prod since the 2026-08-27 cut) — also fixes the REQUESTED-vanishing bug; see Notes |
 | S — Where and when | S11 · The move primitive + inline time/date edit | M | TODO |
 | S — Where and when | S12 · The ordered day list + drag to move | L | TODO |
 | S — Where and when | S13 · Schedule on the dashboard | S | TODO |
@@ -43,6 +43,15 @@ time anyone had driven this arc from the actual motion rather than from a
 screen — and the machinery held while the surface did not. **S9–S14 are the
 result, and they are all unblocked.** Read §0's *"Scheduling UX — what first
 real use found"* before starting any of them.
+
+**Update 2026-09-02:** S9 (#213) and S10 (#214) merged 2026-08-26 and have been
+on production since the 2026-08-27 cut (verified by ancestry against
+`d88f70d5`). **S11–S14 are the open sessions here**, and they now sit *behind*
+the spine features in `PRODUCT_DIRECTION.md` (quotes, claim tracking, price
+book) — the direction review found the last two months went almost entirely
+to craft and infrastructure, and a second cut of the scheduling UX for a
+one-tech shop is craft until a second shop is booking on it. They are not
+parked; they are sequenced.
 
 The one-sentence diagnosis: **S1–S8 built the right machinery behind the wrong
 primitive.** Every service is transactional, price-safe and well tested, but
@@ -1548,7 +1557,7 @@ creation and scheduling on one screen, and rebuild the day view as an ordered
 list where both gestures show their work. **Swap is kept and improved, not
 retired** — Drake's call, 2026-08-25.
 
-## S9 · "Leave it blank" means unscheduled — BUILT 2026-08-25
+## S9 · "Leave it blank" means unscheduled — DONE · built 2026-08-25, PR #213 merged 2026-08-26, on prod since 2026-08-27
 
 | Field | Value |
 |---|---|
@@ -1620,7 +1629,7 @@ retired** — Drake's call, 2026-08-25.
   block runs exactly once.
 
 
-## S10 · Quick-add a job from the schedule — BUILT 2026-08-25
+## S10 · Quick-add a job from the schedule — DONE · built 2026-08-25, PR #214 merged 2026-08-26, on prod since 2026-08-27
 
 | Field | Value |
 |---|---|
@@ -2181,3 +2190,4 @@ calling two endpoints. S14 extends that to assign + move.
 | 2026-08-24 | **S8 executed and the document wrapped up.** Merged the 2026-08-19 foundation branch (which had been cut before S5 landed and therefore shipped `services/working_hours.py`, the model delegates and the Settings → My Team editor with *no* consumers) and built the missing board half on top of a `main` that now has S5: a fourth conflict chip ("Outside Marcus's hours" / "Marcus is off Saturdays"), declared hours as `technician_load()`'s denominator in place of the span the jobs happen to occupy, "Off today" where the board used to say "Nothing scheduled", and off-duty marks in the dispatch picker that never remove anybody. 51 tests, no migration, no CSS rebuild. Also trued up an S4 assertion that #200 had broken hours earlier the same morning. **Corrected a deploy claim this doc had wrong:** S5 merged on 08-24, not 08-18, and is still undeployed — a `gh pr list` "updated" column is not a merge date, and that is now a trap. Rewrote the deploy state as a table of four merged-undeployed PRs (#197/#198/#200/#201), refreshed **N3** against post-#200 code with three concrete defects to start from (the `{% with %}`/`action_url` fragility that breaks the smoke set, the UTC review-hours bug, `repair_request_submitted`'s dead channel map), retired S6 backlog item 4 into S8, and added a closing **"Where this document ends"** section: what is left, what gates each item, and what would reopen this doc rather than start a new one. |
 | 2026-08-25 | **Phase S reopened by first real use — S9–S14 specced (doc-only session).** Drake took a customer call and booked it through RS Systems instead of a note in his phone; the machinery held and the surface did not. Recorded the diagnosis in a new §0 section (*"Scheduling UX — what first real use found"*) so no future session re-derives it: **there is no reschedule path in the product at all** (no endpoint, view or service; a booked row renders only the technician picker, and the only non-form writer refuses cross-day, cross-tech and batches), **swap confirms itself with a page reload** so every refusal is invisible, **a booked REQUESTED job vanishes from both lists** (`DAY_STATUSES` excludes REQUESTED while `BOOKABLE_STATUSES` includes it), and **`base_app.html:263-285` pre-fills every empty `datetime-local` on every page**, which makes `job_form.html`'s "leave blank to keep this job unscheduled" impossible to honour. Six sessions queued: S9 prefill fix (first, because everything after it moves `scheduled_for`), S10 quick-add from the schedule (the one Drake asked for — extracts `job_create`'s inline logic into `services/quick_job.py` rather than duplicating it), S11 the missing `move` primitive + inline time/date edit, S12 the ordered day list with drag-to-move, S13 dashboard schedule card, S14 multi-tech moves. **Decisions taken with Drake:** quick-add from the schedule page; ordered day list, not a calendar grid; a drop slots into the gap and keeps its own length; **swap is kept and improved, not retired**; moving a job off a day means moving it *straight onto another day*, with no unscheduled limbo. Added **Appendix C — Multi-technician** because Drake is a one-tech shop and S12's simplifications are exactly where the multi-tech affordances would quietly die. Two traps added. |
 | 2026-08-31 | **Toll-free registration version 3 was DENIED 2026-08-26** — found five days later, because `RegistrationStatus` read `REQUIRES_UPDATES` while the denial lived on the version. Check the *version*, not the registration. Two reasons, both self-inflicted: `contactInfo.supportEmail` was still `drake@rockstarwindshield.repair`, copied wholesale from the approved *Rockstar Windshield Repair* registration where that domain legitimately matched its own website — under RS Systems / rssystems.io it matches neither; and the opt-in read as pre-selected, because the v3 screenshot was deliberately staged **with the box ticked** and the description called it "a checked box" (meaning *a box they check*), though the shipping input at `public_invoice_view.html:182` has never carried `checked` and is `required`. **Version 4 SUBMITTED, `REVIEWING`**: `support@rssystems.io` (matches the website; the alias was verified 2026-09-01 via the ImprovMX API — it exists and forwards to Drake's own inbox), an `optInDescription` stating the box is unchecked by default and requires the customer's own click, and a screenshot rendered from the real template in its **default** state. `scripts/submit_tollfree_registration.py` rewritten: base version is now explicit, every override deliberate, and it asserts the support email's domain equals `companyInfo.website` before submitting — copying a base version copies its mistakes too. |
+| 2026-09-02 | **Status refresh from the direction review.** S9 (#213) and S10 (#214) had read "BUILT on branch" since 2026-08-25; both merged 2026-08-26 and rode the 2026-08-27 deploy (ancestry-checked against `d88f70d5`). N3's two open copy decisions — splitting `repair_completed` by audience and retiring the `- Unit {{ unit_number }}` subjects — were only findable in prose; they are now on N3's index row, waiting on Drake. S11–S14 stay open but sequence after the spine features in `PRODUCT_DIRECTION.md`. No session content changed. |

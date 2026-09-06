@@ -28,12 +28,12 @@ session with no memory of this work can pick exactly one up and finish it.
 | 3 | S10 · View Transitions for list → detail continuity | **DONE** 2026-08-11 |
 | 3 | S11 · Skeletons and optimistic status changes | **DONE** 2026-08-25 (PR #210) — **on prod** since the 2026-08-27 cut |
 | 3 | S12 · Auth pages: one brand mention, full-height, no marketing nav | **DONE** 2026-08-25 (PR #209) — **on prod** since the 2026-08-27 cut |
-| 3 | S13 · Icon language: Font Awesome solid → line-weight SVG sprite | **S13a DONE** 2026-08-26 (PR #223, the `{% icon %}` tag, on prod) · **S13b DONE** 2026-08-27 (PR #229, the chrome) · **sweep TODO** — **1,217** call sites left, and the count has stopped rising |
-| 4 | S14 · Landing: real product imagery instead of the fake mock | TODO |
-| 4 | S15 · Landing: trust bar rewrite | TODO |
-| 4 | S16 · Landing: rhythm, dark section, sharper promise | TODO — **the `[data-reveal]` half split out and DONE 2026-08-27 (S16a, PR #235, merged 2026-08-31)** |
+| 3 | S13 · Icon language: Font Awesome solid → line-weight SVG sprite | **S13a DONE** 2026-08-26 (PR #223, the `{% icon %}` tag, on prod) · **S13b DONE** 2026-08-27 (PR #229, the chrome, on prod since 2026-08-31) · **sweep PARKED** 2026-09-02 pending users — **1,217** call sites left, the count has stopped rising, and no user is waiting on it. Do not pick this up by default |
+| 4 | S14 · Landing: real product imagery instead of the fake mock | **NEXT, as part of `IMPROVEMENT_SESSIONS.md` C1** (2026-09-02) — real screenshots replace the HTML mock. One PR with S15 |
+| 4 | S15 · Landing: trust bar rewrite | **NEXT, as part of `IMPROVEMENT_SESSIONS.md` C1** (2026-09-02) — the "500+ Jobs Tracked" bar comes out, the founder story goes up |
+| 4 | S16 · Landing: rhythm, dark section, sharper promise | **PARKED** 2026-09-02 pending users — **the `[data-reveal]` half split out and DONE 2026-08-27 (S16a, PR #235, merged 2026-08-31, on prod)**. The rest waits until C1's screenshots exist and a stranger has seen the page |
 | — | S17 · Stop shipping the Tailwind source to production | **DONE** 2026-08-27, merged 2026-08-31 (PR #233) |
-| — | S18 · Strict Content-Security-Policy | **S18a DONE** 2026-08-31 (PR #240) — the policy, the nonce on all 88 inline blocks, the report endpoint, 36 guard tests. Ships **`Report-Only` on purpose**. **S18b TODO** — the 195 inline `on*` handlers + 8 `javascript:` hrefs, which is what stands between here and an enforcing header. See S18 |
+| — | S18 · Strict Content-Security-Policy | **S18a DONE** 2026-08-31 (PR #240) — the policy, the nonce on all 88 inline blocks, the report endpoint, 36 guard tests. Ships **`Report-Only` on purpose**. **S18b PARKED** 2026-09-02 pending users — the 195 inline `on*` handlers + 8 `javascript:` hrefs, which is what stands between here and an enforcing header. Report-only is doing its job; enforce when a stranger's data is behind it. See S18 |
 | Out | Email + notification chassis, replacement lifecycle | **DONE** 2026-08-24 (PR #200) |
 | Out | Invoice email onto the chassis | **DONE** 2026-08-24 (PR #202, merged 12:15 CDT, deployed 22:48 CDT) |
 | Out | In-app surfaces: notification bell + notification history | **DONE** 2026-08-25 (PR #206) |
@@ -1762,17 +1762,27 @@ invoice's Python-built plain-text half (still correct, still pinned by two suite
 drive-away time (still Drake's call, **still do not add it without him**), and emoji in the
 three staff-only surfaces.
 
-## Not this arc's, but it is the highest-value action on the repo
+## Deploy state — re-dated 2026-09-02 (this paragraph expires; check `ROADMAP.md`'s top line)
 
-**Production runs pre-P6 code.** Verified 2026-08-31: `eb status rs-systems-production`
-reports `Deployed Version: app-d88f7-260827_125012793353`, environment Ready/Green, last
-updated 2026-08-30 — and `d88f70d5` is *"Measured the suggester on prod"*, a commit on a
-feature branch that predates even #232. Everything merged
-since — S13b's chrome, S16a's landing fix, S17's static pipeline, and the whole photo-ML
-customer-facing half — reaches nobody until `main` is deployed. `eb deploy` ships the
-current branch's HEAD, so it is `git checkout main && git pull` **first**, from
+**The 2026-08-31 23:46 UTC deploy carried this arc to production.** Prod runs `966a31da`,
+off `main`, and by ancestry it contains S13b's chrome (#229), S16a's landing fix (#235),
+S17's static pipeline (#233) and the photo-ML customer-facing half (#236). The paragraph
+that stood here on the morning of 2026-08-31 ("Production runs pre-P6 code",
+`d88f70d5`) was true for about twelve hours.
+
+**Merged since and NOT deployed** (as of 2026-09-02): #238 (individual-customer field
+fixes), #239 (toll-free v4 docs), #240 (**S18a — the report-only CSP**), #241/#242
+(photo-ML docs), #243 (customer photo download), #244 (test-suite arc). `eb deploy` ships
+the current branch's HEAD, so it is `git checkout main && git pull` **first**, from
 `~/projects/rs_systems_branch2` (worktrees are not eb-initialized). Confirm with
 `eb status rs-systems-production | grep 'Deployed Version'` before and after.
+
+**What is open in this arc, and why none of it is next (2026-09-02):** S14/S15 fold into
+`IMPROVEMENT_SESSIONS.md` C1 (landing credibility — the one thing here with a user waiting
+on it, and it is a prospective user). The S13 sweep, S16's remainder and S18b are
+**parked pending users**: they are craft, not adoption, and the direction review found two
+months of shipping went almost entirely to craft. They are still specced above; a session
+that picks one up should be able to say who asked for it.
 
 ---
 
@@ -1915,6 +1925,7 @@ Unchanged by this session: the `InAppCopy` message-copy sweep, the invoice's Pyt
 plain-text half, safe drive-away time (**still Drake's call, still do not add it without
 him**), and emoji in the three staff-only surfaces.
 
-**And production is still behind** — see the section above this one. Nothing in S18a changes
-that, except to add one more merged-but-undeployed thing to the pile. A report-only CSP that
-is not deployed reports nothing at all.
+**And S18a itself is still not on production** (as of 2026-09-02 — see *Deploy state*
+above; the 2026-08-31 deploy went out before #240 merged). A report-only CSP that is not
+deployed reports nothing at all, so the next deploy of `main` is when the report endpoint
+starts telling us anything.

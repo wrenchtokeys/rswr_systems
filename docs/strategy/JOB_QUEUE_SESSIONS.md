@@ -29,12 +29,12 @@ able to execute exactly one session using only §0 and that session's table.
 
 | Phase | Session | Size | Status |
 |---|---|---|---|
-| Q — The queue exists | Q1 · Round robin that actually rotates (CODE-278) | S | DONE (2026-08-26, commit `6a199b84`, pushed — **no PR yet**) |
-| Q — The queue exists | Q2 · The Unassigned queue (CODE-279) | M | DONE (2026-08-26, commit `33be9b22`) |
-| R — The queue drains | Q3 · Approving a queued job takes it (CODE-280) | S | DONE (2026-08-26, commit `fbf27808`) |
-| R — The queue drains | Q4 · Telling managers outside the dashboard (CODE-281) | S | DONE (2026-08-26, commit `c3f0e28e`) |
-| R — The queue drains | Q5 · Where managers actually live: board + aging | M | TODO |
-| R — The queue drains | Q6 · One provisional pick, in one place | S | TODO |
+| Q — The queue exists | Q1 · Round robin that actually rotates (CODE-278) | S | DONE + DEPLOYED — **PR #220** merged 2026-08-27, on prod since the 2026-08-27 cut |
+| Q — The queue exists | Q2 · The Unassigned queue (CODE-279) | M | DONE + DEPLOYED — **PR #220** merged 2026-08-27, on prod since the 2026-08-27 cut |
+| R — The queue drains | Q3 · Approving a queued job takes it (CODE-280) | S | DONE + DEPLOYED — **PR #220** merged 2026-08-27, on prod since the 2026-08-27 cut |
+| R — The queue drains | Q4 · Telling managers outside the dashboard (CODE-281) | S | DONE + DEPLOYED — **PR #221** merged 2026-08-27, on prod since the 2026-08-27 cut |
+| R — The queue drains | Q5 · Where managers actually live: board + aging | M | **PARKED** 2026-09-02 pending users — a queue badge on the board for two shops is not the next thing |
+| R — The queue drains | Q6 · One provisional pick, in one place | S | **PARKED** 2026-09-02 pending users — cleanup; do it when Q5 is picked up |
 
 **Suggested sequence:** Q5 → Q6. Q3 went first because it was the only
 *correctness* gap rather than a reach gap — four code paths tested
@@ -44,12 +44,18 @@ drain no matter how good the board is. Q6 is cleanup and can slip.
 
 **Sizes:** S ≈ half a day · M ≈ 1–2 days · L ≈ 3–5 days.
 
-**Where we are (2026-08-26, after Q4):** Q1–Q3 are four commits on
-`fix/job-assignment-round-robin` (worktree `~/projects/rs_assign_wt`), rebased
-onto `main` at `f4c1a7ad` (PR #217, photoml P3), and open as **PR #220**. Q4 is
-one commit on `feat/jobqueue-q4-manager-alerts`, **stacked on that branch**
-because it needs Q2's `needs_assignment` column — merge #220 first. The whole
-arc is committed — nothing is left in a working tree.
+**Where we are (2026-09-02):** the whole arc is merged and on production.
+Q1–Q3 went in as **PR #220** and Q4 as **PR #221**, both merged 2026-08-27
+14:09 UTC, and both are inside `d88f70d5`, the 2026-08-27 production cut
+(verified by `git merge-base --is-ancestor`). Every promise the Job Assignment
+setting makes is now true in the product a shop uses. Q5 and Q6 are **parked
+pending users** — nothing in them is a correctness gap, and two shops do not
+need a queue badge on a board. The direction is in `PRODUCT_DIRECTION.md`.
+
+*The 2026-08-26 note this replaces, for the record:* Q1–Q3 were four commits on
+`fix/job-assignment-round-robin` rebased onto `main` at `f4c1a7ad` (PR #217),
+open as #220; Q4 was one commit stacked on that branch because it needed Q2's
+`needs_assignment` column.
 
 Verified on sqlite after the rebase: 27 CODE-279 tests, 13 CODE-280 tests, and
 the eight adjacent assignment regression modules (84 together); plus
@@ -378,7 +384,7 @@ let the row go stranded meanwhile.
 which is `main`'s leaf, so there is no renumber to redo unless this branch
 sits while another core migration lands.
 
-## Q5 · Where managers actually live: board + aging — TODO
+## Q5 · Where managers actually live: board + aging — PARKED (2026-09-02, pending users)
 
 The queue is discoverable only if you already know to pick "Needs assignment"
 from a filter dropdown. Managers live on the dashboard and the S5 dispatch
@@ -397,7 +403,7 @@ link, because `TechnicianNotification` has only a `repair` FK (§0).
 **Done when:** a manager who never opens a filter dropdown still finds the
 queue, and the oldest thing in it is the most visible.
 
-## Q6 · One provisional pick, in one place — TODO
+## Q6 · One provisional pick, in one place — PARKED (2026-09-02, pending users)
 
 `get_available_technician()` (`apps/customer_portal/views.py:2558`) is called
 from at least three places to satisfy the non-null FK before the strategy runs,
