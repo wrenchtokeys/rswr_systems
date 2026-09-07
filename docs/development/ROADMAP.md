@@ -1,14 +1,14 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: September 7, 2026 (C1 landing credibility merged, PR #250, awaiting deploy; P8 deployed and the media bucket closed).*
+*Last Updated: September 7, 2026 (C1 landing credibility deployed 00:59 UTC; P8 deployed and the media bucket closed).*
 
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
-> snapshot):** production runs `969a4035`, deployed **2026-09-06 22:00 UTC** — everything
-> merged through #248 (P8) is live, and the media bucket's `repair_photos/*` prefix went
-> private at 22:04 UTC the same day. **#250 (C1: landing screenshots + founder note) merged
-> 2026-09-07 00:16 UTC as `059fa77a` and is NOT on prod** — the next deploy carries it; docs
-> PRs after #248 carry no runtime code. `eb deploy` ships the current branch's HEAD — `git checkout main &&
+> snapshot):** production runs `60b4563b`, deployed **2026-09-07 00:59 UTC** — everything
+> merged through #251 is live, including #250 (C1: real landing captures + founder note,
+> verified on the live page: trust bar gone, four WebPs 200). The media bucket's
+> `repair_photos/*` prefix has been private since 2026-09-06 22:04 UTC. Nothing is merged
+> and undeployed. `eb deploy` ships the current branch's HEAD — `git checkout main &&
 > git pull` first (or a `deploy-main` branch at `origin/main` when `main` is held by another
 > worktree).
 
