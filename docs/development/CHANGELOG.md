@@ -16,7 +16,7 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ## 2026-09-06 — Landing page tells the truth: real screenshots, founder note, no filler stats (PR #250)
 
-**Open.** No migration. `IMPROVEMENT_SESSIONS.md` C1, which folds in `UI_MAGIC_SESSIONS.md`
+**Merged 2026-09-07 00:16 UTC as `059fa77a`; not yet deployed.** No migration. `IMPROVEMENT_SESSIONS.md` C1, which folds in `UI_MAGIC_SESSIONS.md`
 S14 and S15.
 
 ### Changed
