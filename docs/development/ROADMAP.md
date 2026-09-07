@@ -1,13 +1,13 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: September 6, 2026 (P8 deployed and the media bucket closed; Glass Guy Connect verified never onboarded).*
+*Last Updated: September 6, 2026 (C1 landing credibility built, PR #250; P8 deployed and the media bucket closed).*
 
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
 > snapshot):** production runs `969a4035`, deployed **2026-09-06 22:00 UTC** — everything
 > merged through #248 (P8) is live, and the media bucket's `repair_photos/*` prefix went
-> private at 22:04 UTC the same day. Only docs PRs after #248 are unmerged-to-prod, and they
-> carry no runtime code. `eb deploy` ships the current branch's HEAD — `git checkout main &&
+> private at 22:04 UTC the same day. **PR #250 (C1: landing screenshots + founder note) is
+> open and not on prod**; docs PRs after #248 carry no runtime code. `eb deploy` ships the current branch's HEAD — `git checkout main &&
 > git pull` first (or a `deploy-main` branch at `origin/main` when `main` is held by another
 > worktree).
 

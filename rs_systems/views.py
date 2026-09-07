@@ -63,7 +63,14 @@ def home(request):
         slug='trial'  # Don't show trial as a pricing option
     ).order_by('display_order')
     
-    return render(request, 'landing.html', {'plans': plans})
+    # The JSON-LD AggregateOffer in the <head> must agree with the plan cards
+    # on the same page (IMPROVEMENT_SESSIONS C1) — derive both from one query.
+    prices = [plan.monthly_price for plan in plans]
+    return render(request, 'landing.html', {
+        'plans': plans,
+        'price_low': min(prices) if prices else 0,
+        'price_high': max(prices) if prices else 0,
+    })
 
 @never_cache
 def customer_login_view(request):
