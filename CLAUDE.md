@@ -394,6 +394,19 @@ widen the bucket's `PublicReadMediaOnly` statement back to `media/*`; no test ca
 see it. `tests/test_photo_serving.py` fails the build on a photo-field `.url` in a
 template or app module.
 
+**Quotes (B3, Sep 2026)**: `Quote`/`QuoteLineItem` live in `apps/billing/quote_models.py`;
+every state change goes through `apps/billing/services/quote_service.py` — `send_quote`,
+`accept_quote`, `decline_quote`, `revise_quote`. **Accepting creates the jobs through
+`save()`** with `cost_override` = the quoted price (backed out of the account discount by
+`_override_for`, because `save()` re-applies it) and `queue_status='APPROVED'` set
+explicitly — the acceptance is the approval, so `resolve_initial_shop_status` must not be
+consulted. Jobs point back via `GlassService.quote`; lines carry no job FK. Numbers come from
+`BillingConfig.allocate_quote_number()` (row-locked, like invoices). The public page
+`/quote/<id>/<token>/` is HMAC-tokened with its own prefix (`view-quote-`) so an invoice
+token never opens a quote; GET is read-only and accept/decline are POSTs (mail scanners GET
+every link). A quote has no soft delete: only a DRAFT can be deleted. `tests/test_quotes.py`
+is in the guard set.
+
 **Multi-Break Batch Repairs**: Multiple repairs for same unit in one session. Each break is a separate `Repair` linked via `repair_batch_id` (UUID). Progressive pricing: Break N priced as repair #(existing_count + N). Created atomically. URL: `/tech/repairs/create-multi-break/`.
 
 **Progressive Pricing**: Repair cost decreases per unit: $50→$40→$35→$30→$25. Tracked via `UnitRepairCount`. Configurable at shop level and per-customer. With progressive off, the shop sets a single flat "Price per repair" (`repair_price_1`); `calculate_batch_pricing` honors the toggle too. Custom prices are per-job (and per-break in multi-break) — authorization is `is_manager` (`can_override_pricing` is deprecated: nothing ever set it).

@@ -1,0 +1,126 @@
+{% extends "customer_portal/base_customer.html" %}
+{% load ui %}
+
+{% block title %}Quote {{ quote.quote_number }} | Customer Portal{% endblock %}
+
+{% block content %}
+<div class="mb-5 flex items-start justify-between gap-4">
+    <div>
+        <a href="{% url 'customer_quotes' %}" class="inline-flex items-center text-sm text-gray-500 hover:text-gray-900 min-h-11">{% icon 'arrow-left' class="mr-1.5 text-xs" %}All quotes</a>
+        <div class="flex items-center gap-3 flex-wrap mt-1">
+            <h1 class="vt-hero text-2xl sm:text-3xl font-bold text-gray-900">{{ quote.quote_number }}</h1>
+            {% status_badge quote.effective_status kind='quote' variant='customer' %}
+        </div>
+        <p class="text-sm text-gray-500 mt-1">From {{ quote.tenant.name }} · {{ quote.quote_date|date:"F d, Y" }}{% with v=quote.get_vehicle_label %}{% if v %} · {{ v }}{% endif %}{% endwith %}</p>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 space-y-5">
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div class="px-5 py-3 border-b border-gray-100"><h2 class="text-sm font-semibold text-gray-900">The work</h2></div>
+            <div class="divide-y divide-gray-100">
+                {% for li in line_items %}
+                <div class="px-5 py-3 flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <div class="text-sm font-medium text-gray-900">{{ li.description }}</div>
+                        <div class="text-xs text-gray-500 mt-0.5">
+                            {{ li.get_service_type_display }}{% if li.quantity > 1 %} · {{ li.quantity }} × ${{ li.unit_price|floatformat:2 }}{% endif %}{% if not quote.customer.is_individual and li.effective_unit_number %} · Unit #{{ li.effective_unit_number }}{% endif %}
+                        </div>
+                    </div>
+                    <div class="text-sm font-semibold text-gray-900 num shrink-0">${{ li.amount|floatformat:2 }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="px-5 py-4 bg-gray-50 space-y-1 text-sm">
+                {% if quote.tax_amount > 0 %}
+                <div class="flex justify-between text-gray-600"><span>Subtotal</span><span class="num">${{ quote.subtotal|floatformat:2 }}</span></div>
+                <div class="flex justify-between text-gray-600"><span>Tax</span><span class="num">${{ quote.tax_amount|floatformat:2 }}</span></div>
+                {% endif %}
+                <div class="flex justify-between text-gray-900 font-bold text-lg pt-1"><span>Total</span><span class="num">${{ quote.total|floatformat:2 }}</span></div>
+            </div>
+        </div>
+
+        {% if quote.notes %}
+        <div class="bg-white rounded-xl border border-gray-200 px-5 py-4">
+            <h2 class="text-xs font-semibold text-gray-500 uppercase mb-1">From the shop</h2>
+            <p class="text-sm text-gray-700 whitespace-pre-line">{{ quote.notes }}</p>
+        </div>
+        {% endif %}
+
+        {% if jobs %}
+        <div class="bg-white rounded-xl border border-gray-200 px-5 py-4">
+            <h2 class="text-xs font-semibold text-gray-500 uppercase mb-2">Scheduled work</h2>
+            <ul class="space-y-2">
+                {% for job in jobs %}
+                <li>
+                    {% if job.service_kind == 'repair' %}
+                    <a href="{% url 'customer_repair_detail' job.id %}" class="flex items-center justify-between gap-3 text-sm text-gray-800 hover:text-brand-600 min-h-11">
+                        <span>{% icon 'wrench' class="mr-2 text-xs text-gray-400" %}Repair #{{ job.id }}{% if job.description %} — {{ job.description|truncatechars:60 }}{% endif %}</span>
+                        {% status_badge job.queue_status variant='customer' %}
+                    </a>
+                    {% else %}
+                    <a href="{% url 'customer_replacement_detail' job.id %}" class="flex items-center justify-between gap-3 text-sm text-gray-800 hover:text-brand-600 min-h-11">
+                        <span>{% icon 'car' class="mr-2 text-xs text-gray-400" %}Replacement #{{ job.id }}{% if job.description %} — {{ job.description|truncatechars:60 }}{% endif %}</span>
+                        {% status_badge job.queue_status variant='customer' %}
+                    </a>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="space-y-5">
+        {% if can_respond %}
+        <div class="bg-white rounded-xl border border-brand-200 p-5">
+            <h2 class="text-base font-semibold text-gray-900">Ready to go ahead?</h2>
+            <p class="text-sm text-gray-500 mt-1">Accepting schedules the work at this price. Nothing is charged today — you'll get an invoice when it's done. Good through {{ quote.valid_until|date:"F d, Y" }}.</p>
+            <form method="post" action="{% url 'customer_quote_respond' quote.id %}" class="mt-4 space-y-3">
+                {% csrf_token %}
+                <div>
+                    <label for="reason" class="block text-sm font-medium text-gray-700 mb-1">Anything the shop should know? <span class="text-gray-400 font-normal">(optional)</span></label>
+                    <textarea id="reason" name="reason" rows="2" maxlength="500" placeholder="Best days, gate codes, or why you're passing"
+                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-brand-500 focus:border-brand-500"></textarea>
+                </div>
+                <button type="submit" name="action" value="accept" class="btn-primary w-full press">{% icon 'check' class="mr-2" %}Accept — ${{ quote.total|floatformat:2 }}</button>
+                <button type="submit" name="action" value="decline" class="btn-secondary w-full">No thanks</button>
+            </form>
+        </div>
+        {% elif quote.status == 'ACCEPTED' %}
+        <div class="bg-green-50 rounded-xl border border-green-200 p-5">
+            <h2 class="text-base font-semibold text-green-900">Accepted {{ quote.responded_at|date:"M d, Y" }}</h2>
+            <p class="text-sm text-green-800 mt-1">The shop has the work lined up at this price. They'll confirm a time.</p>
+        </div>
+        {% elif quote.status == 'DECLINED' %}
+        <div class="bg-gray-50 rounded-xl border border-gray-200 p-5">
+            <h2 class="text-base font-semibold text-gray-900">Declined {{ quote.responded_at|date:"M d, Y" }}</h2>
+            <p class="text-sm text-gray-600 mt-1">Changed your mind? Ask the shop for an updated quote.</p>
+        </div>
+        {% elif quote.effective_status == 'EXPIRED' %}
+        <div class="bg-amber-50 rounded-xl border border-amber-200 p-5">
+            <h2 class="text-base font-semibold text-amber-900">This quote expired {{ quote.valid_until|date:"M d, Y" }}</h2>
+            <p class="text-sm text-amber-800 mt-1">Glass prices move. Ask the shop for a fresh one.</p>
+        </div>
+        {% elif quote.status == 'SUPERSEDED' %}
+        <div class="bg-gray-50 rounded-xl border border-gray-200 p-5">
+            <h2 class="text-base font-semibold text-gray-900">There's a newer version</h2>
+            <p class="text-sm text-gray-600 mt-1">
+                {% with rev=quote.revisions.first %}{% if rev and rev.status != 'DRAFT' %}See <a href="{% url 'customer_quote_detail' rev.id %}" class="text-brand-600 font-medium">{{ rev.quote_number }}</a>.{% else %}The shop is preparing an updated quote.{% endif %}{% endwith %}
+            </p>
+        </div>
+        {% endif %}
+
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <h2 class="text-xs font-semibold text-gray-500 uppercase mb-2">Details</h2>
+            <dl class="text-sm space-y-2">
+                <div class="flex justify-between gap-3"><dt class="text-gray-500">Quote date</dt><dd class="text-gray-900">{{ quote.quote_date|date:"M d, Y" }}</dd></div>
+                <div class="flex justify-between gap-3"><dt class="text-gray-500">Good through</dt><dd class="text-gray-900">{{ quote.valid_until|date:"M d, Y" }}</dd></div>
+                {% with v=quote.get_vehicle_label %}{% if v %}<div class="flex justify-between gap-3"><dt class="text-gray-500">{{ quote.vehicle_column_label }}</dt><dd class="text-gray-900">{{ quote.get_vehicle_identifier }}</dd></div>{% endif %}{% endwith %}
+                <div class="flex justify-between gap-3"><dt class="text-gray-500">Shop</dt><dd class="text-gray-900 text-right">{{ quote.tenant.name }}{% if quote.tenant.business_phone %}<div class="text-xs text-gray-500"><a href="tel:{{ quote.tenant.business_phone }}">{{ quote.tenant.business_phone }}</a></div>{% endif %}</dd></div>
+            </dl>
+        </div>
+    </div>
+</div>
+{% endblock %}

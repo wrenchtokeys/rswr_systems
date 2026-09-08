@@ -6,6 +6,7 @@ Author: Amelia (Clawdbot AI)
 
 from django.urls import path
 from . import views
+from . import quote_views
 
 urlpatterns = [
     # Subscription blocked (role-aware)
@@ -64,6 +65,16 @@ urlpatterns = [
     path('owner/team/<int:membership_id>/resend-invite/', views.resend_invite, name='resend_invite'),
 
     # Owner invoice management & manual payments
+    # Quotes (B3) — shop side. Any technician can quote; see quote_views.
+    path('quotes/', quote_views.quote_list, name='quote_list'),
+    path('quotes/new/', quote_views.quote_create, name='quote_create'),
+    path('quotes/<int:quote_id>/', quote_views.quote_detail, name='quote_detail'),
+    path('quotes/<int:quote_id>/edit/', quote_views.quote_edit, name='quote_edit'),
+    path('quotes/<int:quote_id>/send/', quote_views.quote_send, name='quote_send'),
+    path('quotes/<int:quote_id>/accept/', quote_views.quote_mark_accepted, name='quote_mark_accepted'),
+    path('quotes/<int:quote_id>/decline/', quote_views.quote_mark_declined, name='quote_mark_declined'),
+    path('quotes/<int:quote_id>/revise/', quote_views.quote_revise, name='quote_revise'),
+    path('quotes/<int:quote_id>/delete/', quote_views.quote_delete, name='quote_delete'),
     path('owner/invoices/', views.owner_invoice_list, name='owner_invoice_list'),
     path('owner/invoices/<int:invoice_id>/', views.owner_invoice_detail, name='owner_invoice_detail'),
     path('owner/invoices/<int:invoice_id>/record-payment/', views.owner_record_payment, name='owner_record_payment'),

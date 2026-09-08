@@ -122,6 +122,25 @@ When you find damage during inspection:
 
 ---
 
+## Quotes
+
+Price the work before you do it. **Quotes** in the top nav → **New Quote**.
+
+1. Pick the customer. A fleet gets a **Unit #**; an individual gets year/make/model.
+2. Add lines: **Repair**, **Replacement** or **Other charge** (trip fee, disposal). Leave a
+   repair price blank and the shop's price for that vehicle fills in when you save —
+   progressive pricing included. Typing a *different* repair price needs a manager.
+3. Set **Good through** (default 30 days; Settings → Billing → Quotes). Add a note the
+   customer will see if you like.
+4. **Save & send.** The customer gets a branded email with the total and one button. They
+   accept or decline on their phone — no login needed. You can also copy the link and text it.
+
+When they accept, every repair and replacement line becomes an **approved job at the quoted
+price** (the job page says "From quote Q-1001 — price locked") and "other" lines ride along
+as extra charges. If they said yes in person, use **Mark accepted & create jobs** on the
+quote. Declined and expired quotes stay on the list for the record; **Revise** clones one
+into a fresh draft.
+
 ## Manager Features
 
 *Available only if you're designated as a manager*

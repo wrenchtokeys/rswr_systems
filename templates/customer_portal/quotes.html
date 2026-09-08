@@ -1,0 +1,76 @@
+{% extends "customer_portal/base_customer.html" %}
+{% load ui %}
+
+{% block title %}Quotes | Customer Portal{% endblock %}
+
+{% block content %}
+<div class="mb-5">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Quotes</h1>
+    <p class="text-sm text-gray-500 mt-0.5">Prices the shop has sent you. Accept one and the work goes on their schedule.</p>
+</div>
+
+{% if open_quotes %}
+<div class="mb-6 rounded-xl border border-brand-200 bg-brand-50 px-5 py-4">
+    <div class="flex items-center gap-3">
+        <div class="text-brand-600 text-xl">{% icon 'file-text' %}</div>
+        <div>
+            <h2 class="text-sm font-semibold text-brand-900">{{ open_count }} quote{{ open_count|pluralize }} waiting for your answer</h2>
+            <p class="text-sm text-brand-800">Open one to see the price and accept or decline.</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if quotes %}
+<div class="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+    <table class="min-w-full">
+        <thead>
+            <tr class="bg-gray-50 border-b border-gray-200">
+                <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Quote</th>
+                <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Vehicle</th>
+                <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Good through</th>
+                <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
+                <th class="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Total</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for q in quotes %}
+            <tr class="hover:bg-gray-50 transition-colors cursor-pointer" data-vt-key="{% url 'customer_quote_detail' q.id %}" onclick="window.location='{% url 'customer_quote_detail' q.id %}'">
+                <td class="px-5 py-3.5"><span data-vt-hero class="text-sm font-semibold text-brand-500">{{ q.quote_number }}</span></td>
+                <td class="px-5 py-3.5 text-sm text-gray-600 whitespace-nowrap">{{ q.quote_date|date:"M d, Y" }}</td>
+                <td class="px-5 py-3.5 text-sm text-gray-600">{{ q.get_vehicle_label|default:"—" }}</td>
+                <td class="px-5 py-3.5 text-sm text-gray-600 whitespace-nowrap">{{ q.valid_until|date:"M d, Y" }}</td>
+                <td class="px-5 py-3.5 whitespace-nowrap">{% status_badge q.effective_status kind='quote' variant='customer' %}</td>
+                <td class="px-5 py-3.5 text-sm font-semibold text-gray-900 text-right num">${{ q.total|floatformat:2 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="md:hidden space-y-3 mb-6">
+    {% for q in quotes %}
+    <a href="{% url 'customer_quote_detail' q.id %}" data-vt-key="{% url 'customer_quote_detail' q.id %}" class="block bg-white rounded-xl border border-gray-200 p-4 press-card">
+        <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+                <div data-vt-hero class="text-sm font-semibold text-brand-500">{{ q.quote_number }}</div>
+                <div class="text-xs text-gray-500 mt-0.5">{{ q.quote_date|date:"M d, Y" }}{% with v=q.get_vehicle_label %}{% if v %} · {{ v }}{% endif %}{% endwith %}</div>
+            </div>
+            {% status_badge q.effective_status kind='quote' variant='customer' %}
+        </div>
+        <div class="mt-3 flex items-baseline justify-between">
+            <span class="text-xs text-gray-500">Good through {{ q.valid_until|date:"M d" }}</span>
+            <span class="text-base font-bold text-gray-900 num">${{ q.total|floatformat:2 }}</span>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="bg-white rounded-xl border border-gray-200 p-10 text-center">
+    <div class="mx-auto w-12 h-12 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center text-xl">{% icon 'file-text' %}</div>
+    <h2 class="mt-4 text-lg font-semibold text-gray-900">No quotes yet</h2>
+    <p class="mt-1 text-sm text-gray-500 max-w-sm mx-auto">When the shop prices work for you before doing it, the quote shows up here for you to accept.</p>
+</div>
+{% endif %}
+{% endblock %}

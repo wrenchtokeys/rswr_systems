@@ -81,6 +81,9 @@
                         <a href="{% url 'technician_customers' %}" class="text-sm font-medium whitespace-nowrap {% if request.resolver_match.url_name == 'technician_customers' or request.resolver_match.url_name == 'customer_detail' or request.resolver_match.url_name == 'create_customer' %}text-brand-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Customers</a>
                         {% endif %}
 
+                        {% if user_can_repairs %}
+                        <a href="{% url 'quote_list' %}" class="text-sm font-medium whitespace-nowrap {% if 'quote' in request.resolver_match.url_name %}text-brand-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Quotes</a>
+                        {% endif %}
                         {% if user_can_invoices %}
                         <a href="{% url 'owner_invoice_list' %}" class="text-sm font-medium whitespace-nowrap {% if 'invoice' in request.resolver_match.url_name %}text-brand-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Invoices</a>
                         {% endif %}
@@ -205,6 +208,9 @@
                 {% endif %}
                 {% if user_can_customers %}
                 <a href="{% url 'technician_customers' %}" class="flex items-center min-h-12 py-2 text-base font-medium text-gray-700 hover:text-brand-600 active:bg-gray-50 rounded-lg -mx-2 px-2">Customers</a>
+                {% endif %}
+                {% if user_can_repairs %}
+                <a href="{% url 'quote_list' %}" class="flex items-center min-h-12 py-2 text-base font-medium text-gray-700 hover:text-brand-600 active:bg-gray-50 rounded-lg -mx-2 px-2">Quotes</a>
                 {% endif %}
                 {% if user_can_invoices %}
                 <a href="{% url 'owner_invoice_list' %}" class="flex items-center min-h-12 py-2 text-base font-medium text-gray-700 hover:text-brand-600 active:bg-gray-50 rounded-lg -mx-2 px-2">Invoices</a>

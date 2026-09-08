@@ -34,6 +34,8 @@ GUARDS=(
   tests.test_csp                    # no inline script/style regressions
   tests.test_notification_surfaces  # in-app notification rendering
   tests.test_tenant_branding        # per-tenant theming + tenant scoping
+  tests.test_quotes                 # B3: quote → accept → jobs at the locked price
+  tests.test_customer_portal_views  # portal views the quote pages build on
 )
 
 BASELINE="docs/strategy/test_baseline_main.txt"

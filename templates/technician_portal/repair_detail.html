@@ -12,8 +12,11 @@
                 <div class="flex items-center justify-between">
                     <div>
                         <h1 class="vt-hero text-xl font-semibold text-gray-900">Repair #{{ repair.id }} - {{ repair.customer.name }}</h1>
-                        <div class="mt-2">
+                        <div class="mt-2 flex items-center gap-3 flex-wrap">
                             {% status_badge repair.queue_status %}
+                            {% if repair.quote_id %}
+                            <a href="{% url 'quote_detail' quote_id=repair.quote_id %}" class="text-xs font-medium text-brand-600 hover:text-brand-800">{% icon 'file-text' class="mr-1" %}From quote {{ repair.quote.quote_number }} — price locked</a>
+                            {% endif %}
                         </div>
                     </div>
                     <a href="{% url 'job_list' %}" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-gray-700 text-sm font-medium rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors">

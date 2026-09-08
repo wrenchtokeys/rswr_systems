@@ -243,6 +243,30 @@ class Command(BaseCommand):
                 secondary_button_url='https://example.invalid/opt-out/',
                 tenant=tenant,
             )),
+            # Mirrors apps/billing/services/quote_service.email_kwargs (B3).
+            ('customer — quote to accept', 'branded_quote.html', dict(
+                subject='Your quote from The Shop — $137.50',
+                headline='Quote Q-1007: $137.50',
+                lede=('The Shop has priced the work below. Review it and accept online — '
+                      'nothing is scheduled until you do.'),
+                body_paragraphs=['Mobile service at your lot. Price includes resin and labor.'],
+                detail_rows=[
+                    ('Vehicle', 'Unit #4127'),
+                    ('Windshield chip repair × 2', '$90.00'),
+                    ('Trip charge', '$35.00'),
+                    ('Subtotal', '$125.00'),
+                    ('Tax', '$12.50'),
+                    ('Total', '$137.50', 'strong money'),
+                    ('Good through', 'October 8, 2026'),
+                ],
+                button_text='Review and accept',
+                button_url='https://example.invalid/quote/7/abc123/',
+                note=('This quote is good through October 8, 2026. If the link above does '
+                      'not work, copy this address into your browser: '
+                      'https://example.invalid/quote/7/abc123/'),
+                preheader='Quote Q-1007 for $137.50, good through Oct 8.',
+                tenant=tenant,
+            )),
             ('platform — trial ending alert', 'branded_trial_alert.html', dict(
                 subject='Your trial ends in 3 days',
                 headline='Your trial ends in 3 days.',

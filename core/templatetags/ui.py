@@ -37,6 +37,22 @@ INVOICE_STATUS_STYLES = {
     'CANCELLED': ('bg-gray-100 text-gray-800', 'Cancelled'),
 }
 
+# Quote.STATUS_CHOICES (apps/billing/quote_models). Money-green only for
+# ACCEPTED — the one state that becomes revenue.
+QUOTE_STATUS_STYLES = {
+    'DRAFT': ('bg-gray-100 text-gray-800', 'Draft'),
+    'SENT': ('bg-blue-100 text-blue-800', 'Sent — awaiting answer'),
+    'ACCEPTED': ('bg-green-100 text-green-800', 'Accepted'),
+    'DECLINED': ('bg-red-100 text-red-800', 'Declined'),
+    'EXPIRED': ('bg-amber-100 text-amber-800', 'Expired'),
+    'SUPERSEDED': ('bg-gray-100 text-gray-600', 'Revised'),
+}
+
+_STYLES_BY_KIND = {
+    'invoice': INVOICE_STATUS_STYLES,
+    'quote': QUOTE_STATUS_STYLES,
+}
+
 _DEFAULT_STYLE = ('bg-gray-100 text-gray-800', None)
 
 # Label overrides for customer-facing pages. The shop labels describe the queue
@@ -55,6 +71,7 @@ def status_badge(status, label=None, kind='service', variant='shop', optimistic=
 
     {% status_badge repair.queue_status %}
     {% status_badge invoice.status kind='invoice' %}
+    {% status_badge quote.effective_status kind='quote' %}
     {% status_badge repair.queue_status label=repair.get_queue_status_display %}
     {% status_badge repair.queue_status variant='customer' %}  — customer-facing labels
     {% status_badge inv.status kind='invoice' optimistic=True %}  — see below
@@ -64,9 +81,11 @@ def status_badge(status, label=None, kind='service', variant='shop', optimistic=
     tick draws into (UI_MAGIC S11). Only list rows that carry
     `data-optimistic-row` need it; anywhere else it is inert markup.
     """
-    styles = INVOICE_STATUS_STYLES if kind == 'invoice' else SERVICE_STATUS_STYLES
+    styles = _STYLES_BY_KIND.get(kind, SERVICE_STATUS_STYLES)
     classes, default_label = styles.get(status, _DEFAULT_STYLE)
-    if kind != 'invoice' and variant == 'customer':
+    if kind == 'quote' and variant == 'customer' and status == 'SENT':
+        default_label = 'Needs Your Answer'
+    if kind not in _STYLES_BY_KIND and variant == 'customer':
         default_label = CUSTOMER_SERVICE_LABEL_OVERRIDES.get(status, default_label)
     return {
         'classes': classes,

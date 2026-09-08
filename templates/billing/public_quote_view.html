@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="robots" content="noindex">
+    <title>Quote {{ quote.quote_number }} — {{ company_name }}</title>
+    <style nonce="{{ csp_nonce }}">
+        body { margin: 0; padding: 0; background: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .container { max-width: 640px; margin: 40px auto; padding: 0 16px 40px; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+        .header { background: #1e40af; color: white; padding: 24px; text-align: center; }
+        .header h1 { margin: 0; font-size: 20px; }
+        .header p { margin: 4px 0 0; color: #93c5fd; font-size: 14px; }
+        .body { padding: 24px; }
+        .status { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+        .status.open { background: #dbeafe; color: #1e40af; }
+        .status.accepted { background: #d1fae5; color: #065f46; }
+        .status.declined { background: #fee2e2; color: #991b1b; }
+        .status.expired { background: #fef3c7; color: #92400e; }
+        .meta { width: 100%; font-size: 14px; color: #6b7280; margin: 16px 0; border-collapse: collapse; }
+        .meta td { padding: 4px 0; }
+        .meta td:last-child { text-align: right; color: #111827; font-weight: 500; }
+        table.items { width: 100%; border-collapse: collapse; margin: 8px 0 16px; }
+        table.items th { text-align: left; font-size: 12px; text-transform: uppercase; color: #6b7280; padding: 8px 10px; background: #f3f4f6; }
+        table.items th:last-child, table.items td:last-child { text-align: right; }
+        table.items td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #374151; }
+        table.items td small { display: block; color: #6b7280; font-size: 12px; }
+        .totals { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .totals td { padding: 4px 10px; text-align: right; color: #6b7280; }
+        .totals td:last-child { color: #111827; width: 120px; }
+        .totals .grand td { font-size: 17px; font-weight: 700; color: #1e40af; padding-top: 10px; }
+        .notes { margin: 16px 0 0; padding: 12px 16px; background: #f9fafb; border-radius: 8px; font-size: 14px; color: #374151; white-space: pre-line; }
+        .respond { margin-top: 24px; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; }
+        .respond h2 { margin: 0 0 6px; font-size: 16px; color: #111827; }
+        .respond p { margin: 0 0 14px; font-size: 14px; color: #6b7280; }
+        .respond label { display: block; font-size: 13px; color: #374151; margin: 12px 0 4px; }
+        /* 16px inputs: under that iOS zooms the page on focus and never zooms back. */
+        .respond input[type="text"], .respond textarea { display: block; width: 100%; box-sizing: border-box; padding: 12px; font-size: 16px; border: 1px solid #cbd5e1; border-radius: 8px; font-family: inherit; }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+        .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 12px 24px; border-radius: 8px; font-size: 16px; font-weight: 600; border: 2px solid transparent; cursor: pointer; text-decoration: none; flex: 1 1 auto; }
+        .btn-accept { background: #2563eb; color: white; border-color: #2563eb; }
+        .btn-decline { background: white; color: #374151; border-color: #d1d5db; }
+        .error { margin: 0 0 12px; padding: 10px 14px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #991b1b; font-size: 14px; }
+        .done { margin-top: 24px; padding: 20px; border-radius: 12px; font-size: 15px; }
+        .done.accepted { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+        .done.declined { background: #f9fafb; border: 1px solid #e5e7eb; color: #374151; }
+        .done.expired { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+        .done h2 { margin: 0 0 6px; font-size: 17px; }
+        .done p { margin: 0; }
+        .contact { margin-top: 20px; padding: 16px; background: #f9fafb; border-radius: 8px; text-align: center; font-size: 14px; color: #374151; }
+        .contact a { color: #2563eb; text-decoration: none; font-weight: 600; }
+        .fine { margin-top: 16px; font-size: 12px; color: #9ca3af; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>{{ company_name }}</h1>
+                <p>Quote {{ quote.quote_number }}</p>
+            </div>
+            <div class="body">
+                {% if status == 'ACCEPTED' %}
+                <span class="status accepted">Accepted</span>
+                {% elif status == 'DECLINED' %}
+                <span class="status declined">Declined</span>
+                {% elif status == 'EXPIRED' %}
+                <span class="status expired">Expired {{ quote.valid_until|date:"M d, Y" }}</span>
+                {% elif status == 'SUPERSEDED' %}
+                <span class="status expired">Replaced by a newer quote</span>
+                {% else %}
+                <span class="status open">Good through {{ quote.valid_until|date:"F d, Y" }}</span>
+                {% endif %}
+
+                <table class="meta">
+                    <tr><td>Prepared for</td><td>{{ quote.customer.name }}</td></tr>
+                    {% with v=quote.get_vehicle_label %}{% if v %}<tr><td>{{ quote.vehicle_column_label }}</td><td>{{ quote.get_vehicle_identifier }}</td></tr>{% endif %}{% endwith %}
+                    <tr><td>Quote date</td><td>{{ quote.quote_date|date:"F d, Y" }}</td></tr>
+                </table>
+
+                <table class="items">
+                    <tr><th>Work</th>{% if not quote.customer.is_individual %}<th>Unit #</th>{% endif %}<th>Amount</th></tr>
+                    {% for item in line_items %}
+                    <tr>
+                        <td>{{ item.description }}{% if item.quantity > 1 %}<small>{{ item.quantity }} × ${{ item.unit_price|floatformat:2 }}</small>{% endif %}</td>
+                        {% if not quote.customer.is_individual %}<td>{{ item.effective_unit_number|default:"—" }}</td>{% endif %}
+                        <td>${{ item.amount|floatformat:2 }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+
+                <table class="totals">
+                    {% if quote.tax_amount > 0 %}
+                    <tr><td>Subtotal</td><td>${{ quote.subtotal|floatformat:2 }}</td></tr>
+                    <tr><td>Tax</td><td>${{ quote.tax_amount|floatformat:2 }}</td></tr>
+                    {% endif %}
+                    <tr class="grand"><td>Total</td><td>${{ quote.total|floatformat:2 }}</td></tr>
+                </table>
+
+                {% if quote.notes %}<div class="notes">{{ quote.notes }}</div>{% endif %}
+
+                {% if state == 'accepted' or status == 'ACCEPTED' %}
+                <div class="done accepted">
+                    <h2>{% if state == 'accepted' %}Thank you — you're on the schedule.{% else %}This quote was accepted.{% endif %}</h2>
+                    <p>{{ company_name }} has {{ jobs|length }} job{{ jobs|length|pluralize }} lined up at the price above{% if quote.responded_at %}, accepted {{ quote.responded_at|date:"F d, Y" }}{% endif %}. They'll be in touch to confirm a time.</p>
+                </div>
+                {% elif state == 'declined' or status == 'DECLINED' %}
+                <div class="done declined">
+                    <h2>{% if state == 'declined' %}Got it — we've let the shop know.{% else %}This quote was declined.{% endif %}</h2>
+                    <p>Changed your mind? Call or email {{ company_name }} and they can send an updated quote.</p>
+                </div>
+                {% elif status == 'EXPIRED' %}
+                <div class="done expired">
+                    <h2>This quote has expired.</h2>
+                    <p>It was good through {{ quote.valid_until|date:"F d, Y" }}. Glass prices move, so {{ company_name }} will send a fresh one — just ask.</p>
+                </div>
+                {% elif status == 'SUPERSEDED' %}
+                <div class="done expired">
+                    <h2>There's a newer version of this quote.</h2>
+                    <p>Check your email for the latest one from {{ company_name }}, or give them a call.</p>
+                </div>
+                {% else %}
+                <div class="respond" id="respond">
+                    <h2>Ready to go ahead?</h2>
+                    <p>Accepting schedules the work at the price above. Nothing is charged today — you'll get an invoice when the job is done.</p>
+                    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+                    <form method="post" action="{{ respond_url }}">
+                        {% csrf_token %}
+                        <label for="name">Your name</label>
+                        <input type="text" id="name" name="name" maxlength="100" autocomplete="name" required placeholder="So the shop knows who answered">
+                        <label for="reason">Anything the shop should know? <span style="color:#9ca3af">(optional)</span></label>
+                        <textarea id="reason" name="reason" rows="2" maxlength="500" placeholder="Best days, gate codes, or why you're passing"></textarea>
+                        <div class="actions">
+                            <button type="submit" name="action" value="accept" class="btn btn-accept">Accept quote — ${{ quote.total|floatformat:2 }}</button>
+                            <button type="submit" name="action" value="decline" class="btn btn-decline">No thanks</button>
+                        </div>
+                    </form>
+                </div>
+                {% endif %}
+
+                {% if company_phone or company_email %}
+                <div class="contact">
+                    <strong>Questions about this quote?</strong><br>
+                    {% if company_phone %}<a href="tel:{{ company_phone }}">{{ company_phone }}</a>{% endif %}
+                    {% if company_phone and company_email %} · {% endif %}
+                    {% if company_email %}<a href="mailto:{{ company_email }}">{{ company_email }}</a>{% endif %}
+                </div>
+                {% endif %}
+                <p class="fine">Sent with RS Systems on behalf of {{ company_name }}.</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
