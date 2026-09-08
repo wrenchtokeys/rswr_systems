@@ -69,8 +69,8 @@ sequenced lives in `docs/strategy/`, and those are the files to read before star
 
 | Doc | What's open |
 |---|---|
-| [`PRODUCT_DIRECTION.md`](../strategy/PRODUCT_DIRECTION.md) | **The direction** — Path A with a B-ready spine, drafted, awaiting Drake's sign-off; the ordered "what happens next" list |
-| [`IMPROVEMENT_SESSIONS.md`](../strategy/IMPROVEMENT_SESSIONS.md) | Status line on every session (2026-09-02). **Next:** C1 landing credibility, then the spine — B3 quotes, B5 claim tracking, B6 price book. A5/B1 done; A2/C2 verify on prod; D1/D2 memos wait on interviews |
+| [`PRODUCT_DIRECTION.md`](../strategy/PRODUCT_DIRECTION.md) | **The direction** — Path A with a B-ready spine, **signed by Drake 2026-09-08**; the ordered "what happens next" list (step 5, the spine, is current) |
+| [`IMPROVEMENT_SESSIONS.md`](../strategy/IMPROVEMENT_SESSIONS.md) | Status line on every session (2026-09-02). C1 done. **Now:** the spine — B3 quotes (in progress 2026-09-08), then B5 claim tracking, B6 price book. A5/B1 done; A2/C2 verify on prod; D1/D2 memos wait on interviews |
 | [`PHOTO_ML_SESSIONS.md`](../strategy/PHOTO_ML_SESSIONS.md) | **P8 — close the world-readable media bucket** (its last code; after #243 deploys). P5/P4b parked, held by Drake |
 | [`FIELD_OPS_SESSIONS.md`](../strategy/FIELD_OPS_SESSIONS.md) | S11–S14 scheduling UX (sequenced after the spine). N2 texts wait on the toll-free number (v4 reviewing). P1 Mygrant waits on their IT callback. Two N3 copy decisions wait on Drake |
 | [`UI_MAGIC_SESSIONS.md`](../strategy/UI_MAGIC_SESSIONS.md) | Arc clear through S18a. S14/S15 fold into C1; the S13 sweep, S16 remainder and S18b are **parked pending users** |

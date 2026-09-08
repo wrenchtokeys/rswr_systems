@@ -1,7 +1,7 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: September 7, 2026 (C1 landing credibility deployed 00:59 UTC; P8 deployed and the media bucket closed).*
+*Last Updated: September 8, 2026 (direction signed off; B3 quotes in progress).*
 
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
 > snapshot):** production runs `60b4563b`, deployed **2026-09-07 00:59 UTC** — everything
@@ -13,8 +13,8 @@
 > worktree).
 
 > **Scope note.** This file is the long-horizon view. The direction — Path A with a
-> B-ready spine — is in `docs/strategy/PRODUCT_DIRECTION.md` (September 2026; awaiting
-> Drake's sign-off). The near-term work queues live in `docs/strategy/` and are the ones to
+> B-ready spine — is in `docs/strategy/PRODUCT_DIRECTION.md` (September 2026; signed by
+> Drake 2026-09-08). The near-term work queues live in `docs/strategy/` and are the ones to
 > read before starting a session: `IMPROVEMENT_SESSIONS.md` (now carries a Status line per
 > session; B3/B5/B6 are the spine), `FIELD_OPS_SESSIONS.md` (S11–S14 scheduling UX open),
 > `PHOTO_ML_SESSIONS.md` (P8 is its last code), `UI_MAGIC_SESSIONS.md` (arc clear; sweeps
