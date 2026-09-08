@@ -1,7 +1,7 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: September 8, 2026 (direction signed off; B3 quotes built as PR #TBD, not yet merged).*
+*Last Updated: September 8, 2026 (direction signed off; B3 quotes built as PR #253, not yet merged).*
 
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
 > snapshot):** production runs `60b4563b`, deployed **2026-09-07 00:59 UTC** — everything
