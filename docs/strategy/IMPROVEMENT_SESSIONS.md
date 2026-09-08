@@ -2,9 +2,9 @@
 
 **Created:** 2026-08-07
 **Author:** Amelia (from a live walkthrough of the running app)
-**Status:** living backlog. **The §1 fork is recorded** (2026-09-02: Path A with a B-ready
-spine, drafted and awaiting Drake's sign-off in `PRODUCT_DIRECTION.md`) — sessions can be
-sequenced against it. Every session now carries a **Status** line (added 2026-09-02).
+**Status:** living backlog. **The §1 fork is decided** (Path A with a B-ready spine; drafted
+2026-09-02, **signed by Drake 2026-09-08** in `PRODUCT_DIRECTION.md`) — sessions are
+sequenced against it and the spine is in progress. Every session now carries a **Status** line (added 2026-09-02).
 **Companion to:** `docs/strategy/PRODUCT_DIRECTION.md` (September 2026), which owns the
 direction; this document owns the sessions. The spine features named there are **B3, B5, B6**
 here.
@@ -122,8 +122,8 @@ My recommendation (2026-08-07): **run Tracks A → B → C now** (they are all "
 anyway" work), and use that time to answer D1's market question by talking to five shops that
 do insurance volume. Decide Path B on evidence, not on ambition.
 
-**The decision, as recorded 2026-09-02 (drafted from the 2026-09-01 direction review, awaiting
-Drake's sign-off in `PRODUCT_DIRECTION.md` §The decision):** **Path A now, with a B-ready
+**The decision, as recorded 2026-09-02 (drafted from the 2026-09-01 direction review) and
+signed by Drake 2026-09-08 in `PRODUCT_DIRECTION.md` §The decision:** **Path A now, with a B-ready
 spine.** Three Track B sessions are the spine — **B3** quotes → job, **B5** Tier 1 insurance
 claim tracking with short-payment reconciliation (promoted out of D1), **B6** a shop-owned price
 book seeded from history (promoted out of D2). None needs NAGS or EDI; each is what Path B
@@ -516,7 +516,7 @@ relevant); STOP is honored automatically; per-tenant usage is metered.
 
 **Goal:** Send a priced quote, get it approved, turn it into a job.
 **Size:** L · **Depends on:** —
-**Status:** **NEXT — spine feature 1** (`PRODUCT_DIRECTION.md`, 2026-09-02). Own session, after the fork carries Drake's name. Still no `Quote` model as of 2026-09-02. Add customer-portal view tests before building on those views (the June plan's warning stands).
+**Status:** **IN PROGRESS 2026-09-08 — spine feature 1**, own session and PR, started the day the fork was signed. Still no `Quote` model as of the start of the session. Add customer-portal view tests before building on those views (the June plan's warning stands).
 
 **Why it matters.** Named as an adoption blocker in `PRODUCT_DIRECTION.md` §Phase B. Fleet
 procurement and every insurance-adjacent workflow require a formal estimate *before*
@@ -686,7 +686,7 @@ can see and edit the book.
 
 **Goal:** A shop owner who lands cold believes this is real software used by real shops.
 **Size:** M · **Depends on:** —
-**Status:** **DONE 2026-09-06 — PR #250 merged 2026-09-07 00:16 UTC (`059fa77a`), not yet deployed** (was step 4 of the action plan). Trust bar out, founder's note directly under the hero, four captures of the real app in place of the HTML mock, a switching section, two overclaims fixed. `UI_MAGIC_SESSIONS.md` S14/S15 folded in and closed there. What was **not** done, deliberately: no public read-only demo login (the "decisions needed" question — needs a hosted tenant with writes disabled and a reset schedule; a separate session, and Drake's call) and no second-shop quote, because there is no second shop. Copy wants Drake's eye. See §C1 Notes below.
+**Status:** **DONE 2026-09-06 — PR #250 merged 2026-09-07 00:16 UTC (`059fa77a`), deployed 00:59 UTC, verified on the live page** (was step 4 of the action plan). Trust bar out, founder's note directly under the hero, four captures of the real app in place of the HTML mock, a switching section, two overclaims fixed. `UI_MAGIC_SESSIONS.md` S14/S15 folded in and closed there. What was **not** done, deliberately: no public read-only demo login (the "decisions needed" question — needs a hosted tenant with writes disabled and a reset schedule; a separate session, and Drake's call) and no second-shop quote, because there is no second shop. Copy wants Drake's eye. See §C1 Notes below.
 
 **Why it matters.** The site is clean and the copy is good, but it currently *undersells the
 product and oversells the traction* — exactly backwards. The best asset (a working, genuinely
@@ -921,8 +921,8 @@ sessions, with the done ones struck.
 
 | Order | Session | Status 2026-09-02 |
 |---|---|---|
-| ~~1~~ | ~~**C1**~~ | **DONE 2026-09-06**, PR #250 merged 2026-09-07 (`059fa77a`), awaiting deploy |
-| 2 | **B3** | NEXT — spine 1 |
+| ~~1~~ | ~~**C1**~~ | **DONE 2026-09-06**, PR #250 deployed 2026-09-07 00:59 UTC |
+| 2 | **B3** | **IN PROGRESS 2026-09-08** — spine 1 |
 | 3 | **B5** | NEXT — spine 2 |
 | 4 | **B6** | NEXT — spine 3 |
 | — | **C2, A2** | verify on prod, then either nothing or minutes |
@@ -1023,6 +1023,8 @@ username — usernames are generated from first names.
 |---|---|
 | 2026-08-07 | Initial version — from a live four-audience walkthrough of the running app. |
 | 2026-08-11 | Stale-doc sweep: flagged that this file has no status tracking and that B1 is superseded by `FIELD_OPS_SESSIONS.md` S2; corrected the Appendix A anchor citing the deleted `PlanEnforcementMixin`. No session content changed. |
+| 2026-09-07 | C1 deployed 00:59 UTC (`60b4563b`), verified live. |
+| 2026-09-08 | Fork signed by Drake in `PRODUCT_DIRECTION.md`; header and §1 updated; B3 moves to IN PROGRESS as its own session. |
 | 2026-09-07 | C1 merged (`059fa77a`); status line and §2 row updated. Next session is B3, gated on the `PRODUCT_DIRECTION.md` sign-off line. |
 | 2026-09-06 | **C1 done** (PR #250): status line, notes and §2 row updated. Screenshots are regenerable by `scripts/landing_shots.py`; Appendix B's seeding recipe now has a command form (`seed_demo_shop`). |
 | 2026-09-02 | **Brought current from the 2026-09-01 direction review.** The §1 fork is recorded (Path A + B-ready spine, awaiting Drake's sign-off in `PRODUCT_DIRECTION.md`) and "Blocked" is gone from the header. Every session has a dated **Status** line: A5 and B1 done, A1 largely done, A2 and C2 "verify on prod", C1 and B3 next. **B5** (Tier 1 claim tracking) and **B6** (shop price book) added to Track B, promoted out of D1/D2, which now hold only the licence/EDI memos. §2 re-sequenced. All 29 `file:line` anchors replaced with symbol names (27 had drifted; one pointed past EOF). Session analyses otherwise unchanged. |

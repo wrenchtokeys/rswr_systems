@@ -1,20 +1,20 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: September 7, 2026 (C1 landing credibility merged, PR #250, awaiting deploy; P8 deployed and the media bucket closed).*
+*Last Updated: September 8, 2026 (direction signed off; B3 quotes in progress).*
 
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
-> snapshot):** production runs `969a4035`, deployed **2026-09-06 22:00 UTC** — everything
-> merged through #248 (P8) is live, and the media bucket's `repair_photos/*` prefix went
-> private at 22:04 UTC the same day. **#250 (C1: landing screenshots + founder note) merged
-> 2026-09-07 00:16 UTC as `059fa77a` and is NOT on prod** — the next deploy carries it; docs
-> PRs after #248 carry no runtime code. `eb deploy` ships the current branch's HEAD — `git checkout main &&
+> snapshot):** production runs `60b4563b`, deployed **2026-09-07 00:59 UTC** — everything
+> merged through #251 is live, including #250 (C1: real landing captures + founder note,
+> verified on the live page: trust bar gone, four WebPs 200). The media bucket's
+> `repair_photos/*` prefix has been private since 2026-09-06 22:04 UTC. Nothing is merged
+> and undeployed. `eb deploy` ships the current branch's HEAD — `git checkout main &&
 > git pull` first (or a `deploy-main` branch at `origin/main` when `main` is held by another
 > worktree).
 
 > **Scope note.** This file is the long-horizon view. The direction — Path A with a
-> B-ready spine — is in `docs/strategy/PRODUCT_DIRECTION.md` (September 2026; awaiting
-> Drake's sign-off). The near-term work queues live in `docs/strategy/` and are the ones to
+> B-ready spine — is in `docs/strategy/PRODUCT_DIRECTION.md` (September 2026; signed by
+> Drake 2026-09-08). The near-term work queues live in `docs/strategy/` and are the ones to
 > read before starting a session: `IMPROVEMENT_SESSIONS.md` (now carries a Status line per
 > session; B3/B5/B6 are the spine), `FIELD_OPS_SESSIONS.md` (S11–S14 scheduling UX open),
 > `PHOTO_ML_SESSIONS.md` (P8 is its last code), `UI_MAGIC_SESSIONS.md` (arc clear; sweeps
