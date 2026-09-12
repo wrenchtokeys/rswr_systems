@@ -1,0 +1,214 @@
+{% extends "base_app.html" %}
+{% load ui %}
+
+{% block title %}Quote {{ quote.quote_number }} | {{ tenant.name }} | RS Systems{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+    <div class="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div>
+            <div class="flex items-center gap-3 flex-wrap">
+                <h1 class="vt-hero text-2xl font-bold text-gray-900">{{ quote.quote_number }}</h1>
+                {% status_badge quote.effective_status kind='quote' %}
+            </div>
+            <p class="text-sm text-gray-500 mt-1">
+                <a href="{% url 'customer_detail' customer_id=quote.customer_id %}" class="font-medium text-gray-700 hover:text-brand-600">{{ quote.customer.name }}</a>
+                {% with v=quote.get_vehicle_label %}{% if v %} · {{ v }}{% endif %}{% endwith %}
+                · {{ quote.quote_date|date:"M d, Y" }}
+            </p>
+            {% if quote.supersedes %}
+            <p class="text-xs text-gray-500 mt-1">Revision of <a href="{% url 'quote_detail' quote_id=quote.supersedes_id %}" class="text-brand-600 hover:text-brand-700">{{ quote.supersedes.quote_number }}</a></p>
+            {% endif %}
+            {% for rev in revisions %}
+            <p class="text-xs text-gray-500 mt-1">Revised as <a href="{% url 'quote_detail' quote_id=rev.id %}" class="text-brand-600 hover:text-brand-700">{{ rev.quote_number }}</a></p>
+            {% endfor %}
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+            <a href="{% url 'quote_list' %}" class="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900 min-h-11 px-2">{% icon 'arrow-left' class="mr-2" %}All quotes</a>
+            {% if quote.can_be_edited %}
+            <a href="{% url 'quote_edit' quote_id=quote.id %}" class="btn-secondary">{% icon 'pen' class="mr-2" %}Edit</a>
+            {% endif %}
+            {% if quote.can_be_revised %}
+            <form method="post" action="{% url 'quote_revise' quote_id=quote.id %}">{% csrf_token %}
+                <button type="submit" class="btn-secondary">{% icon 'rotate-cw' class="mr-2" %}Revise</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if quote.status == 'ACCEPTED' %}
+    <div class="mb-6 rounded-xl border border-green-200 bg-green-50 px-5 py-4">
+        <div class="flex items-start gap-3">
+            <div class="text-green-600 text-xl mt-0.5">{% icon 'check-circle' %}</div>
+            <div>
+                <h2 class="text-sm font-semibold text-green-900">Accepted {{ quote.responded_at|date:"M d, Y g:i A" }}{% if quote.responded_by_name %} by {{ quote.responded_by_name }}{% endif %} — {{ quote.get_accepted_via_display|lower }}</h2>
+                <p class="text-sm text-green-800 mt-0.5">{{ jobs|length }} job{{ jobs|length|pluralize }} created at the quoted price, approved and ready to schedule.</p>
+                {% if jobs %}
+                <ul class="mt-2 flex flex-wrap gap-2">
+                    {% for job in jobs %}
+                    <li>
+                        {% if job.service_kind == 'repair' %}
+                        <a href="{% url 'repair_detail' repair_id=job.id %}" class="inline-flex items-center px-3 py-1.5 rounded-lg bg-white border border-green-200 text-sm text-green-800 hover:border-green-400">{% icon 'wrench' class="mr-1.5 text-xs" %}Repair #{{ job.id }} · ${{ job.cost|floatformat:2 }}</a>
+                        {% else %}
+                        <a href="{% url 'replacement_detail' pk=job.id %}" class="inline-flex items-center px-3 py-1.5 rounded-lg bg-white border border-green-200 text-sm text-green-800 hover:border-green-400">{% icon 'car' class="mr-1.5 text-xs" %}Replacement #{{ job.id }} · ${{ job.cost|floatformat:2 }}</a>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% elif quote.status == 'DECLINED' %}
+    <div class="mb-6 rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+        <h2 class="text-sm font-semibold text-red-900">Declined {{ quote.responded_at|date:"M d, Y" }}{% if quote.responded_by_name %} by {{ quote.responded_by_name }}{% endif %}</h2>
+        {% if quote.decline_reason %}<p class="text-sm text-red-800 mt-1">“{{ quote.decline_reason }}”</p>{% endif %}
+        <p class="text-xs text-red-700 mt-1">Revise it to send an updated price.</p>
+    </div>
+    {% elif quote.effective_status == 'EXPIRED' %}
+    <div class="mb-6 rounded-xl border border-gray-200 bg-gray-50 px-5 py-4">
+        <h2 class="text-sm font-semibold text-gray-900">Expired {{ quote.valid_until|date:"M d, Y" }}</h2>
+        <p class="text-sm text-gray-600 mt-0.5">The customer can no longer accept at these prices. Revise it to re-quote on today's numbers.</p>
+    </div>
+    {% elif quote.status == 'SUPERSEDED' %}
+    <div class="mb-6 rounded-xl border border-gray-200 bg-gray-50 px-5 py-4">
+        <h2 class="text-sm font-semibold text-gray-900">Replaced by a revision</h2>
+        <p class="text-sm text-gray-600 mt-0.5">This version is kept for the record and can't be accepted.</p>
+    </div>
+    {% endif %}
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 space-y-6">
+            <div class="card overflow-hidden">
+                <div class="card-header"><h2 class="text-base font-semibold text-gray-900">The work</h2></div>
+                {% comment %}Mobile twin{% endcomment %}
+                <div class="sm:hidden divide-y divide-gray-100">
+                    {% for li in line_items %}
+                    <div class="p-4">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <div class="text-sm font-medium text-gray-900">{{ li.description }}</div>
+                                <div class="text-xs text-gray-500 mt-0.5">{{ li.get_service_type_display }}{% if li.quantity > 1 %} × {{ li.quantity }}{% endif %}{% if not quote.customer.is_individual and li.effective_unit_number %} · Unit #{{ li.effective_unit_number }}{% endif %}</div>
+                            </div>
+                            <div class="text-sm font-semibold text-gray-900 num shrink-0">${{ li.amount|floatformat:2 }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    <div class="p-4 space-y-1 text-sm">
+                        <div class="flex justify-between text-gray-600"><span>Subtotal</span><span class="num">${{ quote.subtotal|floatformat:2 }}</span></div>
+                        <div class="flex justify-between text-gray-600"><span>Tax{% if quote.no_tax %} (not charged){% endif %}</span><span class="num">${{ quote.tax_amount|floatformat:2 }}</span></div>
+                        <div class="flex justify-between text-gray-900 font-bold text-base pt-1"><span>Total</span><span class="num">${{ quote.total|floatformat:2 }}</span></div>
+                    </div>
+                </div>
+                <div class="hidden sm:block overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ quote.vehicle_column_label }}</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Each</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            {% for li in line_items %}
+                            <tr>
+                                <td class="px-6 py-3 text-sm text-gray-900">{{ li.description }}<div class="text-xs text-gray-500">{{ li.get_service_type_display }}{% if li.damage_type %} · {{ li.damage_type }}{% endif %}{% if li.glass_position %} · {{ li.glass_position|title }}{% endif %}</div></td>
+                                <td class="px-6 py-3 text-sm text-gray-600">{% if quote.customer.is_individual %}{{ quote.vehicle_description|default:"—" }}{% else %}{{ li.effective_unit_number|default:"—" }}{% endif %}</td>
+                                <td class="px-6 py-3 text-sm text-gray-600 text-right num">{{ li.quantity }}</td>
+                                <td class="px-6 py-3 text-sm text-gray-600 text-right num">${{ li.unit_price|floatformat:2 }}</td>
+                                <td class="px-6 py-3 text-sm font-medium text-gray-900 text-right num">${{ li.amount|floatformat:2 }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot class="bg-gray-50">
+                            <tr><td colspan="4" class="px-6 py-2 text-sm text-gray-600 text-right">Subtotal</td><td class="px-6 py-2 text-sm text-gray-900 text-right num">${{ quote.subtotal|floatformat:2 }}</td></tr>
+                            <tr><td colspan="4" class="px-6 py-2 text-sm text-gray-600 text-right">Tax{% if quote.no_tax %} (not charged){% elif quote.tax_rate %} ({{ quote.tax_rate|floatformat:2 }}%){% endif %}</td><td class="px-6 py-2 text-sm text-gray-900 text-right num">${{ quote.tax_amount|floatformat:2 }}</td></tr>
+                            <tr><td colspan="4" class="px-6 py-3 text-base font-bold text-gray-900 text-right">Total</td><td class="px-6 py-3 text-base font-bold text-gray-900 text-right num">${{ quote.total|floatformat:2 }}</td></tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            {% if quote.notes or quote.internal_notes %}
+            <div class="card">
+                <div class="card-body grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {% if quote.notes %}<div><div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Note to customer</div><p class="text-sm text-gray-700 whitespace-pre-line">{{ quote.notes }}</p></div>{% endif %}
+                    {% if quote.internal_notes %}<div><div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Shop only</div><p class="text-sm text-gray-700 whitespace-pre-line">{{ quote.internal_notes }}</p></div>{% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="space-y-6">
+            {% if quote.is_open %}
+            <div class="card">
+                <div class="card-header"><h2 class="text-base font-semibold text-gray-900">{% if quote.status == 'DRAFT' %}Send to the customer{% else %}Send again{% endif %}</h2></div>
+                <div class="card-body">
+                    <form method="post" action="{% url 'quote_send' quote_id=quote.id %}" class="space-y-3">
+                        {% csrf_token %}
+                        <div>
+                            <label for="to_email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                            <input type="email" name="to_email" id="to_email" value="{{ recipient_email }}" placeholder="customer@example.com" required
+                                class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
+                        </div>
+                        <button type="submit" class="btn-primary w-full press">{% icon 'send' class="mr-2" %}{% if quote.status == 'DRAFT' %}Send quote{% else %}Resend quote{% endif %}</button>
+                    </form>
+                    {% if quote.sent_at %}
+                    <p class="mt-3 text-xs text-gray-500">Sent {{ quote.last_sent_at|date:"M d, Y g:i A" }} to {{ quote.sent_to_email }}.
+                        {% if quote.first_viewed_at %}<span class="text-green-600">Opened {{ quote.first_viewed_at|date:"M d, g:i A" }}.</span>{% else %}Not opened yet.{% endif %}</p>
+                    {% endif %}
+                    <div class="mt-4 pt-4 border-t border-gray-100">
+                        <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Or share the link</div>
+                        <div class="flex items-center gap-2">
+                            <input type="text" readonly value="{{ public_url }}" id="quote-public-url" class="flex-1 min-w-0 px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-600 bg-gray-50">
+                            <button type="button" class="btn-secondary btn-sm" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('quote-public-url').value).then(function(){ if (window.UI && UI.toast) UI.toast('Link copied'); })">{% icon 'copy' %}</button>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-1">Anyone with the link can view and accept this quote — text it to the customer if that's how they like it.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><h2 class="text-base font-semibold text-gray-900">Customer answered in person?</h2></div>
+                <div class="card-body space-y-3">
+                    <form method="post" action="{% url 'quote_mark_accepted' quote_id=quote.id %}" onsubmit="return confirm('Record that {{ quote.customer.name|escapejs }} accepted {{ quote.quote_number }}? This creates {{ quote.expected_job_count }} job{{ quote.expected_job_count|pluralize }} at the quoted price.')">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-secondary w-full">{% icon 'check' class="mr-2 text-green-600" %}Mark accepted &amp; create jobs</button>
+                    </form>
+                    <details class="text-sm">
+                        <summary class="cursor-pointer text-gray-600 hover:text-gray-900 min-h-11 flex items-center">Mark declined…</summary>
+                        <form method="post" action="{% url 'quote_mark_declined' quote_id=quote.id %}" class="mt-2 space-y-2">
+                            {% csrf_token %}
+                            <input type="text" name="reason" maxlength="500" placeholder="Reason (optional)" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-brand-500 focus:border-brand-500">
+                            <button type="submit" class="btn-secondary w-full text-red-700">Mark declined</button>
+                        </form>
+                    </details>
+                    {% if quote.status == 'DRAFT' %}
+                    <form method="post" action="{% url 'quote_delete' quote_id=quote.id %}" onsubmit="return confirm('Delete draft {{ quote.quote_number }}? It was never sent.')" class="pt-2 border-t border-gray-100">
+                        {% csrf_token %}
+                        <button type="submit" class="w-full min-h-11 text-sm text-gray-500 hover:text-red-600">{% icon 'trash' class="mr-1" %}Delete draft</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="card">
+                <div class="card-header"><h2 class="text-base font-semibold text-gray-900">Details</h2></div>
+                <div class="card-body">
+                    <dl class="text-sm space-y-2">
+                        <div class="flex justify-between gap-3"><dt class="text-gray-500">Quote date</dt><dd class="text-gray-900">{{ quote.quote_date|date:"M d, Y" }}</dd></div>
+                        <div class="flex justify-between gap-3"><dt class="text-gray-500">Good through</dt><dd class="text-gray-900">{{ quote.valid_until|date:"M d, Y" }}</dd></div>
+                        <div class="flex justify-between gap-3"><dt class="text-gray-500">Customer</dt><dd class="text-gray-900 text-right">{{ quote.customer.name }}<div class="text-xs text-gray-500">{{ quote.customer.get_customer_type_display }}</div></dd></div>
+                        {% with v=quote.get_vehicle_label %}{% if v %}<div class="flex justify-between gap-3"><dt class="text-gray-500">{{ quote.vehicle_column_label }}</dt><dd class="text-gray-900">{{ quote.get_vehicle_identifier }}</dd></div>{% endif %}{% endwith %}
+                        {% if quote.created_by %}<div class="flex justify-between gap-3"><dt class="text-gray-500">Written by</dt><dd class="text-gray-900">{{ quote.created_by.get_full_name|default:quote.created_by.username }}</dd></div>{% endif %}
+                        <div class="flex justify-between gap-3"><dt class="text-gray-500">Sales tax</dt><dd class="text-gray-900">{% if quote.no_tax %}Not charged{% elif quote.tax_rate %}{{ quote.tax_rate|floatformat:2 }}%{% else %}None{% endif %}</dd></div>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -2281,6 +2281,32 @@ def owner_settings_view(request):
                 messages.error(request, 'Could not save invoice numbering.')
             return redirect('/owner/settings/?tab=billing')
 
+        if form_type == 'quote_numbering':
+            try:
+                config = BillingConfig.get_for_tenant(tenant)
+                prefix = request.POST.get('quote_number_prefix', '').strip() or 'Q'
+                if len(prefix) > 20:
+                    messages.error(request, 'Quote prefix must be 20 characters or fewer.')
+                    return redirect('/owner/settings/?tab=billing')
+                try:
+                    next_number = int(request.POST.get('next_quote_number', ''))
+                    valid_days = int(request.POST.get('quote_valid_days', ''))
+                except (ValueError, TypeError):
+                    messages.error(request, 'Next quote number and days valid must be whole numbers.')
+                    return redirect('/owner/settings/?tab=billing')
+                if next_number < 1 or not (1 <= valid_days <= 365):
+                    messages.error(request, 'Next quote number must be at least 1, and quotes can be valid for 1–365 days.')
+                    return redirect('/owner/settings/?tab=billing')
+                config.quote_number_prefix = prefix
+                config.next_quote_number = next_number
+                config.quote_valid_days = valid_days
+                config.save(update_fields=['quote_number_prefix', 'next_quote_number', 'quote_valid_days'])
+                messages.success(request, f'Quote settings saved. Your next quote will be {prefix}-{next_number}, good for {valid_days} days.')
+            except Exception as e:
+                logger.error(f"Error saving quote numbering: {e}")
+                messages.error(request, 'Could not save quote settings.')
+            return redirect('/owner/settings/?tab=billing')
+
         if form_type == 'email_templates':
             try:
                 config = BillingConfig.get_for_tenant(tenant)

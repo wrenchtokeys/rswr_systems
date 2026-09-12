@@ -14,6 +14,48 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-09-08 — Quotes: price the work, customer accepts, jobs are created at that price (PR #253)
+
+**Built 2026-09-08, the day Drake signed the direction.** `IMPROVEMENT_SESSIONS.md` B3 — the
+first of the three spine features in `PRODUCT_DIRECTION.md`. Two migrations (`billing/0036`,
+`technician_portal/0062`), both additive.
+
+### Added
+- **Quotes** (`/quotes/`, in the shop nav beside Invoices; any technician can quote). A quote
+  names the customer, the vehicle (unit for a fleet, year/make/model for an individual), the
+  lines — repair, replacement or an "other" charge — a "good through" date and a note. Repair
+  lines left blank take the shop's own price for that vehicle (progressive pricing included);
+  a *different* repair price is a manager's call, the same rule as a custom price on a job.
+  Tax is worked out and frozen on the quote. Numbers come from a new per-tenant sequence
+  (`Q-1001…`, Settings → Billing → Quotes, with the validity window).
+- **Sending**: a branded email ("Your quote from <Shop> — $137.50") with the lines, the total
+  and one button to a public page (`/quote/<id>/<token>/`, HMAC-tokened like the invoice pay
+  page, no login). GET is read-only; accepting and declining are POSTs from the page, with the
+  customer's name. Copy-the-link is on the detail page for shops that text.
+- **Accepting creates the jobs.** Each repair/replacement line becomes an `APPROVED` job at the
+  quoted price, locked through `cost_override` (backed out of any account discount so the
+  customer lands on the exact number they accepted); "other" lines become extra charges on the
+  first job; every job points back at the quote (`GlassService.quote`) and its page says
+  "From quote Q-1001 — price locked". The shop can also record an in-person yes ("Mark
+  accepted & create jobs") or a no.
+- **Customer portal** `/app/quotes/`: sent quotes with a "waiting for your answer" banner,
+  detail with accept/decline, scheduled work listed once accepted. Drafts are never shown.
+- **Expiry and revision.** A SENT quote past its date reads Expired and cannot be accepted;
+  "Revise" clones any sent/declined/expired quote into a new draft that supersedes it. Only a
+  draft can be deleted — everything else stays on record. Declined and expired quotes never
+  touch job counts, progressive-pricing counters or revenue.
+- `{% status_badge … kind='quote' %}`, `{% icon 'quote' %}` (alias of `file-text`), a quote
+  fixture in `manage.py preview_emails`.
+- Tests: `tests/test_quotes.py` (30) and `tests/test_customer_portal_views.py` (9, the portal
+  coverage the June plan asked for before B3), both in the guard set.
+
+### Decisions (recorded from the B3 spec's "decisions needed")
+- Separate `Quote` model, not a pre-REQUESTED job status.
+- Default validity 30 days, per-tenant setting.
+- Acceptance creates the jobs directly; the acceptance *is* the customer's approval.
+- No soft delete for quotes; no e-signature; insurance and NAGS lines stay out of scope
+  (B5/B6 and the Path B memos).
+
 ## 2026-09-06 — Landing page tells the truth: real screenshots, founder note, no filler stats (PR #250)
 
 **Merged 2026-09-07 00:16 UTC as `059fa77a`, deployed 00:59 UTC (`60b4563b`), verified on the live page.** No migration. `IMPROVEMENT_SESSIONS.md` C1, which folds in `UI_MAGIC_SESSIONS.md`

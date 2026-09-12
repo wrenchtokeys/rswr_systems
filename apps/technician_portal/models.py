@@ -421,8 +421,21 @@ class GlassService(models.Model):
         blank=True,
     )
     
+    @property
+    def service_kind(self):
+        """'repair' or 'replacement' — for templates handed a mixed list
+        (a quote's jobs) that need the right detail URL without an isinstance."""
+        return 'replacement' if isinstance(self, Replacement) else 'repair'
+
     # --- Core fields ---
     technician = models.ForeignKey(Technician, on_delete=models.CASCADE)
+    # The quote this job was created from (B3). Set once by
+    # billing.services.quote_service.accept_quote; a job made any other way
+    # leaves it NULL. `quote.repairs` / `quote.replacements` is the reverse.
+    quote = models.ForeignKey(
+        'billing.Quote', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='%(class)ss',
+    )
     needs_assignment = models.BooleanField(
         default=False,
         db_index=True,

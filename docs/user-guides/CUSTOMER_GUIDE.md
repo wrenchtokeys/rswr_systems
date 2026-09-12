@@ -87,6 +87,13 @@ type badge (REPAIR / REPLACEMENT):
 
 ---
 
+## Quotes
+
+When the shop prices work before doing it, the quote arrives by email with a **Review and
+accept** button, and also appears under **Quotes** in the portal. Accepting puts the work on
+the shop's schedule at that price — nothing is charged until the job is done and invoiced.
+A quote is good through the date shown; after that, ask the shop for a fresh one.
+
 ## Submitting Repair Requests
 
 When you know a unit needs service:

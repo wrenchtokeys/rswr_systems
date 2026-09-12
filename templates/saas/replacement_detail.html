@@ -12,6 +12,9 @@
             </a>
             <div class="flex items-center justify-between">
                 <h1 class="vt-hero text-3xl font-bold text-gray-900">Replacement #{{ replacement.id }}</h1>
+                {% if replacement.quote_id %}
+                <a href="{% url 'quote_detail' quote_id=replacement.quote_id %}" class="inline-flex items-center mt-1 text-xs font-medium text-brand-600 hover:text-brand-800"><i class="fas fa-file-alt mr-1"></i>From quote {{ replacement.quote.quote_number }} — price locked</a>
+                {% endif %}
                 <div class="flex items-center space-x-3">
                     <a href="{% url 'replacement_edit' pk=replacement.pk %}" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 press">
                         <i class="fas fa-edit mr-1.5"></i> Edit

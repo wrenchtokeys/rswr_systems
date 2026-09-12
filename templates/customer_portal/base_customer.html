@@ -63,6 +63,9 @@
                     <a href="{% url 'customer_services' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if request.resolver_match.url_name == 'customer_services' or 'repair' in request.resolver_match.url_name and 'request' not in request.resolver_match.url_name or 'replacement' in request.resolver_match.url_name and 'request' not in request.resolver_match.url_name or 'batch' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
                         {% icon 'car-side' class="mr-1.5 text-xs" %}Services
                     </a>
+                    <a href="{% url 'customer_quotes' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if 'quote' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
+                        {% icon 'file-text' class="mr-1.5 text-xs" %}Quotes
+                    </a>
                     <a href="{% url 'customer_invoices' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if 'invoice' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
                         {% icon 'file-invoice-dollar' class="mr-1.5 text-xs" %}Invoices
                     </a>
@@ -287,6 +290,10 @@
                     {% icon 'gift' class="w-6 text-gray-400" %}
                     <span class="ml-3">Rewards</span>
                     {% if loyalty_points %}<span class="ml-auto inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-brand-100 text-brand-700">{{ loyalty_points }} pts</span>{% endif %}
+                </a>
+                <a href="{% url 'customer_quotes' %}" class="flex items-center px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    {% icon 'file-text' class="w-6 text-gray-400" %}
+                    <span class="ml-3">Quotes</span>
                 </a>
                 <a href="{% url 'customer_team' %}" class="flex items-center px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
                     {% icon 'users' class="w-6 text-gray-400" %}

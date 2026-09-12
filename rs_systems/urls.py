@@ -24,6 +24,7 @@ from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from . import views
 from apps.saas import views as saas_views
+from apps.saas import quote_views as saas_quote_views
 from core.views import preview_email_template, test_notification, check_notification_prefs
 from apps.technician_portal.review_views import review_click, review_opt_out
 from common.csp_views import csp_report
@@ -58,6 +59,9 @@ urlpatterns = [
     path('invoice/<int:invoice_id>/<str:token>/open.gif', views.public_invoice_open_pixel, name='public_invoice_open_pixel'),
     path('invoice/<int:invoice_id>/<str:token>/sms-opt-in/', views.public_invoice_sms_opt_in, name='public_invoice_sms_opt_in'),
     path('invoice/<int:invoice_id>/<str:token>/', views.public_view_invoice, name='public_view_invoice'),
+    # Public tokened quote page (B3). GET is read-only; accepting is the POST.
+    path('quote/<int:quote_id>/<str:token>/', saas_quote_views.public_quote_view, name='public_quote_view'),
+    path('quote/<int:quote_id>/<str:token>/respond/', saas_quote_views.public_quote_respond, name='public_quote_respond'),
     # setup-database/ removed — security risk (unauthenticated DB setup with hardcoded creds)
 
     # API endpoints

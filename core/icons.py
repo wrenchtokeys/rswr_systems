@@ -336,6 +336,8 @@ ICONS = {
 # worth accepting. Aliasing costs nothing; drawing the same icon twice under two
 # names is how a set starts to drift.
 ALIASES = {
+    'quote': 'file-text',
+    'file-alt': 'file-text',
     'times': 'x',
     'times-circle': 'x-circle',
     'close': 'x',

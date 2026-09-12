@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import quote_views
 
 urlpatterns = [
     # Customer Invitation (must be before auth-required routes)
@@ -43,6 +44,10 @@ urlpatterns = [
     path('batch/<uuid:batch_id>/deny/', views.customer_batch_deny, name='customer_batch_deny'),
     
     # Invoices
+    # Quotes (B3)
+    path('quotes/', quote_views.customer_quotes, name='customer_quotes'),
+    path('quotes/<int:quote_id>/', quote_views.customer_quote_detail, name='customer_quote_detail'),
+    path('quotes/<int:quote_id>/respond/', quote_views.customer_quote_respond, name='customer_quote_respond'),
     path('invoices/', views.customer_invoices, name='customer_invoices'),
     path('invoices/<int:invoice_id>/', views.customer_invoice_detail, name='customer_invoice_detail'),
     path('invoices/<int:invoice_id>/pdf/', views.customer_invoice_pdf, name='customer_invoice_pdf'),

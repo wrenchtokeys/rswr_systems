@@ -126,6 +126,21 @@ class BillingConfig(AutoUpdateTimestampMixin, models.Model):
                   'INV-1001, INV-1002, … Set it to continue from your old books.',
     )
 
+    # === QUOTES (B3) — same shape as invoice numbering, separate sequence ===
+    quote_number_prefix = models.CharField(
+        max_length=20,
+        default='Q',
+        help_text='Prefix for quote numbers (e.g., Q → Q-1001)',
+    )
+    next_quote_number = models.PositiveIntegerField(
+        default=1001,
+        help_text='The number your next quote will get. Counts up from here.',
+    )
+    quote_valid_days = models.PositiveIntegerField(
+        default=30,
+        help_text='How many days a new quote stays open for the customer to accept.',
+    )
+
     # === EMAIL TEMPLATES (editable defaults) ===
     invoice_email_template = models.TextField(
         blank=True,
@@ -290,6 +305,29 @@ class BillingConfig(AutoUpdateTimestampMixin, models.Model):
                 number += 1
             config.next_invoice_number = number + 1
             config.save(update_fields=['next_invoice_number'])
+            return f"{prefix}-{number}"
+
+    @classmethod
+    def allocate_quote_number(cls, tenant):
+        """Row-locked quote numbering — the invoice allocator's twin.
+
+        Quotes have no soft delete, so a plain `Quote.objects` check is the
+        whole collision walk; a deleted draft frees its number and that is
+        fine (a draft nobody saw was never quoted to anyone).
+        """
+        from apps.billing.quote_models import Quote
+
+        cls.get_for_tenant(tenant)
+        with transaction.atomic():
+            config = cls.objects.select_for_update().get(tenant=tenant)
+            prefix = (config.quote_number_prefix or 'Q').strip() or 'Q'
+            number = config.next_quote_number or 1
+            while Quote.objects.filter(
+                tenant=tenant, quote_number=f"{prefix}-{number}"
+            ).exists():
+                number += 1
+            config.next_quote_number = number + 1
+            config.save(update_fields=['next_quote_number'])
             return f"{prefix}-{number}"
 
     @classmethod
@@ -1374,3 +1412,9 @@ class StripeWebhookEvent(models.Model):
 
     def __str__(self):
         return f"{self.event_type} [{self.event_id}] {self.status}"
+
+
+# Quotes live in their own module to keep this one manageable (same pattern as
+# technician_portal.review_models). Imported here so `apps.billing.models.Quote`
+# resolves and the migration autodetector sees them.
+from apps.billing.quote_models import Quote, QuoteLineItem  # noqa: E402, F401
