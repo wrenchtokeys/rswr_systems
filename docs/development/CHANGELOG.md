@@ -16,7 +16,7 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ## 2026-09-08 — Quotes: price the work, customer accepts, jobs are created at that price (PR #253)
 
-**Built 2026-09-08, the day Drake signed the direction.** `IMPROVEMENT_SESSIONS.md` B3 — the
+**Built 2026-09-08, the day Drake signed the direction; merged 2026-09-12 (`e47cd18b`), deployed 2026-09-14 15:11 UTC.** `IMPROVEMENT_SESSIONS.md` B3 — the
 first of the three spine features in `PRODUCT_DIRECTION.md`. Two migrations (`billing/0036`,
 `technician_portal/0062`), both additive.
 
