@@ -14,9 +14,9 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
-## 2026-09-16 — Price book: a replacement prices itself from your own history (B6)
+## 2026-09-16 — Price book: a replacement prices itself from your own history (PR #257)
 
-**Built 2026-09-16.** `IMPROVEMENT_SESSIONS.md` B6 — the third and last spine feature in
+**Built 2026-09-16, PR #257.** `IMPROVEMENT_SESSIONS.md` B6 — the third and last spine feature in
 `PRODUCT_DIRECTION.md`: the cheaper 80% of NAGS with no licence and no catalog. One additive
 migration (`technician_portal/0063`).
 
