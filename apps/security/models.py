@@ -114,6 +114,13 @@ class SecurityAuditLog(models.Model):
         ('suspicious_activity', 'Suspicious Activity Detected'),
         ('data_export', 'Data Exported'),
         ('settings_changed', 'Settings Changed'),
+        # Insurance claim tracking (B5). Claim data is sensitive: every
+        # change to a claim is logged here, with the tenant and claim ids.
+        ('claim_created', 'Insurance Claim Created'),
+        ('claim_updated', 'Insurance Claim Updated'),
+        ('claim_payment', 'Insurance Claim Payment Recorded'),
+        ('claim_closed', 'Insurance Claim Closed'),
+        ('claim_reopened', 'Insurance Claim Reopened'),
     ]
 
     user = models.ForeignKey(

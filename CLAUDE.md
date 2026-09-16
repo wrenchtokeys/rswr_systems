@@ -407,6 +407,22 @@ token never opens a quote; GET is read-only and accept/decline are POSTs (mail s
 every link). A quote has no soft delete: only a DRAFT can be deleted. `tests/test_quotes.py`
 is in the guard set.
 
+**Insurance claims (B5, Sep 2026)**: `InsuranceClaim` (`apps/billing/claim_models.py`) hangs off
+the **invoice**, one per invoice, and every state change goes through
+`apps/billing/services/claim_service.py`. It is created automatically by
+`create_invoice_from_services` when a job on the invoice has `insurance_claim=True` (copying
+insurer/claim #/auth #/deductible from the job), or by one tap on the invoice page. **Never
+store expected or short** — `expected_amount` is authorized → pinned `billed_amount` → invoice
+total − deductible, `received_amount` is the cache of `Payment` rows with `claim` set (the
+deductible is an ordinary payment and never counts), and `reconcile()` derives the status after
+every payment, payment delete, `recalculate_invoice_totals` and edit. CLOSED is the only
+human-set status and snapshots `written_off_amount`. Insurer payments go through
+`owner_record_payment` with `from_insurer=1` (same guard, lock and overpayment check; no
+emails). The aging card counts `outstanding_amount` (short clamped to the invoice's due), so a
+claim the customer covered is short on its page but not "owed". Claim mutations are the first
+writers of `SecurityAuditLog`, via `apps/security/audit.log_event` — an unknown event type
+raises. Owner/manager only; no portal surface. `tests/test_claims.py` is in the guard set.
+
 **Multi-Break Batch Repairs**: Multiple repairs for same unit in one session. Each break is a separate `Repair` linked via `repair_batch_id` (UUID). Progressive pricing: Break N priced as repair #(existing_count + N). Created atomically. URL: `/tech/repairs/create-multi-break/`.
 
 **Progressive Pricing**: Repair cost decreases per unit: $50→$40→$35→$30→$25. Tracked via `UnitRepairCount`. Configurable at shop level and per-customer. With progressive off, the shop sets a single flat "Price per repair" (`repair_price_1`); `calculate_batch_pricing` honors the toggle too. Custom prices are per-job (and per-break in multi-break) — authorization is `is_manager` (`can_override_pricing` is deprecated: nothing ever set it).

@@ -612,8 +612,15 @@ Retail customers don't see empty fleet-only cards. Page issues a bounded number 
 **Goal:** A shop knows, for every insurance job, what was claimed, what was authorised, what
 came in, and what is still short — without leaving RS Systems.
 **Size:** M · **Depends on:** — (reads better after B3, does not need it)
-**Status:** **NEXT — spine feature 2** (`PRODUCT_DIRECTION.md`, 2026-09-02). Promoted out of D1
-tier 1; own session after the fork carries Drake's name.
+**Status:** **BUILT 2026-09-16 — PR #B5PR** — spine feature 2. `InsuranceClaim` in
+`apps/billing/claim_models.py` (one per invoice), lifecycle in `services/claim_service.py`,
+owner UI at `/owner/claims/`, a claim panel + "from the insurer" checkbox on the invoice page,
+short-paid / waiting lines in the "Owed to you" card. Every acceptance criterion below has a
+test in `tests/test_claims.py` (guard set). Decisions taken: the claim hangs off the invoice;
+expected/received/short are derived (authorized → billed → invoice total − deductible;
+insurer payments are `Payment.claim`); status follows the money except CLOSED, which
+snapshots the write-off; no portal surface; `apps/security/audit.py` is the audit writer.
+Promoted out of D1 tier 1 on 2026-09-02.
 
 **Why it matters.** See D1: insurance money arrives partially, late and short, and "they paid
 $312 on a $380 claim" is where the daily pain is. That pain is independent of how the claim was
@@ -923,8 +930,8 @@ sessions, with the done ones struck.
 |---|---|---|
 | ~~1~~ | ~~**C1**~~ | **DONE 2026-09-06**, PR #250 deployed 2026-09-07 00:59 UTC |
 | ~~2~~ | ~~**B3**~~ | **DONE** — PR #253 merged 2026-09-12, deployed 2026-09-14 — spine 1 |
-| 3 | **B5** | **NEXT — spine 2** |
-| 4 | **B6** | NEXT — spine 3 |
+| ~~3~~ | ~~**B5**~~ | **BUILT 2026-09-16**, PR #B5PR — spine 2 |
+| 4 | **B6** | **NEXT — spine 3** |
 | — | **C2, A2** | verify on prod, then either nothing or minutes |
 | — | **A3, A4, A6, B4** | filler; A4 needs re-verifying first |
 | — | **B2, D1, D2** | memos; B2 waits on the toll-free number |
@@ -1024,6 +1031,7 @@ username — usernames are generated from first names.
 | 2026-08-07 | Initial version — from a live four-audience walkthrough of the running app. |
 | 2026-08-11 | Stale-doc sweep: flagged that this file has no status tracking and that B1 is superseded by `FIELD_OPS_SESSIONS.md` S2; corrected the Appendix A anchor citing the deleted `PlanEnforcementMixin`. No session content changed. |
 | 2026-09-07 | C1 deployed 00:59 UTC (`60b4563b`), verified live. |
+| 2026-09-16 | **B5 built** as PR #B5PR (claim per invoice, auto-created from a flagged job; expected/received/short derived; insurer payments through the existing Record Payment endpoint; close = write-off; `/owner/claims/`; aging-card lines; audit log gets its first writer). Next in order is B6. |
 | 2026-09-14 | **B3 deployed.** PR #253 merged 2026-09-12, on prod since 2026-09-14 15:11 UTC. B5 is the next session. |
 | 2026-09-08 | **B3 built** as PR #253 (quote → email → accept on link/portal → APPROVED jobs at the locked price; revise/expire/decline). Next in order is B5. |
 | 2026-09-08 | Fork signed by Drake in `PRODUCT_DIRECTION.md`; header and §1 updated; B3 moves to IN PROGRESS as its own session. |

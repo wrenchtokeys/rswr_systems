@@ -14,6 +14,49 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-09-16 — Insurance claims: what you billed, what came in, what is short (PR #B5PR)
+
+**Built 2026-09-16.** `IMPROVEMENT_SESSIONS.md` B5 — the second of the three spine features in
+`PRODUCT_DIRECTION.md`, Tier 1 of the insurance work (no EDI, no submission, no licence). Two
+migrations (`billing/0037`, `security/0003`), both additive.
+
+### Added
+- **An insurance claim per invoice** (`InsuranceClaim`, `apps/billing/claim_models.py`). When an
+  invoice is built from a job the technician marked "Insurance claim", the claim is created
+  with the insurer, claim number, authorization number and deductible copied from the job —
+  no second form. Any other invoice gets a one-tap "Track insurance claim" card on its page.
+- **The money is derived, never typed twice.** Expected from the insurer = the authorized amount
+  once the insurer names one, else the billed amount if the shop pinned one, else the invoice
+  total minus the deductible (which follows the invoice when lines are edited). Received = the
+  payments recorded *as insurer payments*. Short = the difference. The customer's deductible is
+  an ordinary payment and never counts as the insurer's.
+- **Status follows the money**: Submitted → Authorized (insurer named a figure) → Short-paid
+  (something came in, not enough) → Paid in full. Closed is the one human act — "stop chasing" —
+  and snapshots the short amount as written off so it stops counting as money owed. Reopen
+  derives the status again.
+- **Recording an insurer payment** is the existing Record Payment form with a "This payment is
+  from the insurer" checkbox (and a prefilled form on the claim page). Same endpoint, same
+  Stripe in-flight guard, same row lock. An insurer's check emails nobody — no customer
+  receipt, no owner notification; the audit log is the record.
+- **`/owner/claims/`** (owner/manager): Short-paid / Waiting on insurers / Received this month,
+  filter pills, and a claim page with the money line by line, the insurer's payments, the
+  customer's, edit, close and reopen. Linked from the Invoices page header.
+- **The "Owed to you" card** on Invoices now says how much of the outstanding total is
+  short-paid insurance claims and how much is still waiting on an insurer — counted
+  separately from unpaid invoices, never double-counted (they are part of the same total).
+  A claim the customer covered (the invoice is paid) is short on the claim page but not owed.
+  Invoice rows carry an "Insurer short $68.00" / "Insurer: submitted" line; an "Insurance"
+  pill filters to invoices with a claim.
+- **Audit logging.** `SecurityAuditLog` had no writer for months; `apps/security/audit.py`
+  is now the one, and every claim create/edit/payment/close/reopen writes a row with the
+  tenant, claim and invoice ids (five new event types).
+- `{% status_badge … kind='claim' %}`. Tests: `tests/test_claims.py` (24), in the guard set.
+
+### Decisions (recorded from the B5 spec's "decisions needed")
+- The claim hangs off the **invoice**, not the job — reconciliation is against money received.
+- The customer portal does **not** show claim status in this cut.
+- No submission path, no insurer formats, no EDI (Path B memos, gated on the interviews).
+
 ## 2026-09-08 — Quotes: price the work, customer accepts, jobs are created at that price (PR #253)
 
 **Built 2026-09-08, the day Drake signed the direction; merged 2026-09-12 (`e47cd18b`), deployed 2026-09-14 15:11 UTC.** `IMPROVEMENT_SESSIONS.md` B3 — the

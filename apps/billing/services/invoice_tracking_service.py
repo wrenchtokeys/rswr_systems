@@ -244,6 +244,15 @@ class InvoiceTrackingService:
                 f"{len(services)} line items, ${invoice.total}"
             )
 
+            # A job the technician flagged "Insurance claim" makes this
+            # invoice a claim to track (B5). Best-effort: a claim row must
+            # never block an invoice.
+            try:
+                from apps.billing.services.claim_service import ensure_claim_for_invoice
+                ensure_claim_for_invoice(invoice, services)
+            except Exception as e:  # pragma: no cover - defensive
+                logger.error(f"Claim tracking failed for {invoice_number}: {e}")
+
             return invoice
     
     def get_uninvoiced_repairs(self, customer, completed_only=True):
