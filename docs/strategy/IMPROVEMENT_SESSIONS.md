@@ -516,7 +516,7 @@ relevant); STOP is honored automatically; per-tenant usage is metered.
 
 **Goal:** Send a priced quote, get it approved, turn it into a job.
 **Size:** L · **Depends on:** —
-**Status:** **BUILT 2026-09-08 (PR #253)** — spine feature 1, built the day the fork was signed. `Quote` + `QuoteLineItem` in `apps/billing/quote_models.py`, lifecycle in `services/quote_service.py`, shop UI at `/quotes/`, public accept page `/quote/<id>/<token>/`, portal `/app/quotes/`. Every acceptance criterion below has a test in `tests/test_quotes.py`. Decisions taken: separate model; 30-day default expiry (per-tenant); acceptance creates the jobs (APPROVED, price locked via `cost_override`); supersede-chain revisions; no soft delete. Portal coverage added first as `tests/test_customer_portal_views.py`. Add customer-portal view tests before building on those views (the June plan's warning stands).
+**Status:** **DONE — PR #253 merged 2026-09-12 (`e47cd18b`), deployed 2026-09-14 15:11 UTC** — spine feature 1, built 2026-09-08, the day the fork was signed. `Quote` + `QuoteLineItem` in `apps/billing/quote_models.py`, lifecycle in `services/quote_service.py`, shop UI at `/quotes/`, public accept page `/quote/<id>/<token>/`, portal `/app/quotes/`. Every acceptance criterion below has a test in `tests/test_quotes.py`. Decisions taken: separate model; 30-day default expiry (per-tenant); acceptance creates the jobs (APPROVED, price locked via `cost_override`); supersede-chain revisions; no soft delete. Portal coverage added first as `tests/test_customer_portal_views.py`. Add customer-portal view tests before building on those views (the June plan's warning stands).
 
 **Why it matters.** Named as an adoption blocker in `PRODUCT_DIRECTION.md` §Phase B. Fleet
 procurement and every insurance-adjacent workflow require a formal estimate *before*
@@ -922,7 +922,7 @@ sessions, with the done ones struck.
 | Order | Session | Status 2026-09-02 |
 |---|---|---|
 | ~~1~~ | ~~**C1**~~ | **DONE 2026-09-06**, PR #250 deployed 2026-09-07 00:59 UTC |
-| 2 | **B3** | **BUILT 2026-09-08** (PR #253) — spine 1 |
+| ~~2~~ | ~~**B3**~~ | **DONE** — PR #253 merged 2026-09-12, deployed 2026-09-14 — spine 1 |
 | 3 | **B5** | **NEXT — spine 2** |
 | 4 | **B6** | NEXT — spine 3 |
 | — | **C2, A2** | verify on prod, then either nothing or minutes |
@@ -1024,6 +1024,7 @@ username — usernames are generated from first names.
 | 2026-08-07 | Initial version — from a live four-audience walkthrough of the running app. |
 | 2026-08-11 | Stale-doc sweep: flagged that this file has no status tracking and that B1 is superseded by `FIELD_OPS_SESSIONS.md` S2; corrected the Appendix A anchor citing the deleted `PlanEnforcementMixin`. No session content changed. |
 | 2026-09-07 | C1 deployed 00:59 UTC (`60b4563b`), verified live. |
+| 2026-09-14 | **B3 deployed.** PR #253 merged 2026-09-12, on prod since 2026-09-14 15:11 UTC. B5 is the next session. |
 | 2026-09-08 | **B3 built** as PR #253 (quote → email → accept on link/portal → APPROVED jobs at the locked price; revise/expire/decline). Next in order is B5. |
 | 2026-09-08 | Fork signed by Drake in `PRODUCT_DIRECTION.md`; header and §1 updated; B3 moves to IN PROGRESS as its own session. |
 | 2026-09-07 | C1 merged (`059fa77a`); status line and §2 row updated. Next session is B3, gated on the `PRODUCT_DIRECTION.md` sign-off line. |

@@ -1,14 +1,14 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: September 8, 2026 (direction signed off; B3 quotes built as PR #253, not yet merged).*
+*Last Updated: September 14, 2026 (B3 quotes merged 2026-09-12 as `e47cd18b` and deployed 2026-09-14 15:11 UTC; B5 is next).*
 
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
-> snapshot):** production runs `60b4563b`, deployed **2026-09-07 00:59 UTC** — everything
-> merged through #251 is live, including #250 (C1: real landing captures + founder note,
-> verified on the live page: trust bar gone, four WebPs 200). The media bucket's
-> `repair_photos/*` prefix has been private since 2026-09-06 22:04 UTC. Nothing is merged
-> and undeployed. `eb deploy` ships the current branch's HEAD — `git checkout main &&
+> snapshot):** production runs `e47cd18b`, deployed **2026-09-14 15:11 UTC** — everything
+> merged through #253 is live, including #253 (B3 quotes: `/quotes/`, the public accept
+> page, `/app/quotes/` in the portal; `billing/0036` + `technician_portal/0062` applied,
+> verified with `showmigrations` on the instance). The media bucket's `repair_photos/*`
+> prefix has been private since 2026-09-06 22:04 UTC. Nothing is merged and undeployed. `eb deploy` ships the current branch's HEAD — `git checkout main &&
 > git pull` first (or a `deploy-main` branch at `origin/main` when `main` is held by another
 > worktree).
 
