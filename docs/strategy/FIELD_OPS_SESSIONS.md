@@ -12,9 +12,9 @@ This file is the **work queue** for making field operations real: a technician f
 | Phase | Session | Size | Status |
 |-------|---------|------|--------|
 | N — The tech finds out | N1 · Assignment notifications that deliver | M | DONE (2026-08-12, PR #179) |
-| N — The tech finds out | N2 · Fix dead verification SMS + tech texts | S | TODO (prod effect blocked on N4 — Appendix A) |
+| N — The tech finds out | N2 · Fix dead verification SMS + tech texts | S | TODO — blocker changed 2026-09-16: no longer a carrier's clock, now the Path C `sms:` build (`docs/operations/SMS_REGISTRATION.md`) |
 | N — The tech finds out | N3 · Notification coverage audit | S | DONE + DEPLOYED (2026-08-24, **PR #204**, live 2026-08-24 22:47) — grew well past S; see Notes. **Two copy decisions still wait on Drake** (recorded 2026-09-02, see *Deliberately not done* under N3): split `repair_completed` into a customer body and an internal one; retire the `- Unit {{ unit_number }}` DB-held subjects |
-| N — The tech finds out | N4 · SMS opt-in compliance + registration v2 | S | **SUBMITTED 2026-08-31 — version 4 `REVIEWING`.** Card fixed (#205, deployed). v3 was denied 08-26 on business-email domain + a screenshot staged with the box ticked; v4 fixes both. Activation checklist in Appendix A |
+| N — The tech finds out | N4 · SMS opt-in compliance + registration | S | **CLOSED 2026-09-16 — answered, not approved.** v4 DENIED 09-02; four denials total. Root cause is structural (ISV brand ≠ message brand), so no v5. Opt-in work (#205) stands and is reused. See `docs/operations/SMS_REGISTRATION.md` |
 | S — Where and when | S1 · A real "booked time" | M | DONE (2026-08-15, **PR #188**) |
 | S — Where and when | S2 · Field dispatch (executes B1) | M | DONE (2026-08-15, PR #189) |
 | S — Where and when | S3 · Day / agenda view | M | DONE (2026-08-16, PR #190) |
@@ -87,7 +87,7 @@ What's left in the queue:
   **S13** (dashboard), **S14** (multi-tech). S13 is independent of S11/S12 and
   can be pulled forward any time; S14 must come last because it is the only one
   that depends on the primitive being proven.
-- **N2** is parked until the toll-free number clears review (Appendix A).
+- **N2** is parked on the Path C build, not on carrier review — the toll-free number is a dead end (`docs/operations/SMS_REGISTRATION.md`).
 - **P1** waits on Mygrant (steps 1–2), **P2** on a NAGS licensing decision,
   **S6** on demand that S3/S5/S8 have to prove first.
 - **S6 item 4 (technician availability) is done** — it graduated into S8 and
@@ -146,7 +146,7 @@ What works: recipient resolution (`notification_service.py:340-379` falls throug
 
 ### SMS status
 
-RS Systems' toll-free number `+18663115189` is **PENDING**. Three registration versions were denied (opt-in language, then a missing-field auto-deny, then business-email domain + a "pre-selected" checkbox); **version 4 is `REVIEWING` as of 2026-08-31** — see **Appendix A** for each reason and its fix. The first denial was product work; the rest were submission hygiene. All current SMS senders are customer-facing (invoice texts, review texts); nothing texts a tech. Prod is inert rather than broken — `SMS_ENABLED=true` but `SMS_ORIGINATION_IDENTITY` is unset, and `SMSService.is_enabled()` requires both.
+RS Systems' toll-free number `+18663115189` is **PENDING and will stay that way** — **all four** registration versions were denied (opt-in language; a missing-field auto-deny; business-email domain + a "pre-selected" checkbox; and finally use-case + opt-in *mismatch*). The first three were fixable wording; the fourth is structural — RS Systems registers as one brand while every message is branded as a client shop. **No version 5.** Full analysis and the replacement plan: **`docs/operations/SMS_REGISTRATION.md`**. All current SMS senders are customer-facing (invoice texts, review texts); nothing texts a tech. Prod is inert rather than broken — `SMS_ENABLED=true` but `SMS_ORIGINATION_IDENTITY` is unset, and `SMSService.is_enabled()` requires both.
 
 ### Scheduling — planned vs. built
 
@@ -551,7 +551,14 @@ smoke-set errors this document told every session to run are gone:
 notification/review tests and 89 approval tests pass; the only failures in the
 sweep (`test_code234` ×2, `test_code132`) are identical on `main`.
 
-## N4 · SMS opt-in compliance + registration v2 — CODE DONE (2026-08-12)
+## N4 · SMS opt-in compliance + registration — CLOSED 2026-09-16 (answered, not approved)
+
+> **The registration goal of this session is dead.** Four versions, four denials; the fourth
+> (2026-09-02) was a *structural* mismatch — RS Systems registers as one brand, every message
+> is branded as a client shop — which no wording fixes. **Do not submit a version 5.** The
+> consent product work below shipped, was correct, and is reused by the replacement plan in
+> **`docs/operations/SMS_REGISTRATION.md`**. Everything in this section that describes
+> *submitting a registration* is superseded by that doc.
 
 | Field | Value |
 |---|---|
@@ -603,11 +610,13 @@ sweep (`test_code234` ×2, `test_code132`) are identical on `main`.
   Also fixed a pre-existing N1-introduced failure in `test_invoice_send_polish` —
   creating a Replacement now emails the tech, so `mail.outbox[0]` was the assignment
   email, not the invoice email. Any outbox-indexing test that creates jobs is suspect now.
-- **DONE 2026-08-31 — version 4 submitted, `REVIEWING`.** v3 was denied 08-26 (business-email
-  domain + a screenshot staged with the box ticked). The steps below are kept as the recipe;
-  what actually happened across all four versions, including the two API traps that auto-denied
-  version 2, is in Appendix A. Next action is the activation checklist, when it flips COMPLETE.
-- **What remains is Drake's (after this PR deploys):**
+- **CLOSED 2026-09-16 — version 4 DENIED 09-02, and this session is where that was found.**
+  The opt-in product work in this session was correct and is kept: the first-party consent card,
+  the disclosure copy, and #205's no-phone-on-file fix all stand and are reused by Path C. What
+  it could not fix is the registration itself — see **`docs/operations/SMS_REGISTRATION.md`** for
+  why a fifth version fails the same way, and what replaces it. **The Drake steps below are
+  obsolete; do not run them.**
+- ~~**What remains is Drake's (after this PR deploys):**~~ *(superseded — kept only as the submission recipe should Path A ever be taken for a specific shop)*
   1. Pick a test customer **not opted in** in the live shop, open one of their invoice
      public links, screenshot the "Get text updates" card (checkbox + disclosure visible,
      no real PII). Either variant is screenshot-worthy; the number-entry one arguably
@@ -620,7 +629,7 @@ sweep (`test_code234` ×2, `test_code132`) are identical on `main`.
      `aws pinpoint-sms-voice-v2 put-registration-field-value` for the changed fields, then
      `aws pinpoint-sms-voice-v2 submit-registration-version --registration-id registration-3c4aceac54424845b6d540e818f2bddb`
      (us-east-1). Verify with `describe-registration-versions` → version 2 `REVIEWING`.
-  4. When it flips COMPLETE: the activation checklist at the bottom of Appendix A.
+  4. When it flips COMPLETE: the activation checklist in `docs/operations/SMS_REGISTRATION.md` §8.
 
 ---
 
@@ -1857,7 +1866,7 @@ supplier, a licensing decision, and demand.
 | Item | Status | Gate |
 |---|---|---|
 | **N3** · Notification coverage audit | Done and deployed (PR #204, live 2026-08-24) | — |
-| **N2** · Tech assignment texts | Parked | The toll-free number clearing registration — **version 4 submitted 2026-08-31, `REVIEWING`** (Appendix A). A carrier's clock, not ours — but check the *version* status, not the registration's: v3 sat DENIED for five days looking like it was still in review. |
+| **N2** · Tech assignment texts | Parked | **Not a carrier's clock after all.** v4 DENIED 2026-09-02 (found 09-16); four denials, root cause structural. Unblocked by building Path C (`sms:` hand-off to the shop's own phone), not by waiting — `docs/operations/SMS_REGISTRATION.md`. |
 | **P1** · Mygrant quotes + ordering | Steps 3–5 built and dark | Mygrant enabling API onboarding on `C027180-001`. Escalation path is in P1's Notes. |
 | **P2** · Vehicle→NAGS lookup | Backlog | A licensing decision with Mitchell (Appendix B). |
 | **S6** · Routing / ETA / PTO / self-service rescheduling | Backlog by decision | Demand. S3/S5/S8 exist now precisely so a shop can prove it. |
@@ -1906,147 +1915,23 @@ blocks a write; all of them are called once per group from
 
 ---
 
-## Appendix A — SMS toll-free number status + activation checklist
+## Appendix A — SMS toll-free status → moved
 
-Checked live 2026-08-31 (`aws pinpoint-sms-voice-v2`, us-east-1, account tier PRODUCTION):
+**This appendix is now a pointer. The canonical doc is
+[`docs/operations/SMS_REGISTRATION.md`](../operations/SMS_REGISTRATION.md).**
+Status, denial history, root-cause analysis, the path decision, every API trap and the
+activation checklist live there. Do not restate a status here — that is how this appendix
+came to claim "version 4 REVIEWING" for the fourteen days after it was denied.
 
-| Number | Status | Registration |
-|---|---|---|
-| `+18663115189` (RS Systems) | **PENDING** | **`REVIEWING` — version 4 submitted 2026-08-31** (v1/v2/v3 all denied — see below) |
-| `+18559394817` (Rockstar shop, older) | ACTIVE | COMPLETE |
+**Headline, 2026-09-16:** `+18663115189` has been denied **four times** and the root cause is
+structural, not wording — RS Systems registers as one brand but every message is branded as a
+client shop, which a single-brand toll-free registration cannot describe. **Do not submit a
+version 5.** The decision is to hand the text to the shop's own phone by `sms:` deep link
+(Path C), with per-shop registration (Path A) as an opt-in upgrade.
 
-Registration status is `REQUIRES_UPDATES` whenever the newest version is denied — that is the
-flag meaning *"your move"*, not *"we are still looking"*. Check the **version**, not the
-registration: v3 sat denied for five days while the registration looked merely unfinished.
+**What this means for N2 and N4:** N4 is closed — not approved, but answered. N2's blocker is no
+longer "a carrier's clock"; it is the Path C build.
 
-| Version | Submitted | Outcome |
-|---|---|---|
-| 1 | 2026-08-07 | DENIED 08-11 — Unclear Opt-in Language |
-| 2 | 2026-08-25 | DENIED in 3s — Missing required field (empty-draft trap) |
-| 3 | 2026-08-25 | DENIED 08-26 — Unofficial Business Email + Pre-selected Opt-in |
-| 4 | 2026-08-31 | `REVIEWING` |
-
-```bash
-aws pinpoint-sms-voice-v2 describe-registrations --region us-east-1 \
-  --query 'Registrations[].[RegistrationType,RegistrationStatus]'
-# the denial reason lives on the VERSION, not the registration:
-aws pinpoint-sms-voice-v2 describe-registration-versions --region us-east-1 \
-  --registration-id registration-3c4aceac54424845b6d540e818f2bddb \
-  --query 'RegistrationVersions[].[VersionNumber,RegistrationVersionStatus,DeniedReasons]'
-```
-
-### Why it was denied — and why the fix is product work
-
-> **Unclear Opt-in Language** — *"The language used in your opt-in process is unclear or insufficient to obtain proper consent. Opt-in language must explicitly state message content frequency and that consent is for SMS messages."*
-
-The submitted `messagingUseCase.optInImage` documents **third-party** consent: the shop-side
-checkbox at `templates/technician_portal/customer_form.html:121`, whose entire label is
-*"OK to text this customer (they've agreed to receive service texts)."* At the point of consent
-there is no message-type list, no frequency, no msg&data-rates line, and no STOP/HELP.
-
-All of that language **does** exist — on `/sms/` (`templates/saas/sms_program.html:15-50`), which
-is not the screen in the screenshot. The reviewer sees a shop attesting on a customer's behalf.
-
-**Resubmission requires, in order:**
-1. Put compliant language beside the checkbox itself: message types (invoice + review texts),
-   frequency ("varies; typically 1–2 per completed job"), "Msg & data rates may apply",
-   "Reply STOP to opt out, HELP for help", and a link to `/sms/`.
-2. Preferably add a **customer-facing self-opt-in** (customer-portal profile / public invoice page)
-   so consent is first-party, not attested. Carriers want the consumer's own screen.
-3. Re-screenshot that surface, update `messagingUseCase.optInDescription` to describe it, and
-   submit registration **version 2** (`put-registration-field-value` → `submit-registration-version`,
-   or the console form — Drake runs paid AWS actions in his own terminal).
-
-**Update 2026-08-12 (N4):** steps 1 and 2 are built — compliant checkbox disclosure on both
-shop-side forms AND a first-party opt-in on the public invoice page. Step 3 (screenshot from
-live prod + submit v2) is Drake's, after the N4 PR deploys — exact checklist in N4's Notes.
-
-### Version 3 — DENIED 2026-08-26
-
-Screenshot taken from the live card on prod (INV-1017's public link, a number typed into the
-field, **box checked**, the STOP/HELP + Program terms line in frame), and `optInDescription`
-rewritten to lead with the first-party path and quote the card's own words (490/500 chars).
-Version 1's shop-attested description is gone.
-
-It came back after ~30 hours of human review with **two** reasons, both self-inflicted:
-
-> **Unofficial Business Email** — *"The provided business email address must use an official
-> company domain that matches your business name or website."*
-
-`contactInfo.supportEmail` was `drake@rockstarwindshield.repair` — inherited by copy from the
-*other*, approved registration (`registration-67ea31aa…`, Rockstar Windshield Repair), where
-that domain legitimately matched its own website. Under company name **RS Systems** / website
-**rssystems.io** it matches neither. The resubmit script now copies a base version *and asserts
-the support email's domain equals `companyInfo.website`* before it will submit.
-
-> **Pre-selected Opt-in** — *"Your opt-in process includes pre-selected checkboxes... Opt-in
-> mechanisms must require affirmative action from the consumer (unchecked by default)."*
-
-**The shipping UI was never pre-checked.** `templates/billing/public_invoice_view.html:182` is
-`<input type="checkbox" name="sms_agree" value="1" required>` — no `checked` attribute, and
-`required`, so the form refuses to submit until the customer ticks it. Two things told the
-reviewer otherwise: the screenshot was deliberately captured **with the box ticked** (see the
-paragraph above — it was staged that way to show a filled-in form), and the description called
-it *"a checked box"*, meaning *"a box they check"*. A compliance reviewer reads both as
-pre-selected. **Screenshot the default state, not a filled-in one.**
-
-### Version 4 submitted 2026-08-31 — `REVIEWING`
-
-Fixes exactly those two, nothing else — v3's other 17 fields are copied forward verbatim
-(`BASE_VERSION = 3` in the script), since none of them were ever objected to.
-
-- `contactInfo.supportEmail` → **`support@rssystems.io`** (matches `companyInfo.website`).
-  **Verified 2026-09-01 via the ImprovMX API**: the alias exists and forwards to
-  wdrakeduncan@gmail.com, and the domain is `active`/not banned — so if AWS writes to it,
-  Drake reads it. (rssystems.io also has a catch-all, which is why an SMTP probe could not
-  have answered this — see `docs/operations/SES_OPERATIONS.md`.)
-- `optInDescription` rewritten to state the box is "EMPTY AND UNCHECKED by default", never
-  pre-selected, requires the customer's own click, and is HTML `required` (1242/1500 chars).
-- `optInImage` re-shot showing the card in its **default state, box unchecked**, with the
-  mobile-number field, the full consent label, and the STOP/HELP + Program terms line in frame.
-
-The screenshot is now generated from the real template rather than staged on prod — render
-`billing/public_invoice_view.html` standalone (it carries its own inline `<style>` and extends
-nothing, so a standalone render is pixel-faithful), then screenshot headless:
-
-```bash
-# render with sms_optin_offered=True, sms_opted_in=False, sms_optin_phone_last4=None
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --disable-gpu \
-  --hide-scrollbars --force-device-scale-factor=2 --window-size=780,900 \
-  --screenshot=optin.png file://$PWD/optin_page.html
-```
-
-Assert `checked` does not appear after `name="sms_agree"` in the rendered HTML before shipping
-the image — that assertion is the whole point, and it is cheaper than 30 hours of review.
-
-**Two API traps, both paid for:**
-
-1. **`create-registration-version` opens an EMPTY draft.** It inherits none of the previous
-   version's field values. Submitting straight after it produced an *automated* denial —
-   version 2, "Missing required field", back within seconds, no human involved. Every
-   required field must be re-`put` onto the new version first. Working script:
-   `scripts/submit_tollfree_registration.py` (copies a base version wholesale, applies explicit
-   overrides, and refuses to submit if any REQUIRED path is still empty). Note the corollary
-   v3 paid for: **copying a base version also copies whatever was wrong with it** — every
-   override has to be deliberate.
-2. **Field values are locked while the last version is denied.** `put-registration-field-value`
-   returns `ConflictException EDIT_REGISTRATION_FIELD_VALUES_NOT_ALLOWED` until a new
-   version is opened.
-
-A denied version isn't fatal — versions accumulate (1–3 DENIED, 4 REVIEWING) and review runs
-on the newest. But each *human* cycle costs days, so verify the whole field set before
-submitting, not after — and verify the *content* of inherited fields, not just their presence.
-The v2 guard only checked that required paths were non-empty; `supportEmail` was populated the
-whole time, just with the wrong company's domain.
-
-Until it clears, the $2/mo lease is running on a number that cannot send.
-
-**When it eventually flips to COMPLETE:**
-1. `eb setenv SMS_ORIGINATION_IDENTITY=+18663115189` (against `rs-systems-production`; remember `eb setenv` triggers the collectstatic confighooks — this is fine, just expect a deploy cycle).
-2. Send a test SMS to a real number (invoice-text path is the easiest end-to-end check).
-3. N2 becomes fully unblocked (tech-facing texts).
-
----
 
 ## Appendix B — Parts sourcing investigation: NAGS lookup + Mygrant quotes/ordering
 
@@ -2191,3 +2076,4 @@ calling two endpoints. S14 extends that to assign + move.
 | 2026-08-25 | **Phase S reopened by first real use — S9–S14 specced (doc-only session).** Drake took a customer call and booked it through RS Systems instead of a note in his phone; the machinery held and the surface did not. Recorded the diagnosis in a new §0 section (*"Scheduling UX — what first real use found"*) so no future session re-derives it: **there is no reschedule path in the product at all** (no endpoint, view or service; a booked row renders only the technician picker, and the only non-form writer refuses cross-day, cross-tech and batches), **swap confirms itself with a page reload** so every refusal is invisible, **a booked REQUESTED job vanishes from both lists** (`DAY_STATUSES` excludes REQUESTED while `BOOKABLE_STATUSES` includes it), and **`base_app.html:263-285` pre-fills every empty `datetime-local` on every page**, which makes `job_form.html`'s "leave blank to keep this job unscheduled" impossible to honour. Six sessions queued: S9 prefill fix (first, because everything after it moves `scheduled_for`), S10 quick-add from the schedule (the one Drake asked for — extracts `job_create`'s inline logic into `services/quick_job.py` rather than duplicating it), S11 the missing `move` primitive + inline time/date edit, S12 the ordered day list with drag-to-move, S13 dashboard schedule card, S14 multi-tech moves. **Decisions taken with Drake:** quick-add from the schedule page; ordered day list, not a calendar grid; a drop slots into the gap and keeps its own length; **swap is kept and improved, not retired**; moving a job off a day means moving it *straight onto another day*, with no unscheduled limbo. Added **Appendix C — Multi-technician** because Drake is a one-tech shop and S12's simplifications are exactly where the multi-tech affordances would quietly die. Two traps added. |
 | 2026-08-31 | **Toll-free registration version 3 was DENIED 2026-08-26** — found five days later, because `RegistrationStatus` read `REQUIRES_UPDATES` while the denial lived on the version. Check the *version*, not the registration. Two reasons, both self-inflicted: `contactInfo.supportEmail` was still `drake@rockstarwindshield.repair`, copied wholesale from the approved *Rockstar Windshield Repair* registration where that domain legitimately matched its own website — under RS Systems / rssystems.io it matches neither; and the opt-in read as pre-selected, because the v3 screenshot was deliberately staged **with the box ticked** and the description called it "a checked box" (meaning *a box they check*), though the shipping input at `public_invoice_view.html:182` has never carried `checked` and is `required`. **Version 4 SUBMITTED, `REVIEWING`**: `support@rssystems.io` (matches the website; the alias was verified 2026-09-01 via the ImprovMX API — it exists and forwards to Drake's own inbox), an `optInDescription` stating the box is unchecked by default and requires the customer's own click, and a screenshot rendered from the real template in its **default** state. `scripts/submit_tollfree_registration.py` rewritten: base version is now explicit, every override deliberate, and it asserts the support email's domain equals `companyInfo.website` before submitting — copying a base version copies its mistakes too. |
 | 2026-09-02 | **Status refresh from the direction review.** S9 (#213) and S10 (#214) had read "BUILT on branch" since 2026-08-25; both merged 2026-08-26 and rode the 2026-08-27 deploy (ancestry-checked against `d88f70d5`). N3's two open copy decisions — splitting `repair_completed` by audience and retiring the `- Unit {{ unit_number }}` subjects — were only findable in prose; they are now on N3's index row, waiting on Drake. S11–S14 stay open but sequence after the spine features in `PRODUCT_DIRECTION.md`. No session content changed. |
+| 2026-09-16 | **Toll-free registration version 4 was DENIED 2026-09-02 — found 14 days later, the second time in a row a denial hid behind `REQUIRES_UPDATES`.** Reasons: *Message Use Case Mismatch* and *Opt-in Workflow Mismatch*. Unlike versions 1–3 this one is **not fixable by editing the submission**: the registrant brand is RS Systems while both message samples are branded as a client shop ("Hensley Auto Glass"), and toll-free verification registers exactly one business — carriers require the verification and the opt-in to reflect the **end business**, not the software vendor (Twilio rejection 30506). The opt-in story is also circular: consent is described as happening on the invoice page, but sample 1 *is* the text that delivers the invoice link. Rockstar was approved first try because there registrant brand == message brand. **Four denials were four attempts to word around an architecture problem; the decision is to stop.** Also found while checking: the toll-free schema has since made `messagingUseCase.privacyPolicyUrl` and `termsAndConditionsUrl` REQUIRED, which v4 never submitted — a copy-forward v5 would auto-deny on the empty-draft trap all over again. And **AWS's 10DLC brand registration has no `SOLE_PROPRIETOR` legal type and requires `taxId`**, so the textbook ISV path is unavailable to exactly the shops this product sells to. Decision: **Path C** — hand the text to the shop's own phone by `sms:` deep link (no registration, no lease, works this week) — with **Path A**, per-shop registration under the shop's own brand, as an opt-in upgrade for shops that have a domain. Release `+18663115189`. Appendix A demoted to a pointer; the canonical doc is now **`docs/operations/SMS_REGISTRATION.md`**, and N4 is closed. |

@@ -27,7 +27,7 @@
 
 ### Aug–Sep 2026 — see `CHANGELOG.md` for the full record
 Condensed, because these closed out items this file used to list as pending:
-- **Technician assignment notifications** (FIELD_OPS N1 #179, N3 #204) — an assigned tech is told, and six lifecycle emails that had never sent now send. Texts (N2) still wait on the toll-free number (v4 submitted 2026-08-31).
+- **Technician assignment notifications** (FIELD_OPS N1 #179, N3 #204) — an assigned tech is told, and six lifecycle emails that had never sent now send. Texts (N2) are **not** waiting on the toll-free number any more — that number was denied four times and abandoned 2026-09-16 (`docs/operations/SMS_REGISTRATION.md`).
 - **Scheduling & dispatch, first cut** (FIELD_OPS S1–S5, S7–S10; PRs #188–#214) — `scheduled_for`, day view, dispatch board, working hours, swap, quick-add from the schedule, customer requests carrying when + where.
 - **Job queue** (#220/#221) — "Manual" assignment finally means unassigned; the Unassigned queue + manager alerts.
 - **UI "magic" S11–S18a** (#209/#210/#223/#229/#233/#235/#240) — skeletons + optimistic rows, auth pages, the `{% icon %}` tag and a Font-Awesome-free chrome, Tailwind source out of `static/`, landing reveal bug, report-only CSP.
@@ -38,7 +38,7 @@ Condensed, because these closed out items this file used to list as pending:
 - **Billing & subscription hardening** (PRs #166/#171/#172/#173) — EB cron had never executed (four silent bugs), Stripe Basil payload shapes, webhook idempotency + reconcile sweeps, `past_due` read-only at 14 days, platform fee resolution, real plan limits.
 - **Payment reliability** (PRs #148/#149) — webhook 500 hotfix, manual-payment guard, reconcile cron, verified payment-complete landing.
 - **UI "magic" overhaul S1–S10** (PRs #160/#162/#163/#164/#167/#168/#169) — self-hosted assets, design tokens, brand palette, dashboard/jobs/job-form redesigns, motion, view transitions.
-- **SMS** (PRs #156/#158/#159) — AWS End User Messaging transport, invoice texts, review-request texts. TFN registration pending (see `docs/strategy/FIELD_OPS_SESSIONS.md` Appendix A).
+- **SMS** (PRs #156/#158/#159) — AWS End User Messaging transport, invoice texts, review-request texts. **Deployed but permanently dark on this transport:** the toll-free registration was denied four times on a structural ISV-brand mismatch and abandoned 2026-09-16. Replacement plan in `docs/operations/SMS_REGISTRATION.md`.
 - **Launch readiness Phases 1–3** (PRs #143/#144/#146) — funnel/plans, first-run experience, support contact form.
 - **Loyalty** (PRs #139/#140/#142) — customer-anchored balances, owner reward management, opt-in auto-apply.
 - **Soft delete + 30-day restore** (PR #130), **tax overhaul + fleet/individual** (PRs #127/#128), **tenant branding** (PRs #116/#165).
@@ -164,7 +164,7 @@ Technician assignment notifications — N1 #179 and N3 #204, deployed 2026-08-24
 ### SMS — remaining coverage
 - *Shipped* on AWS End User Messaging (not Twilio): invoice texts and review-request texts.
 - *Remaining:* repair approval and payment-confirmed texts; tech assignment texts (session N2).
-- Blocked in prod until the toll-free number clears registration — see `FIELD_OPS_SESSIONS.md` Appendix A.
+- *Transport decision, 2026-09-16:* the shared toll-free number is dead (four denials, structural). The plan is an `sms:` hand-off to the shop's own phone, with per-shop registration as an opt-in upgrade — **`docs/operations/SMS_REGISTRATION.md`**.
 
 ### CI/CD Pipeline
 - GitHub Actions: run test suite on every PR to `main`

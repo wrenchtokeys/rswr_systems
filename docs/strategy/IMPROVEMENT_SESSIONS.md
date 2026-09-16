@@ -458,7 +458,7 @@ job form lets a tech set a service address different from the billing address.
 
 **Goal:** The shop can text a customer from RS Systems, and the reply comes back into it.
 **Size:** L · **Depends on:** B1 (nice-to-have, not hard)
-**Status:** TODO — memo first (2026-09-02). Transport exists (AWS End User Messaging, invoice + review texts) but is **dark until the toll-free number clears** — registration v4 submitted 2026-08-31, reviewing (`FIELD_OPS_SESSIONS.md` N4). Inbound is still nothing.
+**Status:** TODO — memo first (2026-09-02). Transport exists (AWS End User Messaging, invoice + review texts) but is **dark, and the shared toll-free number is not coming** — denied four times, abandoned 2026-09-16 on a structural ISV-brand mismatch (**`docs/operations/SMS_REGISTRATION.md`**). Any two-way plan has to assume the shop's own number, not ours. Inbound is still nothing.
 
 **Why it matters.** Glass customers text. Right now every real conversation happens on a
 personal phone, invisible to the shop owner and unrecorded against the job. "Marcus is on his
