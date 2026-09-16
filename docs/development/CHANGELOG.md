@@ -242,6 +242,44 @@ below (#238 through #243); none carries a migration.
 
 ---
 
+## 2026-09-16 — Toll-free registration abandoned: the denial is structural
+
+### Changed
+- **`+18663115189` is dead and should be released.** Version 4 was **DENIED
+  2026-09-02** (found 09-16) for *Message Use Case Mismatch* + *Opt-in Workflow
+  Mismatch* — four versions, four denials. The first three were wording and were
+  fixed correctly. The fourth is not a wording problem: **the registrant brand is
+  RS Systems while every message sample is branded as a client shop**, and
+  toll-free verification registers exactly one business. Carriers require the
+  verification and opt-in to reflect the *end business*, not the ISV. No version 5.
+- **Decision — two paths replace it.** *Path C (default):* compose the message and
+  hand it to the shop's own phone via an `sms:` deep link — no registration, no
+  carrier review, no lease, and the sender is a number the customer recognises.
+  *Path A (opt-in upgrade):* one number per shop registered under **that shop's**
+  brand, for shops with their own domain that want unattended sending.
+- Nothing already built is wasted: composition, consent capture, opt-in surfaces
+  and shop toggles (#156/#158/#159/#205) all stand under Path C. Only
+  `SMSService`'s transport call changes.
+
+### Verified against AWS (not docs)
+- **AWS 10DLC brand registration offers no `SOLE_PROPRIETOR` legal type and
+  requires `taxId`** — the textbook ISV path is unavailable to the shops this
+  product sells to.
+- **The toll-free schema tightened after v4 was submitted:**
+  `messagingUseCase.privacyPolicyUrl` and `termsAndConditionsUrl` are now REQUIRED
+  and v4 carries neither. A copy-forward v5 would auto-deny.
+
+### Docs
+- New canonical doc **`docs/operations/SMS_REGISTRATION.md`** — status, all four
+  denials, root cause with sources, the three paths with verified constraints, the
+  API traps and the activation checklist.
+- `FIELD_OPS_SESSIONS.md` Appendix A demoted to a pointer (it had claimed "version 4
+  REVIEWING" for the fourteen days after it was denied); **N4 closed**; N2's blocker
+  restated as the Path C build rather than a carrier's clock. ROADMAP,
+  PRODUCT_DIRECTION, IMPROVEMENT_SESSIONS and CLAUDE.md corrected.
+
+---
+
 ## 2026-09-01 — Toll-free registration v4 submitted (PR #239)
 
 ### Fixed
