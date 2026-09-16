@@ -1,6 +1,6 @@
 # RS Systems — Product Direction (September 2026)
 
-**Last updated:** 2026-09-16 (B5 — Tier 1 insurance claim tracking — built as PR #B5PR; B3 is on prod since 2026-09-14; B6 is next)
+**Last updated:** 2026-09-16 (B5 — Tier 1 insurance claim tracking — built as PR #255; B3 is on prod since 2026-09-14; B6 is next)
 **Status:** Path A with a B-ready spine — **decided. Signed off by Drake 2026-09-08** under
 §The decision. Every session plans against it; changing it means editing that section, not
 arguing with it in a PR.
@@ -91,7 +91,7 @@ corrects.
    (Drake's call, separate session).
 5. **The three spine features, one session each** — **unblocked 2026-09-08** when the
    sign-off line was filled. Order is B3 (quote → job, **PR #253 merged 2026-09-12, deployed 2026-09-14**), then
-   B5 (Tier 1 claim tracking, **built 2026-09-16, PR #B5PR**), then B6 (price book, **next**). Nothing else in this list is a session. One owner
+   B5 (Tier 1 claim tracking, **built 2026-09-16, PR #255**), then B6 (price book, **next**). Nothing else in this list is a session. One owner
    task sits beside it: read the live landing copy once (the switching section promises
    "send your customer list through the contact form" — a manual import by Drake).
 6. **Go-to-market, which no code moves**: three shops that are not family on the product,
@@ -119,7 +119,7 @@ Not features shipped. These are the only numbers that say the direction is worki
 | Date | Change |
 |---|---|
 | 2026-06-12 | Initial version — post-stabilization direction for Q3 2026 (90-day plan: growth quick wins → adoption gaps → engagement depth). |
-| 2026-09-16 | **B5 built** (PR #B5PR): a job marked "Insurance claim" makes its invoice a tracked claim; the owner records what the insurer actually sent and the claim reads short, paid or closed; the "Owed to you" card counts short-paid claims and claims waiting on an insurer separately. Spine feature 2 is done; B6 (price book) is the head of the queue. |
+| 2026-09-16 | **B5 built** (PR #255): a job marked "Insurance claim" makes its invoice a tracked claim; the owner records what the insurer actually sent and the claim reads short, paid or closed; the "Owed to you" card counts short-paid claims and claims waiting on an insurer separately. Spine feature 2 is done; B6 (price book) is the head of the queue. |
 | 2026-09-14 | **B3 on prod.** PR #253 merged 2026-09-12 (`e47cd18b`), deployed 2026-09-14 15:11 UTC and verified (health green, `/quotes/` and the public quote route answer, both quote migrations applied). Spine feature 1 is done; B5 (Tier 1 claim tracking) is the head of the queue. |
 | 2026-09-08 | **B3 built** (PR #253): a shop quotes the work, the customer accepts by emailed link or in the portal, the jobs are created approved at the locked price. First spine feature done the day the direction was signed; B5 is next. |
 | 2026-09-08 | **Drake signed §The decision** (Path A with a B-ready spine). Step 5 is unblocked; B3 (quotes) starts the same day as its own session and PR. |

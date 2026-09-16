@@ -14,7 +14,7 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
-## 2026-09-16 — Insurance claims: what you billed, what came in, what is short (PR #B5PR)
+## 2026-09-16 — Insurance claims: what you billed, what came in, what is short (PR #255)
 
 **Built 2026-09-16.** `IMPROVEMENT_SESSIONS.md` B5 — the second of the three spine features in
 `PRODUCT_DIRECTION.md`, Tier 1 of the insurance work (no EDI, no submission, no licence). Two

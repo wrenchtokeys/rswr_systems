@@ -1,7 +1,7 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: September 16, 2026 (B5 insurance claim tracking built as PR #B5PR, not yet merged; B3 quotes on prod since 2026-09-14 as `e47cd18b`; B6 is next).*
+*Last Updated: September 16, 2026 (B5 insurance claim tracking built as PR #255, not yet merged; B3 quotes on prod since 2026-09-14 as `e47cd18b`; B6 is next).*
 
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
 > snapshot):** production runs `e47cd18b`, deployed **2026-09-14 15:11 UTC** — everything
@@ -119,7 +119,7 @@ Technician assignment notifications — N1 #179 and N3 #204, deployed 2026-08-24
 
 ### The spine — quotes, claim tracking, price book
 - The three things a medium shop asks for in its first demo that need no NAGS licence and no EDI. One session each, after the fork in `PRODUCT_DIRECTION.md` carries Drake's name.
-- **Quote → job** (B3, on prod), **Tier 1 insurance claim tracking with short-payment reconciliation** (B5, PR #B5PR), **shop-owned price book seeded from history** (B6, next) — all in [`../strategy/IMPROVEMENT_SESSIONS.md`](/docs/strategy/IMPROVEMENT_SESSIONS.md)
+- **Quote → job** (B3, on prod), **Tier 1 insurance claim tracking with short-payment reconciliation** (B5, PR #255), **shop-owned price book seeded from history** (B6, next) — all in [`../strategy/IMPROVEMENT_SESSIONS.md`](/docs/strategy/IMPROVEMENT_SESSIONS.md)
 
 ### Scheduling UX (second cut)
 - *Shipped:* booked time, day view, dispatch board, working hours, swap, quick-add (S1–S10).
