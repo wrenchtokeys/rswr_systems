@@ -1,7 +1,7 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: September 16, 2026 (B5 insurance claim tracking built as PR #255, not yet merged; B3 quotes on prod since 2026-09-14 as `e47cd18b`; B6 is next).*
+*Last Updated: September 16, 2026 (B6 price book built on `feat/b6-price-book` and B5 insurance claim tracking built as PR #255 — neither merged; B3 quotes on prod since 2026-09-14 as `e47cd18b`; all three spine features are built).*
 
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
 > snapshot):** production runs `e47cd18b`, deployed **2026-09-14 15:11 UTC** — everything

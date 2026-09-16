@@ -6,7 +6,7 @@ Author: Amelia (Clawdbot AI)
 
 from django.urls import path
 from . import views
-from . import claim_views, quote_views
+from . import claim_views, price_book_views, quote_views
 
 urlpatterns = [
     # Subscription blocked (role-aware)
@@ -83,6 +83,12 @@ urlpatterns = [
     path('owner/claims/<int:claim_id>/close/', claim_views.claim_close, name='claim_close'),
     path('owner/claims/<int:claim_id>/reopen/', claim_views.claim_reopen, name='claim_reopen'),
     path('owner/invoices/<int:invoice_id>/claim/new/', claim_views.claim_create, name='claim_create'),
+    # Price book (B6) — owner/manager. Vehicle + glass → what this shop charges.
+    path('owner/price-book/', price_book_views.price_book_list, name='price_book_list'),
+    path('owner/price-book/new/', price_book_views.price_book_new, name='price_book_new'),
+    path('owner/price-book/rebuild/', price_book_views.price_book_rebuild, name='price_book_rebuild'),
+    path('owner/price-book/<int:entry_id>/edit/', price_book_views.price_book_edit, name='price_book_edit'),
+    path('owner/price-book/<int:entry_id>/delete/', price_book_views.price_book_delete, name='price_book_delete'),
     path('owner/invoices/<int:invoice_id>/', views.owner_invoice_detail, name='owner_invoice_detail'),
     path('owner/invoices/<int:invoice_id>/record-payment/', views.owner_record_payment, name='owner_record_payment'),
     path('owner/invoices/bulk/', views.owner_invoice_bulk_action, name='owner_invoice_bulk_action'),

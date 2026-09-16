@@ -326,7 +326,9 @@ class ReplacementForm(forms.ModelForm):
     class Meta:
         model = Replacement
         fields = [
-            'customer', 'technician', 'unit_number', 'scheduled_for',
+            'customer', 'technician', 'unit_number',
+            'vehicle_year', 'vehicle_make', 'vehicle_model',
+            'scheduled_for',
             'service_address', 'service_city', 'service_state', 'service_zip',
             'glass_position', 'glass_type', 'nags_number',
             'parts_cost', 'labor_cost',
@@ -351,6 +353,20 @@ class ReplacementForm(forms.ModelForm):
             'unit_number': forms.TextInput(attrs={
                 'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
                 'placeholder': 'e.g. T-1045 or 2023 Toyota Camry',
+            }),
+            # Year/make/model are the price book's key (B6): without them the
+            # form had nothing to look a replacement up by.
+            'vehicle_year': forms.NumberInput(attrs={
+                'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
+                'placeholder': '2019', 'min': '1900', 'max': '2100',
+            }),
+            'vehicle_make': forms.TextInput(attrs={
+                'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
+                'placeholder': 'Ford',
+            }),
+            'vehicle_model': forms.TextInput(attrs={
+                'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
+                'placeholder': 'F-150',
             }),
             'scheduled_for': forms.DateTimeInput(
                 attrs={

@@ -1,4 +1,5 @@
 {% extends "saas/base_owner.html" %}
+{% load static %}
 {% load photo_tags %}
 
 {% block title %}Edit Replacement #{{ replacement.id }} | RS Systems{% endblock %}
@@ -64,6 +65,21 @@
                         {{ form.glass_position }}
                     </div>
                 </div>
+                <div class="grid grid-cols-3 gap-3 mt-4">
+                    <div>
+                        <label for="id_vehicle_year" class="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                        {{ form.vehicle_year }}
+                    </div>
+                    <div>
+                        <label for="id_vehicle_make" class="block text-sm font-medium text-gray-700 mb-1">Make</label>
+                        {{ form.vehicle_make }}
+                    </div>
+                    <div>
+                        <label for="id_vehicle_model" class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                        {{ form.vehicle_model }}
+                    </div>
+                </div>
+                <p class="mt-1 text-xs text-gray-400">Year, make and model let your price book fill in the price from the last time you did this glass.</p>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
                     <div>
                         <label for="id_glass_type" class="block text-sm font-medium text-gray-700 mb-1">Glass Type</label>
@@ -117,6 +133,23 @@
                         {{ form.labor_cost }}
                     </div>
                 </div>
+                {% comment %}
+                Price book (B6): parts/labor from the last completed job on this
+                vehicle + glass (static/js/price_book_suggestion.js). Empty boxes
+                are filled and the note says so; typed ones get a "Use" button.
+                {% endcomment %}
+                <div id="priceBookSuggestion" class="hidden mt-3"
+                     data-pricebook-endpoint="{% url 'get_price_book_suggestion' %}"
+                     data-pricebook-year="id_vehicle_year"
+                     data-pricebook-make="id_vehicle_make"
+                     data-pricebook-model="id_vehicle_model"
+                     data-pricebook-position="id_glass_position"
+                     data-pricebook-customer="id_customer"
+                     data-pricebook-unit="id_unit_number"
+                     data-pricebook-parts="id_parts_cost"
+                     data-pricebook-labor="id_labor_cost"
+                     data-pricebook-adas="adas-checkbox"
+                     data-pricebook-adas-cost="adas-cost"></div>
 
                 <!-- ADAS -->
                 <div class="mt-4 p-4 bg-gray-50 rounded-lg">
@@ -242,6 +275,7 @@
 
 
 {% block extra_js %}
+<script src="{% static 'js/price_book_suggestion.js' %}"></script>
 <script nonce="{{ csp_nonce }}">
     // Toggle insurance fields
     const insuranceCheckbox = document.getElementById('insurance-checkbox');

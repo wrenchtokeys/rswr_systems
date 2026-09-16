@@ -14,6 +14,46 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-09-16 — Price book: a replacement prices itself from your own history (B6)
+
+**Built 2026-09-16.** `IMPROVEMENT_SESSIONS.md` B6 — the third and last spine feature in
+`PRODUCT_DIRECTION.md`: the cheaper 80% of NAGS with no licence and no catalog. One additive
+migration (`technician_portal/0063`).
+
+### Added
+- **A shop-owned price book** (`PriceBookEntry`, `apps/technician_portal/price_book_models.py`):
+  vehicle year/make/model + glass position → what *this shop* charged, before any account
+  discount. Every completed replacement with a vehicle on it teaches the book
+  (`Replacement.save` → `services/price_book.learn_from_job`); a later correction to that job
+  updates the row, an older job re-saved does not clobber a newer price.
+- **The price fills itself in.** On the job form, a replacement for a vehicle the shop has done
+  before gets its price box filled with a "Filled from your price book" note and an Undo; a
+  price the tech already typed is left alone and offered a "Use $X" button instead. The owner's
+  replacement form and the edit page do the same with parts/labor (and ADAS), and say so when
+  the book only knows one number rather than inventing a split. A fleet tech who types only
+  the unit number still gets the suggestion — the vehicle is read off the shop's earlier jobs
+  on that unit. Lookup order: exact year → any-year pinned row → nearest year, and the note
+  always says which. `GET /tech/api/price-book-suggestion/` + `static/js/price_book_suggestion.js`
+  (one implementation, three callers — the viscosity module's pattern).
+- **The owner can see and edit the book** at `/owner/price-book/` (linked from Settings →
+  Pricing & Invoicing): search, edit, add, remove, "Rebuild from history". Editing or adding a
+  row **pins** it — completed jobs never overwrite a pinned price; a pinned row can leave the
+  year blank to cover every year of a model.
+- **Mygrant quotes land in the book as quotes** (`replacement_mygrant_apply`): provisional,
+  marked "Supplier quote", replaced by the charge the moment a job on that vehicle completes,
+  and never able to replace a charge.
+- `manage.py seed_price_book [--tenant slug] [--dry-run]` reads an existing shop's completed
+  replacements in so the first job after the deploy already has a price to offer (the same
+  thing as the owner's Rebuild button). **Run it on prod once after deploying.**
+- `ReplacementForm` (owner create/edit) now exposes year/make/model — it had no key to look a
+  price up by.
+- `tests/test_price_book.py` (29 tests) in the guard set.
+
+### Not built (on purpose)
+- No suggestion on the quote form's line rows yet (they are built at runtime); B3's quote →
+  job path still carries the quoted price. A follow-up, not a gap in the acceptance criteria.
+- No NAGS data, no vehicle → glass lookup, no VIN decode (session doc's out-of-scope list).
+
 ## 2026-09-16 — Insurance claims: what you billed, what came in, what is short (PR #255)
 
 **Built 2026-09-16.** `IMPROVEMENT_SESSIONS.md` B5 — the second of the three spine features in

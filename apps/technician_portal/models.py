@@ -2127,6 +2127,9 @@ class Replacement(GlassService):
 
     def save(self, *args, **kwargs):
         self._settle_needs_assignment(kwargs)
+        # A row created straight into COMPLETED has original_status ==
+        # 'COMPLETED' from __init__; the price book still needs to count it.
+        first_completion = self.pk is None or self.original_status != 'COMPLETED'
 
         # Ensure we have a customer
         if self.customer:
@@ -2236,6 +2239,17 @@ class Replacement(GlassService):
         if self.queue_status == 'COMPLETED' and self.original_status != 'COMPLETED':
             from apps.technician_portal.hooks import loyalty_hook
             loyalty_hook(self)
+
+        # Price book (B6): a completed replacement teaches the shop's book
+        # what this glass on this vehicle costs. First completion counts the
+        # job; a later re-save only refreshes the price (an owner correcting
+        # the number after the fact). Never blocks the save.
+        if self.queue_status == 'COMPLETED':
+            try:
+                from apps.technician_portal.services.price_book import learn_from_job
+                learn_from_job(self, count=first_completion)
+            except Exception:
+                logger.error("Price book learn failed for replacement pk=%s", self.pk, exc_info=True)
 
         self.original_status = self.queue_status
 
@@ -2570,3 +2584,6 @@ from apps.technician_portal.review_models import ReviewConfig, ReviewRequest  # 
 
 # Parts-sourcing models (Mygrant supplier connection) — same pattern.
 from apps.technician_portal.parts_models import MygrantConfig  # noqa: E402, F401
+
+# Shop-owned price book (B6) — vehicle + glass → what this shop charged.
+from apps.technician_portal.price_book_models import PriceBookEntry  # noqa: E402, F401

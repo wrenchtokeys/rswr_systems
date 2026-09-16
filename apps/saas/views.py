@@ -1448,6 +1448,14 @@ def replacement_mygrant_apply(request, pk):
 
     replacement.parts_cost = sku['customer_price']
     replacement.save()
+    # Price book (B6): a supplier quote is worth remembering for the next
+    # job on this vehicle, marked as a quote — it never replaces a charge.
+    try:
+        from apps.technician_portal.price_book_models import PriceBookEntry
+        from apps.technician_portal.services.price_book import learn_from_job
+        learn_from_job(replacement, source=PriceBookEntry.SOURCE_QUOTE)
+    except Exception:
+        logger.error("Price book quote learn failed for replacement pk=%s", replacement.pk, exc_info=True)
 
     message = f"Parts cost set to ${sku['customer_price']} from {sku['part'] or sku['product_id']}."
     if replacement.cost_override is not None:
@@ -2610,6 +2618,7 @@ def owner_settings_view(request):
         'fee_presets': fee_presets,
         'sms_platform_ready': _sms_platform_ready(),
         'mygrant_config': mygrant_config,
+        'price_book_count': tenant.price_book_entries.count(),
         'mygrant_encryption_ready': encryption.is_configured(),
     }
 

@@ -1,0 +1,135 @@
+{% extends "base_app.html" %}
+{% load ui %}
+
+{% block title %}Price book | {{ tenant.name }} | RS Systems{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+    <div>
+        <a href="{% url 'owner_settings' %}?tab=billing" class="text-sm text-brand-600 hover:text-brand-800 mb-2 inline-flex items-center gap-1">
+            {% icon 'arrow-left' class="w-3.5 h-3.5" %} Pricing settings
+        </a>
+        <h1 class="text-2xl font-bold text-gray-900">Price book</h1>
+        <p class="text-sm text-gray-500 mt-1">What you charge for each glass on each vehicle. Every completed replacement teaches it; a price you pin here stays put.</p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+        <form method="post" action="{% url 'price_book_rebuild' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-secondary btn-sm" title="Re-read every completed replacement. Pinned prices are kept.">
+                {% icon 'history' class="w-4 h-4 mr-1.5" %}Rebuild from history
+            </button>
+        </form>
+        <a href="{% url 'price_book_new' %}" class="btn-primary btn-sm">
+            {% icon 'plus' class="w-4 h-4 mr-1.5" %}Add a price
+        </a>
+    </div>
+</div>
+
+{% if total %}
+<form method="get" class="mb-4 flex gap-2">
+    <label class="sr-only" for="pb-q">Search by make or model</label>
+    <input id="pb-q" type="search" name="q" value="{{ q }}" placeholder="Search make or model"
+           class="w-full sm:w-72 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+    <button type="submit" class="btn-secondary btn-sm">Search</button>
+    {% if q %}<a href="{% url 'price_book_list' %}" class="btn-ghost btn-sm">Clear</a>{% endif %}
+</form>
+{% endif %}
+
+{% if not rows %}
+<div class="card p-8 text-center">
+    <div class="w-12 h-12 mx-auto rounded-full bg-brand-50 text-brand-600 flex items-center justify-center mb-3">
+        {% icon 'book-open' class="w-6 h-6" %}
+    </div>
+    {% if q %}
+    <p class="text-gray-700 font-medium">Nothing in your book matches "{{ q }}".</p>
+    <p class="text-sm text-gray-500 mt-1">Try the make on its own, or <a href="{% url 'price_book_new' %}" class="text-brand-600 hover:underline">add a price</a> for it.</p>
+    {% elif completed_replacements %}
+    <p class="text-gray-700 font-medium">Your book is empty, but you have {{ completed_replacements }} completed replacement{{ completed_replacements|pluralize }}.</p>
+    <p class="text-sm text-gray-500 mt-1">Tap <strong>Rebuild from history</strong> above to read them in. Only jobs with a year, make and model can be learned from.</p>
+    {% else %}
+    <p class="text-gray-700 font-medium">Nothing here yet.</p>
+    <p class="text-sm text-gray-500 mt-1">The first replacement you complete with a year, make and model starts the book. From then on, the same glass on the same vehicle fills its price in on the job form.</p>
+    {% endif %}
+</div>
+{% else %}
+
+<!-- Mobile: card stack -->
+<div class="sm:hidden space-y-3">
+    {% for row in rows %}
+    <div class="card p-4">
+        <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+                <p class="font-semibold text-gray-900 truncate">{{ row.vehicle_label }}</p>
+                <p class="text-sm text-gray-500">{{ row.glass_label }}{% if row.is_any_year %} · any year{% endif %}</p>
+            </div>
+            <p class="text-lg font-bold text-gray-900 whitespace-nowrap">${{ row.price|floatformat:2 }}</p>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">
+            {% if row.has_breakdown %}Parts ${{ row.parts_cost|default:0|floatformat:2 }} · Labor ${{ row.labor_cost|default:0|floatformat:2 }}{% if row.adas_calibration_cost %} · ADAS ${{ row.adas_calibration_cost|floatformat:2 }}{% endif %}{% else %}One price, no parts/labor split{% endif %}
+        </p>
+        <div class="mt-3 flex items-center justify-between gap-3">
+            <span class="text-xs {% if row.is_pinned %}text-brand-700 font-medium{% else %}text-gray-500{% endif %}">
+                {% if row.is_pinned %}{% icon 'check' class="w-3.5 h-3.5 inline" %} Pinned{% elif row.source == 'QUOTE' %}Supplier quote{% else %}Learned · {{ row.times_used }} job{{ row.times_used|pluralize }}{% endif %}
+            </span>
+            <div class="flex items-center gap-3">
+                <a href="{% url 'price_book_edit' row.pk %}" class="text-sm text-brand-600 font-medium min-h-11 inline-flex items-center">Edit</a>
+                <form method="post" action="{% url 'price_book_delete' row.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="text-sm text-red-600 font-medium min-h-11">Remove</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Desktop: table -->
+<div class="hidden sm:block card overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th class="px-4 py-3">Vehicle</th>
+                    <th class="px-4 py-3">Glass</th>
+                    <th class="px-4 py-3 text-right">Parts</th>
+                    <th class="px-4 py-3 text-right">Labor</th>
+                    <th class="px-4 py-3 text-right">ADAS</th>
+                    <th class="px-4 py-3 text-right">Price</th>
+                    <th class="px-4 py-3">Where it came from</th>
+                    <th class="px-4 py-3"><span class="sr-only">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 bg-white text-sm">
+                {% for row in rows %}
+                <tr>
+                    <td class="px-4 py-3 font-medium text-gray-900">{{ row.vehicle_label }}{% if row.is_any_year %} <span class="text-xs font-normal text-gray-400">any year</span>{% endif %}</td>
+                    <td class="px-4 py-3 text-gray-700">{{ row.glass_label }}</td>
+                    <td class="px-4 py-3 text-right text-gray-700">{% if row.parts_cost is not None %}${{ row.parts_cost|floatformat:2 }}{% else %}<span class="text-gray-300">—</span>{% endif %}</td>
+                    <td class="px-4 py-3 text-right text-gray-700">{% if row.labor_cost is not None %}${{ row.labor_cost|floatformat:2 }}{% else %}<span class="text-gray-300">—</span>{% endif %}</td>
+                    <td class="px-4 py-3 text-right text-gray-700">{% if row.adas_calibration_cost is not None %}${{ row.adas_calibration_cost|floatformat:2 }}{% else %}<span class="text-gray-300">—</span>{% endif %}</td>
+                    <td class="px-4 py-3 text-right font-semibold text-gray-900">${{ row.price|floatformat:2 }}</td>
+                    <td class="px-4 py-3 text-gray-600">
+                        {% if row.is_pinned %}
+                        <span class="inline-flex items-center gap-1 text-brand-700 font-medium">{% icon 'check' class="w-3.5 h-3.5" %} Pinned by you</span>
+                        {% elif row.source == 'QUOTE' %}
+                        Supplier quote{% if row.last_job %} · <a href="{% url 'replacement_detail' row.last_job.pk %}" class="text-brand-600 hover:underline">job #{{ row.last_job.pk }}</a>{% endif %}
+                        {% else %}
+                        {{ row.times_used }} completed job{{ row.times_used|pluralize }}{% if row.last_job %} · last <a href="{% url 'replacement_detail' row.last_job.pk %}" class="text-brand-600 hover:underline">#{{ row.last_job.pk }}</a>{% endif %}{% if row.last_used_at %} on {{ row.last_used_at|date:"M j, Y" }}{% endif %}
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-right whitespace-nowrap">
+                        <a href="{% url 'price_book_edit' row.pk %}" class="text-brand-600 hover:text-brand-800 font-medium mr-3">Edit</a>
+                        <form method="post" action="{% url 'price_book_delete' row.pk %}" class="inline">
+                            {% csrf_token %}
+                            <button type="submit" class="text-red-600 hover:text-red-800 font-medium">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+<p class="mt-3 text-xs text-gray-400">{{ rows|length }} of {{ total }} price{{ total|pluralize }}{% if pinned_count %} · {{ pinned_count }} pinned{% endif %}. Prices are before any account discount; a fleet's discount still applies on the job.</p>
+{% endif %}
+{% endblock %}

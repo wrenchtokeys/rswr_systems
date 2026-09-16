@@ -94,6 +94,50 @@ def get_viscosity_suggestion(request):
 
 
 @technician_required
+def get_price_book_suggestion(request):
+    """
+    What this shop charged for this glass on this vehicle (B6 price book).
+
+    GET /tech/api/price-book-suggestion/?year=2019&make=Ford&model=F-150
+        &glass_position=WINDSHIELD[&customer=<id>&unit_number=4521]
+
+    Year/make/model may be blank when a customer + unit are given — the
+    vehicle is then read off the shop's earlier jobs on that unit. Read-only;
+    the form decides what to do with the answer (fill an empty box, or offer
+    a "Use" button beside one the tech already typed).
+    """
+    from apps.technician_portal.services import price_book
+
+    tenant = getattr(request, 'tenant', None)
+    if tenant is None:
+        return JsonResponse({'success': False, 'error': 'No shop context.'}, status=403)
+    g = request.GET
+    customer_id = g.get('customer') or None
+    if customer_id is not None:
+        try:
+            customer_id = int(customer_id)
+        except ValueError:
+            customer_id = None
+    year = (g.get('year') or '').strip()
+    year = int(year) if year.isdigit() else None
+    try:
+        year, make, model = price_book.resolve_vehicle(
+            tenant, customer_id=customer_id, unit_number=g.get('unit_number', ''),
+            year=year, make=g.get('make', ''), model=g.get('model', ''),
+        )
+        found = price_book.suggest(
+            tenant, year=year, make=make, model=model,
+            glass_position=(g.get('glass_position') or '').strip()[:20],
+        )
+    except Exception:
+        logger.error("Price book lookup failed", exc_info=True)
+        return JsonResponse({'success': False, 'error': 'Lookup failed.'}, status=500)
+    if not found:
+        return JsonResponse(price_book.NOT_FOUND)
+    return JsonResponse(price_book.serialize(found, requested_year=year))
+
+
+@technician_required
 def update_technician_profile(request):
     """Update technician profile and password."""
     from django.shortcuts import render

@@ -692,6 +692,35 @@
 
     {% if tenant.offers_repairs %}
     <!-- Progressive Pricing -->
+    {% if tenant.offers_replacements %}
+    <!-- Price book (B6): replacements price themselves from this shop's history -->
+    <div class="card mb-6">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-brand-100 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-book-open text-brand-600 text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">Replacement Price Book</h3>
+                        <p class="text-sm text-gray-500">What you charge for each glass on each vehicle. It learns from every completed replacement, and you can pin a price yourself.</p>
+                    </div>
+                </div>
+                <a href="{% url 'price_book_list' %}" class="btn-secondary btn-sm whitespace-nowrap">Open price book</a>
+            </div>
+        </div>
+        <div class="p-6">
+            <p class="text-sm text-gray-600">
+                {% if price_book_count %}
+                <strong>{{ price_book_count }}</strong> price{{ price_book_count|pluralize }} on file. When a tech starts a replacement on a vehicle you've done before, the price fills in with a note saying where it came from.
+                {% else %}
+                Nothing yet — the first completed replacement with a year, make and model starts it. If you already have completed replacements, open the book and tap <em>Rebuild from history</em>.
+                {% endif %}
+            </p>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="card mb-6">
         <div class="px-6 py-4 border-b border-gray-200">
             <div class="flex items-center justify-between">
