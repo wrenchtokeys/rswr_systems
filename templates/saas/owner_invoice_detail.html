@@ -1,4 +1,5 @@
 {% extends "saas/base_owner.html" %}
+{% load ui %}
 
 {% block title %}Invoice {{ invoice.invoice_number }} | {{ tenant.name }} | RS Systems{% endblock %}
 
@@ -413,6 +414,37 @@
 
     <!-- Right Column: Record Payment Form -->
     <div class="space-y-6">
+        {% comment %}Insurance claim (B5): the claim on this invoice, or one tap to start one.{% endcomment %}
+        {% if claim %}
+        <div class="card">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
+                <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">{% icon 'shield' class="mr-1.5" %}Insurance claim</h2>
+                {% status_badge claim.status kind='claim' %}
+            </div>
+            <div class="p-6 text-sm space-y-2">
+                <p><span class="font-medium text-gray-700">Insurer:</span> {{ claim.insurer|default:"—" }}</p>
+                {% if claim.claim_number %}<p><span class="font-medium text-gray-700">Claim #:</span> {{ claim.claim_number }}</p>{% endif %}
+                <div class="flex items-center justify-between border-t border-gray-100 pt-2 mt-2"><span class="text-gray-600">Expected from insurer</span><span class="num font-medium">${{ claim.expected_amount|floatformat:2 }}</span></div>
+                <div class="flex items-center justify-between"><span class="text-gray-600">Received</span><span class="num font-medium text-green-700">${{ claim.received_amount|floatformat:2 }}</span></div>
+                <div class="flex items-center justify-between"><span class="text-gray-600">{% if claim.is_closed %}Written off{% else %}Short{% endif %}</span><span class="num font-semibold {% if claim.short_amount > 0 %}text-red-600{% else %}text-gray-900{% endif %}">${{ claim.short_amount|floatformat:2 }}</span></div>
+                <a href="{% url 'claim_detail' claim_id=claim.id %}" class="btn-secondary w-full mt-3 press">Open claim{% icon 'arrow-right' class="ml-2" %}</a>
+            </div>
+        </div>
+        {% elif claim_prefill is not None %}
+        <form method="post" action="{% url 'claim_create' invoice_id=invoice.id %}" class="card p-6">
+            {% csrf_token %}
+            <input type="hidden" name="insurer" value="{{ claim_prefill.insurer|default:'' }}">
+            <input type="hidden" name="claim_number" value="{{ claim_prefill.claim_number|default:'' }}">
+            <input type="hidden" name="authorization_number" value="{{ claim_prefill.authorization_number|default:'' }}">
+            <input type="hidden" name="deductible" value="{{ claim_prefill.deductible|default_if_none:'' }}">
+            <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">{% icon 'shield' class="mr-1.5" %}Insurance claim</h2>
+            <p class="mt-2 text-sm text-gray-600">
+                {% if claim_flagged_on_job %}The job is marked as an insurance claim{% if claim_prefill.insurer %} with {{ claim_prefill.insurer }}{% endif %}. Track what the insurer owes and what actually comes in.{% else %}Billing an insurer for this work? Track what they owe, what arrives, and what is short.{% endif %}
+            </p>
+            <button type="submit" class="btn-secondary w-full mt-4 press">{% icon 'plus' class="mr-2" %}Track insurance claim</button>
+        </form>
+        {% endif %}
+
         {% if public_pay_link %}
         <!-- Online Payment Link: copy & text/hand to the customer -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-200">
@@ -544,6 +576,13 @@
                     <textarea name="notes" id="notes" rows="3" placeholder="Optional notes about this payment..."
                         class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500"></textarea>
                 </div>
+
+                {% if claim and claim.is_open %}
+                <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" name="from_insurer" value="1" class="mt-0.5 w-4 h-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500">
+                    <span>This payment is from the insurer{% if claim.insurer %} ({{ claim.insurer }}){% endif %} — count it toward the claim</span>
+                </label>
+                {% endif %}
 
                 <!-- Submit Button -->
                 <button type="submit" class="w-full inline-flex items-center justify-center min-h-11 px-4 py-2 bg-brand-600 text-white text-sm font-semibold rounded-md hover:bg-brand-700 focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors">

@@ -1,0 +1,126 @@
+{% extends "base_app.html" %}
+{% load ui %}
+
+{% block title %}Insurance claims | {{ tenant.name }} | RS Systems{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">Insurance claims</h1>
+        <p class="text-sm text-gray-500 mt-1">What you billed each insurer, what came in, and what is still short.</p>
+    </div>
+    <div class="flex items-center gap-4">
+        <a href="{% url 'owner_invoice_list' %}" class="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900">
+            {% icon 'arrow-left' class="mr-2" %}Invoices
+        </a>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div class="card p-5">
+        <div class="text-xs font-medium text-gray-500 uppercase tracking-wider">Short-paid</div>
+        <div class="mt-1 text-3xl font-bold {% if short.count %}text-red-600{% else %}text-gray-900{% endif %} num">${{ short.total|floatformat:2 }}</div>
+        <div class="mt-1 text-sm text-gray-500">{{ short.count }} claim{{ short.count|pluralize }} where the insurer paid less than expected</div>
+    </div>
+    <div class="card p-5">
+        <div class="text-xs font-medium text-gray-500 uppercase tracking-wider">Waiting on insurers</div>
+        <div class="mt-1 text-3xl font-bold text-gray-900 num">${{ waiting.total|floatformat:2 }}</div>
+        <div class="mt-1 text-sm text-gray-500">{{ waiting.count }} claim{{ waiting.count|pluralize }} with nothing received yet</div>
+    </div>
+    <div class="card p-5">
+        <div class="text-xs font-medium text-gray-500 uppercase tracking-wider">Received this month</div>
+        <div class="mt-1 text-3xl font-bold text-green-600 num">${{ received_month|floatformat:2 }}</div>
+        <div class="mt-1 text-sm text-gray-500">Insurer payments recorded since the 1st</div>
+    </div>
+</div>
+
+<div class="mb-4 flex flex-wrap items-center gap-2">
+    <div class="inline-flex items-center bg-gray-100 rounded-lg p-0.5 flex-wrap">
+    {% for value, label in status_pills %}
+    <a href="?status={{ value }}"
+        class="inline-flex items-center min-h-10 px-3 py-1.5 rounded-md text-sm font-medium transition-colors
+        {% if status_filter == value %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
+        {{ label }}
+        {% if value == 'short' and short.count %}
+        <span class="ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-bold bg-red-100 text-red-700">{{ short.count }}</span>
+        {% endif %}
+    </a>
+    {% endfor %}
+    </div>
+</div>
+
+<div class="card overflow-hidden">
+    {% if claims %}
+    {% comment %}data-skeleton-list on both breakpoint twins; only the painted one traces.{% endcomment %}
+    <div class="sm:hidden divide-y divide-gray-100" data-skeleton-list>
+        {% for c in claims %}
+        <a href="{% url 'claim_detail' claim_id=c.id %}" data-vt-key="{% url 'claim_detail' claim_id=c.id %}" class="block p-4 press-card">
+            <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                    <div data-vt-hero class="text-sm font-semibold text-brand-600">{{ c.insurer|default:"Insurer not named" }}{% if c.claim_number %} · {{ c.claim_number }}{% endif %}</div>
+                    <div class="text-sm text-gray-700 truncate">{{ c.invoice.customer.name }} · {{ c.invoice.invoice_number }}</div>
+                </div>
+                <div class="shrink-0 text-right">{% status_badge c.status kind='claim' %}</div>
+            </div>
+            <div class="mt-2 flex items-baseline justify-between gap-2">
+                <span class="text-xs text-gray-500">Submitted {{ c.submitted_on|date:"M d, Y" }} · expected ${{ c.expected_amount|floatformat:2 }}</span>
+                {% if c.status == 'SHORT' %}<span class="num text-base font-semibold text-red-600">short ${{ c.short_amount|floatformat:2 }}</span>
+                {% elif c.status == 'CLOSED' and c.written_off_amount %}<span class="num text-sm text-gray-500">wrote off ${{ c.written_off_amount|floatformat:2 }}</span>
+                {% else %}<span class="num text-base font-semibold text-gray-900">${{ c.received_amount|floatformat:2 }} in</span>{% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+
+    <div class="hidden sm:block overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Insurer / claim #</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Invoice</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">Submitted</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Expected</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Received</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Short</th>
+                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-100" data-skeleton-list>
+                {% for c in claims %}
+                <tr data-vt-key="{% url 'claim_detail' claim_id=c.id %}" class="hover:bg-gray-50 cursor-pointer" onclick="window.location='{% url 'claim_detail' claim_id=c.id %}'">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span data-vt-hero class="text-sm font-semibold text-brand-600">{{ c.insurer|default:"Insurer not named" }}</span>
+                        {% if c.claim_number %}<div class="text-xs text-gray-500">{{ c.claim_number }}</div>{% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ c.invoice.customer.name }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">{{ c.invoice.invoice_number }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden lg:table-cell">{{ c.submitted_on|date:"M d, Y" }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right num">${{ c.expected_amount|floatformat:2 }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 text-right num">${{ c.received_amount|floatformat:2 }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right num {% if c.status == 'SHORT' %}text-red-600{% elif c.status == 'CLOSED' and c.written_off_amount %}text-gray-500{% else %}text-gray-900{% endif %}">
+                        {% if c.status == 'PAID' %}—{% else %}${{ c.short_amount|floatformat:2 }}{% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-center">{% status_badge c.status kind='claim' %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="p-12 text-center">
+        <div class="mx-auto w-12 h-12 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center text-xl">{% icon 'shield' %}</div>
+        <h2 class="mt-4 text-lg font-semibold text-gray-900">
+            {% if status_filter == 'open' or status_filter == 'all' %}No insurance claims yet{% else %}Nothing here{% endif %}
+        </h2>
+        <p class="mt-1 text-sm text-gray-500 max-w-md mx-auto">
+            {% if status_filter == 'open' or status_filter == 'all' %}
+            Tick "Insurance claim" on a job and its invoice starts tracking the claim on its own. You can also start one from any invoice.
+            {% else %}
+            Try another filter.
+            {% endif %}
+        </p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

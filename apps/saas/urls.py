@@ -6,7 +6,7 @@ Author: Amelia (Clawdbot AI)
 
 from django.urls import path
 from . import views
-from . import quote_views
+from . import claim_views, quote_views
 
 urlpatterns = [
     # Subscription blocked (role-aware)
@@ -76,6 +76,13 @@ urlpatterns = [
     path('quotes/<int:quote_id>/revise/', quote_views.quote_revise, name='quote_revise'),
     path('quotes/<int:quote_id>/delete/', quote_views.quote_delete, name='quote_delete'),
     path('owner/invoices/', views.owner_invoice_list, name='owner_invoice_list'),
+    # Insurance claims (B5) — owner/manager. A claim hangs off an invoice.
+    path('owner/claims/', claim_views.claim_list, name='claim_list'),
+    path('owner/claims/<int:claim_id>/', claim_views.claim_detail, name='claim_detail'),
+    path('owner/claims/<int:claim_id>/edit/', claim_views.claim_edit, name='claim_edit'),
+    path('owner/claims/<int:claim_id>/close/', claim_views.claim_close, name='claim_close'),
+    path('owner/claims/<int:claim_id>/reopen/', claim_views.claim_reopen, name='claim_reopen'),
+    path('owner/invoices/<int:invoice_id>/claim/new/', claim_views.claim_create, name='claim_create'),
     path('owner/invoices/<int:invoice_id>/', views.owner_invoice_detail, name='owner_invoice_detail'),
     path('owner/invoices/<int:invoice_id>/record-payment/', views.owner_record_payment, name='owner_record_payment'),
     path('owner/invoices/bulk/', views.owner_invoice_bulk_action, name='owner_invoice_bulk_action'),

@@ -1,0 +1,274 @@
+{% extends "base_app.html" %}
+{% load ui %}
+
+{% block title %}Insurance claim · {{ invoice.invoice_number }} | {{ tenant.name }} | RS Systems{% endblock %}
+
+{% block content %}
+<nav class="mb-4 text-sm text-gray-500 flex items-center gap-2 flex-wrap">
+    <a href="{% url 'owner_invoice_list' %}" class="hover:text-gray-700">Invoices</a>
+    <span>/</span>
+    <a href="{% url 'claim_list' %}" class="hover:text-gray-700">Insurance claims</a>
+    <span>/</span>
+    <span class="text-gray-700">{{ invoice.invoice_number }}</span>
+</nav>
+
+<!-- Header -->
+<div class="card p-6 mb-6">
+    <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div class="min-w-0">
+            <div class="flex items-center gap-3 mb-2 flex-wrap">
+                <h1 class="vt-hero text-2xl font-bold text-gray-900">{{ claim.insurer|default:"Insurer not named" }}{% if claim.claim_number %} · {{ claim.claim_number }}{% endif %}</h1>
+                {% status_badge claim.status kind='claim' %}
+            </div>
+            <div class="text-sm text-gray-600 space-y-1">
+                <p><span class="font-medium text-gray-700">Customer:</span> {{ invoice.customer.name }}</p>
+                <p><span class="font-medium text-gray-700">Invoice:</span>
+                    <a href="{% url 'owner_invoice_detail' invoice_id=invoice.id %}" class="text-brand-600 hover:text-brand-800 font-medium">{{ invoice.invoice_number }}</a>
+                    · {% status_badge invoice.status kind='invoice' %}
+                </p>
+                <p><span class="font-medium text-gray-700">Submitted:</span> {{ claim.submitted_on|date:"F d, Y" }}</p>
+                {% if claim.authorization_number %}<p><span class="font-medium text-gray-700">Authorization #:</span> {{ claim.authorization_number }}</p>{% endif %}
+                {% if claim.is_closed %}
+                <p class="text-gray-500">Closed {{ claim.closed_at|date:"M d, Y" }}{% if claim.closed_by %} by {{ claim.closed_by.get_full_name|default:claim.closed_by.username }}{% endif %}{% if claim.close_reason %} — {{ claim.close_reason }}{% endif %}</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="text-right shrink-0">
+            {% if claim.status == 'PAID' %}
+            <div class="text-sm text-gray-500 mb-1">Insurer paid in full</div>
+            <div class="text-3xl font-bold text-green-600 num">${{ claim.received_amount|floatformat:2 }}</div>
+            {% elif claim.is_closed %}
+            <div class="text-sm text-gray-500 mb-1">Written off</div>
+            <div class="text-3xl font-bold text-gray-500 num">${{ claim.written_off_amount|floatformat:2 }}</div>
+            {% else %}
+            <div class="text-sm text-gray-500 mb-1">Insurer still owes</div>
+            <div class="text-3xl font-bold {% if claim.status == 'SHORT' %}text-red-600{% else %}text-gray-900{% endif %} num">${{ claim.short_amount|floatformat:2 }}</div>
+            <div class="text-sm text-gray-500 mt-1">of ${{ claim.expected_amount|floatformat:2 }} expected</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 space-y-6">
+        <!-- The money, line by line -->
+        <div class="card">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">The money</h2>
+            </div>
+            <dl class="divide-y divide-gray-100 text-sm">
+                <div class="px-6 py-3 flex items-center justify-between gap-4">
+                    <dt class="text-gray-600">Invoice total</dt>
+                    <dd class="num font-medium text-gray-900">${{ invoice.total|floatformat:2 }}</dd>
+                </div>
+                <div class="px-6 py-3 flex items-center justify-between gap-4">
+                    <dt class="text-gray-600">Deductible <span class="text-gray-400">— the customer's share</span></dt>
+                    <dd class="num font-medium text-gray-900">{% if claim.deductible is not None %}${{ claim.deductible|floatformat:2 }}{% else %}—{% endif %}</dd>
+                </div>
+                <div class="px-6 py-3 flex items-center justify-between gap-4">
+                    <dt class="text-gray-600">Billed to the insurer
+                        {% if claim.billed_amount is None %}<span class="text-gray-400">— follows the invoice</span>{% else %}<span class="text-gray-400">— set by you</span>{% endif %}
+                    </dt>
+                    <dd class="num font-medium text-gray-900">${{ claim.effective_billed_amount|floatformat:2 }}</dd>
+                </div>
+                <div class="px-6 py-3 flex items-center justify-between gap-4">
+                    <dt class="text-gray-600">Authorized by the insurer
+                        {% if claim.authorized_short_of_billed > 0 %}<span class="text-amber-700">— ${{ claim.authorized_short_of_billed|floatformat:2 }} less than billed</span>{% endif %}
+                    </dt>
+                    <dd class="num font-medium text-gray-900">{% if claim.authorized_amount is not None %}${{ claim.authorized_amount|floatformat:2 }}{% else %}<span class="text-gray-400">not yet</span>{% endif %}</dd>
+                </div>
+                <div class="px-6 py-3 flex items-center justify-between gap-4 bg-gray-50">
+                    <dt class="font-medium text-gray-800">Expected from the insurer</dt>
+                    <dd class="num font-semibold text-gray-900">${{ claim.expected_amount|floatformat:2 }}</dd>
+                </div>
+                <div class="px-6 py-3 flex items-center justify-between gap-4">
+                    <dt class="text-gray-600">Received from the insurer</dt>
+                    <dd class="num font-medium text-green-700">${{ claim.received_amount|floatformat:2 }}</dd>
+                </div>
+                <div class="px-6 py-3 flex items-center justify-between gap-4">
+                    <dt class="font-medium text-gray-800">{% if claim.is_closed %}Written off{% else %}Short{% endif %}</dt>
+                    <dd class="num font-semibold {% if claim.short_amount > 0 %}text-red-600{% else %}text-gray-900{% endif %}">${{ claim.short_amount|floatformat:2 }}</dd>
+                </div>
+                {% if claim.short_amount > 0 and invoice.amount_due < claim.short_amount %}
+                <div class="px-6 py-3 text-xs text-gray-500">
+                    The invoice itself has ${{ invoice.amount_due|floatformat:2 }} left to collect — the customer covered part of the difference.
+                </div>
+                {% endif %}
+            </dl>
+        </div>
+
+        <!-- Insurer payments -->
+        <div class="card">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Insurer payments</h2>
+                <span class="text-xs text-gray-500">{{ insurer_payments|length }} payment{{ insurer_payments|length|pluralize }}</span>
+            </div>
+            {% if insurer_payments %}
+            <div class="divide-y divide-gray-100">
+                {% for p in insurer_payments %}
+                <div class="px-6 py-4 flex items-start justify-between gap-3">
+                    <div>
+                        <div class="text-sm font-medium text-gray-900 num">${{ p.amount|floatformat:2 }} <span class="text-gray-500 font-normal">via {{ p.get_payment_method_display }}</span></div>
+                        <div class="text-xs text-gray-500">{{ p.payment_date|date:"F d, Y" }}{% if p.reference_number %} · Ref: {{ p.reference_number }}{% endif %}{% if p.recorded_by %} · by {{ p.recorded_by.get_full_name|default:p.recorded_by.username }}{% endif %}</div>
+                        {% if p.notes %}<div class="mt-1 text-xs text-gray-500 italic">{{ p.notes }}</div>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="px-6 py-8 text-center text-sm text-gray-500">Nothing from the insurer yet.</div>
+            {% endif %}
+        </div>
+
+        {% if other_payments %}
+        <div class="card">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Paid by the customer</h2>
+            </div>
+            <div class="divide-y divide-gray-100">
+                {% for p in other_payments %}
+                <div class="px-6 py-3 flex items-center justify-between gap-3 text-sm">
+                    <span class="text-gray-600">{{ p.payment_date|date:"M d, Y" }} · {{ p.get_payment_method_display }}{% if p.reference_number %} · {{ p.reference_number }}{% endif %}</span>
+                    <span class="num font-medium text-gray-900">${{ p.amount|floatformat:2 }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="space-y-6">
+        {% if can_record_payment %}
+        <!-- Record an insurer payment: same endpoint as every other payment, flagged from_insurer -->
+        <div class="card border-brand-200">
+            <div class="px-6 py-4 border-b border-brand-100 bg-brand-50 rounded-t-xl">
+                <h2 class="text-sm font-semibold text-brand-900 uppercase tracking-wider">Record insurer payment</h2>
+            </div>
+            <form method="post" action="{% url 'owner_record_payment' invoice_id=invoice.id %}" class="p-6 space-y-4">
+                {% csrf_token %}
+                <input type="hidden" name="from_insurer" value="1">
+                <input type="hidden" name="next" value="{% url 'claim_detail' claim_id=claim.id %}">
+                <div>
+                    <label for="amount" class="block text-sm font-medium text-gray-700 mb-1">Amount <span class="text-red-500">*</span></label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span class="text-gray-500 text-sm">$</span></div>
+                        <input type="number" name="amount" id="amount" step="0.01" min="0.01" max="{{ invoice.amount_due }}" value="{{ suggested_amount }}" required
+                            class="block w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Type what the insurer actually sent, even if it is short. Invoice balance: ${{ invoice.amount_due|floatformat:2 }}.</p>
+                </div>
+                <div>
+                    <label for="payment_method" class="block text-sm font-medium text-gray-700 mb-1">How it arrived</label>
+                    <select name="payment_method" id="payment_method" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
+                        {% for value, label in payment_methods %}
+                        <option value="{{ value }}" {% if value == 'CHECK' %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="reference_number" class="block text-sm font-medium text-gray-700 mb-1">Check # / EOB reference</label>
+                    <input type="text" name="reference_number" id="reference_number" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
+                </div>
+                <div>
+                    <label for="payment_date" class="block text-sm font-medium text-gray-700 mb-1">Date received</label>
+                    <input type="date" name="payment_date" id="payment_date" value="{{ today|date:'Y-m-d' }}" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
+                </div>
+                <div>
+                    <label for="notes" class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <textarea name="notes" id="notes" rows="2" placeholder="What the EOB said, if it was short" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500"></textarea>
+                </div>
+                <button type="submit" class="btn-primary w-full press">{% icon 'check' class="mr-2" %}Record insurer payment</button>
+            </form>
+        </div>
+        {% elif claim.status == 'PAID' %}
+        <div class="bg-green-50 rounded-xl border border-green-200 p-6 text-center">
+            <div class="mx-auto w-12 h-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-xl">{% icon 'check-circle' %}</div>
+            <h3 class="mt-3 text-sm font-semibold text-green-800">Paid in full</h3>
+            <p class="mt-1 text-xs text-green-700">The insurer paid everything expected.</p>
+        </div>
+        {% elif claim.is_open and invoice.amount_due <= 0 %}
+        <div class="bg-gray-50 rounded-xl border border-gray-200 p-6 text-sm text-gray-600">
+            The invoice is paid, so there is nothing left to apply an insurer payment to. Close the claim if the customer covered the difference, or edit the expected amount.
+        </div>
+        {% endif %}
+
+        {% if not claim.is_closed %}
+        <!-- Edit -->
+        <div class="card">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Claim details</h2>
+            </div>
+            <form method="post" action="{% url 'claim_edit' claim_id=claim.id %}" class="p-6 space-y-4">
+                {% csrf_token %}
+                <div>
+                    <label for="insurer" class="block text-sm font-medium text-gray-700 mb-1">Insurer</label>
+                    <input type="text" name="insurer" id="insurer" value="{{ claim.insurer }}" maxlength="100" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label for="claim_number" class="block text-sm font-medium text-gray-700 mb-1">Claim #</label>
+                        <input type="text" name="claim_number" id="claim_number" value="{{ claim.claim_number }}" maxlength="50" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
+                    </div>
+                    <div>
+                        <label for="authorization_number" class="block text-sm font-medium text-gray-700 mb-1">Authorization #</label>
+                        <input type="text" name="authorization_number" id="authorization_number" value="{{ claim.authorization_number }}" maxlength="50" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label for="deductible" class="block text-sm font-medium text-gray-700 mb-1">Deductible</label>
+                        <input type="number" step="0.01" min="0" name="deductible" id="deductible" value="{{ claim.deductible|default_if_none:'' }}" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
+                    </div>
+                    <div>
+                        <label for="submitted_on" class="block text-sm font-medium text-gray-700 mb-1">Submitted</label>
+                        <input type="date" name="submitted_on" id="submitted_on" value="{{ claim.submitted_on|date:'Y-m-d' }}" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label for="billed_amount" class="block text-sm font-medium text-gray-700 mb-1">Billed</label>
+                        <input type="number" step="0.01" min="0" name="billed_amount" id="billed_amount" value="{{ claim.billed_amount|default_if_none:'' }}" placeholder="{{ claim.invoice_billed_amount }}" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
+                        <p class="text-xs text-gray-500 mt-1">Blank = invoice total minus deductible.</p>
+                    </div>
+                    <div>
+                        <label for="authorized_amount" class="block text-sm font-medium text-gray-700 mb-1">Authorized</label>
+                        <input type="number" step="0.01" min="0" name="authorized_amount" id="authorized_amount" value="{{ claim.authorized_amount|default_if_none:'' }}" placeholder="not yet" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
+                        <p class="text-xs text-gray-500 mt-1">What the insurer said they will pay.</p>
+                    </div>
+                </div>
+                <div>
+                    <label for="claim_notes" class="block text-sm font-medium text-gray-700 mb-1">Notes <span class="text-gray-400">(shop only)</span></label>
+                    <textarea name="notes" id="claim_notes" rows="3" placeholder="Who you spoke to, what they said, when to call back" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">{{ claim.notes }}</textarea>
+                </div>
+                <button type="submit" class="btn-secondary w-full press">{% icon 'save' class="mr-2" %}Save claim</button>
+            </form>
+        </div>
+
+        <!-- Close -->
+        <div class="card">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Stop chasing</h2>
+            </div>
+            <form method="post" action="{% url 'claim_close' claim_id=claim.id %}" class="p-6 space-y-3">
+                {% csrf_token %}
+                <p class="text-sm text-gray-600">
+                    {% if claim.short_amount > 0 %}Closing writes off the ${{ claim.short_amount|floatformat:2 }} still short. It stays on record; it just stops counting as money owed.{% else %}Nothing is short. Closing just files the claim.{% endif %}
+                </p>
+                <input type="text" name="reason" maxlength="200" placeholder="Why (optional) — e.g. customer paid the difference" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
+                <button type="submit" class="btn-ghost w-full press text-gray-700">{% icon 'check' class="mr-2" %}Close claim</button>
+            </form>
+        </div>
+        {% else %}
+        <div class="card p-6">
+            <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-2">Closed</h2>
+            <p class="text-sm text-gray-600 mb-4">Reopen to edit it or record another insurer payment. The status will follow the money again.</p>
+            <form method="post" action="{% url 'claim_reopen' claim_id=claim.id %}">
+                {% csrf_token %}
+                <button type="submit" class="btn-secondary w-full press">{% icon 'rotate-ccw' class="mr-2" %}Reopen claim</button>
+            </form>
+            {% if claim.notes %}<div class="mt-4 text-sm text-gray-600 whitespace-pre-line border-t border-gray-100 pt-4">{{ claim.notes }}</div>{% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

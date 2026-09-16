@@ -955,6 +955,16 @@ class Payment(models.Model):
         null=True, blank=True,
         help_text="User who recorded this payment"
     )
+    # Set when the money came from the insurer on the invoice's claim (B5).
+    # An ordinary customer payment — the deductible, a cash job — leaves it
+    # blank and never counts toward what the insurer has paid.
+    claim = models.ForeignKey(
+        'billing.InsuranceClaim',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='payments',
+        help_text='The insurance claim this payment settles, if it came from the insurer',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -981,13 +991,24 @@ class Payment(models.Model):
         super().save(*args, **kwargs)
         # Update invoice payment total and status
         self._update_invoice_totals()
+        self._reconcile_claim(self.claim_id)
+
+    @staticmethod
+    def _reconcile_claim(claim_id):
+        """Recompute the linked insurance claim's received/short/status (B5)."""
+        if not claim_id:
+            return
+        from apps.billing.services.claim_service import reconcile_by_id
+        reconcile_by_id(claim_id)
 
     def delete(self, *args, **kwargs):
         # Capture invoice_id before deletion so we can reconcile after.
         # Payment.invoice FK uses on_delete=PROTECT so the invoice row
         # will still exist after this payment is removed.
         invoice_id = self.invoice_id
+        claim_id = self.claim_id
         super().delete(*args, **kwargs)
+        self._reconcile_claim(claim_id)
         # Recompute invoice totals now that this payment is gone.
         # Uses the same SELECT FOR UPDATE pattern as _update_invoice_totals to
         # be safe under concurrent operations.
@@ -1418,3 +1439,4 @@ class StripeWebhookEvent(models.Model):
 # technician_portal.review_models). Imported here so `apps.billing.models.Quote`
 # resolves and the migration autodetector sees them.
 from apps.billing.quote_models import Quote, QuoteLineItem  # noqa: E402, F401
+from apps.billing.claim_models import InsuranceClaim  # noqa: E402, F401

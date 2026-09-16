@@ -3570,7 +3570,7 @@ def owner_invoice_list(request):
     # Base queryset — all invoices for this tenant
     invoices = Invoice.objects.filter(
         customer__tenant=tenant,
-    ).select_related('customer').order_by('-invoice_date', '-created_at')
+    ).select_related('customer', 'claim').order_by('-invoice_date', '-created_at')
 
     # --- Filters ---
     status_filter = request.GET.get('status', 'all')
@@ -3578,6 +3578,9 @@ def owner_invoice_list(request):
 
     if status_filter == 'paid':
         invoices = invoices.filter(status='PAID')
+    elif status_filter == 'insurance':
+        # Every invoice with a claim being tracked, whatever the money says.
+        invoices = invoices.filter(claim__isnull=False)
     elif status_filter == 'unpaid':
         # Overdue invoices are the most unpaid of all — excluding them here
         # hid exactly the invoices most worth chasing.
@@ -3654,6 +3657,15 @@ def owner_invoice_list(request):
             'total': total,
             'pct': round(total / aging_total * 100, 1) if aging_total else 0,
         })
+
+    # Insurance claims (B5): the "Owed to you" card counts short-paid claims
+    # and claims still waiting on the insurer separately from unpaid
+    # invoices. Both are already inside outstanding_amount (the invoice is
+    # what is unpaid); these lines say how much of it is an insurer's.
+    from apps.billing.services.claim_service import rollup as _claim_rollup
+    _claims = _claim_rollup(tenant)
+    claims_short = _claims['short']
+    claims_waiting = _claims['waiting']
 
     # Customer list for filter dropdown
     customers = Customer.objects.filter(tenant=tenant).order_by('name')
@@ -3748,12 +3760,15 @@ def owner_invoice_list(request):
         'invoices_this_month': invoices_this_month,
         'aging_buckets': aging_buckets,
         'aging_total': aging_total,
+        'claims_short': claims_short,
+        'claims_waiting': claims_waiting,
         'status_pills': [
             ('all', 'All'),
             ('unpaid', 'Unpaid'),
             ('overdue', 'Overdue'),
             ('partial', 'Partially paid'),
             ('paid', 'Paid'),
+            ('insurance', 'Insurance'),
         ],
         'uninvoiced_customers': uninvoiced_customers,
         'default_payment_terms': default_payment_terms,
@@ -3822,6 +3837,15 @@ def owner_invoice_detail(request, invoice_id):
         from apps.billing.pay_links import public_pay_url
         public_pay_link = public_pay_url(invoice)
 
+    # Insurance claim (B5): the claim on this invoice, or what the job form
+    # already captured so one tap starts tracking it.
+    from apps.billing.claim_models import InsuranceClaim
+    from apps.billing.services.claim_service import prefill_for_invoice
+    claim = InsuranceClaim.objects.filter(invoice=invoice).first()
+    claim_prefill = None
+    if claim is None and invoice.status != 'CANCELLED':
+        claim_prefill = prefill_for_invoice(invoice)
+
     context = {
         'tenant': tenant,
         'invoice': invoice,
@@ -3830,6 +3854,9 @@ def owner_invoice_detail(request, invoice_id):
         'payment_methods': payment_methods,
         'payment_terms_choices': BillingConfig.PAYMENT_TERMS_CHOICES,
         'pdf_url': pdf_url,
+        'claim': claim,
+        'claim_prefill': claim_prefill,
+        'claim_flagged_on_job': bool(claim_prefill),
         'recipient_email': recipient_email,
         'rendered_reminder_default': rendered_reminder_default,
         'today': timezone.now().date(),
@@ -3877,6 +3904,17 @@ def owner_record_payment(request, invoice_id):
     reference_number = request.POST.get('reference_number', '').strip()
     payment_date_str = request.POST.get('payment_date', '')
     notes = request.POST.get('notes', '').strip()
+
+    # "This payment is from the insurer" (B5): link it to the invoice's
+    # claim so it counts toward what the insurer has paid. Only an invoice
+    # that carries a claim can take one.
+    claim = None
+    if request.POST.get('from_insurer') == '1':
+        from apps.billing.claim_models import InsuranceClaim
+        claim = InsuranceClaim.objects.filter(invoice=invoice).first()
+        if claim is None:
+            messages.error(request, 'This invoice has no insurance claim to apply the payment to.')
+            return _done()
 
     # Validate amount
     if amount <= Decimal('0'):
@@ -3967,8 +4005,27 @@ def owner_record_payment(request, invoice_id):
                 reference_number=reference_number,
                 notes=notes,
                 recorded_by=request.user,
+                claim=claim,
             )
             # Payment.save() already calls _update_invoice_totals() with its own lock
+
+        if claim is not None:
+            # An insurer's check is not the customer's payment: no receipt
+            # to the customer, no "you got paid" to the owner who just typed
+            # it. The audit log is the record.
+            from apps.billing.services.claim_service import log_insurer_payment
+            log_insurer_payment(claim, payment, request=request)
+            claim.refresh_from_db()
+            if claim.status == 'PAID':
+                messages.success(request, f'Insurer payment of ${amount} recorded — the claim is paid in full.')
+            elif claim.status == 'SHORT':
+                messages.success(
+                    request,
+                    f'Insurer payment of ${amount} recorded. The claim is short ${claim.short_amount}.',
+                )
+            else:
+                messages.success(request, f'Insurer payment of ${amount} recorded.')
+            return _done()
 
         # Send payment confirmation emails (best-effort, don't fail the request)
         try:

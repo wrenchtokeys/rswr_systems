@@ -12,6 +12,9 @@
         <p class="mt-2 text-xs text-gray-400"><i class="far fa-question-circle mr-1"></i>Guides: <a href="{% url 'help_topic' 'send-invoice' %}" class="text-brand-500 hover:text-brand-700 font-medium">Send an invoice</a> · <a href="{% url 'help_topic' 'paid-on-time' %}" class="text-brand-500 hover:text-brand-700 font-medium">Get paid on time</a> · <a href="{% url 'help_topic' 'troubleshooting' %}" class="text-brand-500 hover:text-brand-700 font-medium">Troubleshooting</a></p>
     </div>
     <div class="flex items-center gap-4">
+        <a href="{% url 'claim_list' %}" class="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900" title="What each insurer owes, what came in, what is short">
+            {% icon 'shield' class="mr-2" %}Insurance claims
+        </a>
         <a href="{% url 'archived_repairs' %}" class="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900" title="Restore deleted invoices and jobs">
             <i class="fas fa-trash-restore mr-2"></i>Recently Deleted
         </a>
@@ -66,7 +69,25 @@
         {% else %}
         <div class="mt-4 flex items-center gap-2 text-sm text-green-700">
             <i class="fas fa-check-circle text-green-500"></i>
-            Nothing outstanding — every invoice is paid.
+            {% if claims_short.count or claims_waiting.count %}No unpaid invoices sent to customers.{% else %}Nothing outstanding — every invoice is paid.{% endif %}
+        </div>
+        {% endif %}
+        {% if claims_short.count or claims_waiting.count %}
+        {% comment %}Insurance claims (B5): counted separately from unpaid invoices. Both lines are
+        part of the total above — this says how much of it is an insurer's.{% endcomment %}
+        <div class="mt-3 pt-3 border-t border-gray-100 space-y-1.5" data-claims-summary>
+            {% if claims_short.count %}
+            <a href="{% url 'claim_list' %}?status=short" class="flex items-center justify-between gap-3 text-sm text-red-700 hover:text-red-900">
+                <span>{% icon 'shield' class="mr-1.5" %}Short-paid by insurers · {{ claims_short.count }} claim{{ claims_short.count|pluralize }}</span>
+                <span class="num font-semibold">${{ claims_short.total|floatformat:2 }}</span>
+            </a>
+            {% endif %}
+            {% if claims_waiting.count %}
+            <a href="{% url 'claim_list' %}?status=waiting" class="flex items-center justify-between gap-3 text-sm text-gray-600 hover:text-gray-900">
+                <span>{% icon 'shield' class="mr-1.5" %}Waiting on insurers · {{ claims_waiting.count }} claim{{ claims_waiting.count|pluralize }}</span>
+                <span class="num font-semibold text-gray-800">${{ claims_waiting.total|floatformat:2 }}</span>
+            </a>
+            {% endif %}
         </div>
         {% endif %}
     </div>
@@ -223,6 +244,9 @@
                             {% elif inv.email_delivery_status == 'delivered' %}
                             <div class="mt-1 text-xs text-green-600" title="Accepted by the customer's mail server {{ inv.email_delivery_status_at|date:'M d, Y g:i A' }}"><i class="fas fa-check mr-0.5"></i>Delivered</div>
                             {% endif %}
+                            {% if inv.claim %}
+                            <div class="mt-1 text-xs {% if inv.claim.status == 'SHORT' %}text-red-600{% elif inv.claim.status == 'PAID' %}text-green-600{% else %}text-gray-500{% endif %}" title="Insurance claim: {{ inv.claim.get_status_display }}">{% icon 'shield' class="mr-0.5" %}{% if inv.claim.status == 'SHORT' %}Insurer short ${{ inv.claim.short_amount|floatformat:2 }}{% else %}Insurer: {{ inv.claim.get_status_display|lower }}{% endif %}</div>
+                            {% endif %}
                             {% if inv.first_viewed_at %}
                             <div class="mt-1 text-xs text-green-600" title="Customer opened this invoice {{ inv.last_viewed_at|date:'M d, Y g:i A' }}"><i class="fas fa-eye mr-0.5"></i>Viewed</div>
                             {% elif inv.sent_at and inv.status in 'SENT,OVERDUE,PARTIAL' %}
@@ -328,6 +352,9 @@
                         <div class="mt-1 text-xs text-amber-600" title="{{ inv.email_delivery_detail|default:'Delivery delayed — the mail server will keep retrying' }}"><i class="fas fa-clock mr-0.5"></i>Delayed</div>
                         {% elif inv.email_delivery_status == 'delivered' %}
                         <div class="mt-1 text-xs text-green-600" title="Accepted by the customer's mail server {{ inv.email_delivery_status_at|date:'M d, Y g:i A' }}"><i class="fas fa-check mr-0.5"></i>Delivered</div>
+                        {% endif %}
+                        {% if inv.claim %}
+                        <div class="mt-1 text-xs {% if inv.claim.status == 'SHORT' %}text-red-600{% elif inv.claim.status == 'PAID' %}text-green-600{% else %}text-gray-500{% endif %}" title="Insurance claim: {{ inv.claim.get_status_display }}">{% icon 'shield' class="mr-0.5" %}{% if inv.claim.status == 'SHORT' %}Insurer short ${{ inv.claim.short_amount|floatformat:2 }}{% else %}Insurer: {{ inv.claim.get_status_display|lower }}{% endif %}</div>
                         {% endif %}
                         {% if inv.first_viewed_at %}
                         <div class="mt-1 text-xs text-green-600" title="Customer opened this invoice {{ inv.last_viewed_at|date:'M d, Y g:i A' }}"><i class="fas fa-eye mr-0.5"></i>Viewed</div>

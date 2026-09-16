@@ -48,9 +48,20 @@ QUOTE_STATUS_STYLES = {
     'SUPERSEDED': ('bg-gray-100 text-gray-600', 'Revised'),
 }
 
+# InsuranceClaim.STATUS_CHOICES (apps/billing/claim_models). SHORT is the
+# one the owner is chasing, so it gets the red; PAID is money, so green.
+CLAIM_STATUS_STYLES = {
+    'SUBMITTED': ('bg-blue-100 text-blue-800', 'Submitted'),
+    'AUTHORIZED': ('bg-indigo-100 text-indigo-800', 'Authorized'),
+    'SHORT': ('bg-red-100 text-red-800', 'Short-paid'),
+    'PAID': ('bg-green-100 text-green-800', 'Paid in full'),
+    'CLOSED': ('bg-gray-100 text-gray-600', 'Closed'),
+}
+
 _STYLES_BY_KIND = {
     'invoice': INVOICE_STATUS_STYLES,
     'quote': QUOTE_STATUS_STYLES,
+    'claim': CLAIM_STATUS_STYLES,
 }
 
 _DEFAULT_STYLE = ('bg-gray-100 text-gray-800', None)
@@ -72,6 +83,7 @@ def status_badge(status, label=None, kind='service', variant='shop', optimistic=
     {% status_badge repair.queue_status %}
     {% status_badge invoice.status kind='invoice' %}
     {% status_badge quote.effective_status kind='quote' %}
+    {% status_badge claim.status kind='claim' %}
     {% status_badge repair.queue_status label=repair.get_queue_status_display %}
     {% status_badge repair.queue_status variant='customer' %}  — customer-facing labels
     {% status_badge inv.status kind='invoice' optimistic=True %}  — see below

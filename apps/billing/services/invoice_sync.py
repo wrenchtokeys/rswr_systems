@@ -66,6 +66,10 @@ def recalculate_invoice_totals(invoice):
         invoice.tax_amount = Decimal('0.00')
     invoice.total = after_discount + invoice.tax_amount
     invoice.save(update_fields=['subtotal', 'discount', 'tax_amount', 'total'])
+    # The invoice's claim expects "total minus deductible" unless pinned, so
+    # a line edit can turn a paid claim short (or the reverse). (B5)
+    from apps.billing.services.claim_service import reconcile_invoice_claim
+    reconcile_invoice_claim(invoice)
 
 
 def create_charge_lines(invoice, service):
