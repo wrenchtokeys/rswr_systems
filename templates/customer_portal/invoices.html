@@ -98,7 +98,7 @@
                     {% endif %}
                 </td>
                 <td class="px-5 py-3.5 text-right whitespace-nowrap" onclick="event.stopPropagation()">
-                    {% if invoice.amount_due > 0 and invoice.status != 'CANCELLED' %}
+                    {% if invoice.amount_due > 0 and invoice.status != 'CANCELLED' and can_pay_online %}
                     <a href="{% url 'customer_invoice_detail' invoice.id %}" class="inline-flex items-center px-3 py-1.5 bg-brand-500 text-white text-xs font-semibold rounded-lg hover:bg-brand-600 transition-colors press">
                         Pay Now
                     </a>
@@ -158,9 +158,13 @@
                 {% if invoice.amount_due > 0 and invoice.status != 'CANCELLED' %}
                 <div class="text-right">
                     <p class="text-sm font-bold text-red-600 mb-1">${{ invoice.amount_due|floatformat:2 }} due</p>
+                    {% if can_pay_online %}
                     <span class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg">
                         Pay Now <i class="fas fa-arrow-right ml-2 text-xs"></i>
                     </span>
+                    {% else %}
+                    <span class="text-xs text-gray-500">View invoice</span>
+                    {% endif %}
                 </div>
                 {% elif invoice.status == 'PAID' %}
                 <div class="text-right">

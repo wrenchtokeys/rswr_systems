@@ -4804,11 +4804,26 @@ def _setup_completion(tenant):
         ).exists()
     )
 
+    # Getting paid by card. This is the ONE setup step a shop could previously
+    # reach "fully configured" without: Connect status lived only inside
+    # Settings -> Card Payments, nothing pushed an owner toward it, and the
+    # first sign was a customer who couldn't pay. Same property the portal and
+    # the public invoice gate on, so the checklist cannot disagree with them.
+    #
+    # Only offered when the PLATFORM has Stripe configured at all — otherwise
+    # the row is uncompletable and would wrongly hold every shop below 100%.
+    # `ConnectService.is_enabled()` is the definition; read the setting here so
+    # a dashboard render doesn't instantiate the service.
+    payments_offered = bool(getattr(settings, 'STRIPE_SECRET_KEY', None))
+    has_payments = tenant.can_accept_payments
+
     # Items shown in the checklist card; resin rules hidden for shops
-    # that don't do repairs.
+    # that don't do repairs, card payments hidden when Stripe is unconfigured.
     items = [has_business_info, has_customers, True, has_tax, has_billing, True, has_team]
     if tenant.offers_repairs:
         items.append(has_viscosity)
+    if payments_offered:
+        items.append(has_payments)
 
     # Defaults genuinely work, so pricing/billing/assignment always count as
     # "complete" — but the checklist should say "Using standard defaults"
@@ -4840,6 +4855,8 @@ def _setup_completion(tenant):
         'assignment': True,  # always has default
         'assignment_defaulted': assignment_defaulted,
         'team': has_team,
+        'payments': has_payments,
+        'payments_offered': payments_offered,
         # has_billing was always True (default_payment_terms defaults 'COD'),
         # so business info is the only genuinely critical item.
         'critical_complete': has_business_info,
@@ -4883,6 +4900,10 @@ def _setup_checklist_items(tenant, completion):
                           'done' if completion['viscosity'] else 'todo'))
     items.append(item('Job Assignment', f'{settings_url}?tab=general',
                       'defaulted' if completion['assignment_defaulted'] else 'done'))
+    if completion.get('payments_offered'):
+        items.append(item('Get Paid by Card', f'{settings_url}?tab=payments',
+                          'done' if completion['payments'] else 'todo',
+                          "Customers can't pay online yet"))
     return items
 
 
