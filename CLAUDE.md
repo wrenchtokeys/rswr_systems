@@ -456,7 +456,7 @@ All fire via `core.services.notification_service`. Per-user and per-customer pre
 
 **A seeded template is not a deliverable one.** Two things decide whether an event actually emails anybody, and both live on the `NotificationTemplate` row, not in the template file:
 1. **`email_html_template`/`email_text_template` must be populated.** Migration 0018 seeded the repair lifecycle with in-app fields only, so six bodies rendered as bare plain text for months while their HTML was rewritten twice. `core/0033` backfilled them.
-2. **The priority must map to a channel that includes email.** `get_delivery_channels()` gives URGENT `['in_app','email','sms']`, MEDIUM `['in_app','email']`, and **HIGH only `['in_app','sms']`** — and SMS is dark (the shared toll-free number was abandoned 2026-09-16; see `docs/operations/SMS_REGISTRATION.md`). A HIGH template needs `channels_override` or it cannot email at all.
+2. **The priority must map to a channel that includes email.** `get_delivery_channels()` gives URGENT `['in_app','email','sms']`, MEDIUM `['in_app','email']`, and **HIGH only `['in_app','sms']`** — and SMS is dark pending toll-free registration v5 (see `docs/operations/SMS_REGISTRATION.md`). A HIGH template needs `channels_override` or it cannot email at all.
 
 `NotificationTemplate.render()` resolves `action_url` from the row's `action_url_template` **before** rendering the bodies, so every body can rely on the key existing; a caller-supplied `action_url` still wins. Email bodies guard their CTA with `{% if action_url %}`. Audience is decided by the **call site**, not the template name — `repair_approved`, `repair_denied` and `batch_approved` all go to a technician. `tests/test_fieldops_n3.py` guards all of this; the inventory table of every event → recipient → channel is in `docs/strategy/FIELD_OPS_SESSIONS.md` §N3.
 
@@ -671,7 +671,7 @@ each session carries a dated Status line — take the next `NEXT`, not the first
 - `docs/deployment/STRIPE_ARCHITECTURE.md` — platform vs shop (Connect Express) money flows, live price IDs, webhooks, platform fee resolution + the NULL-vs-0.00 repair
 - `docs/deployment/PRODUCTION_CHECKLIST.md` — pre/post deploy verification
 - `docs/operations/SES_OPERATIONS.md` — email deliverability: auth setup, content rules, verification log
-- `docs/operations/SMS_REGISTRATION.md` — **canonical SMS status.** The shared toll-free number was denied four times and abandoned 2026-09-16 (ISV brand ≠ message brand — structural, not wording). Read it before touching anything SMS; do not submit another registration version.
+- `docs/operations/SMS_REGISTRATION.md` — **canonical SMS status.** Four denials, all scoped as customer-facing texts sent as the shop — that audience cannot be registered on RS Systems' number (ISV brand ≠ message brand). **Texting RS Systems' own owners/techs as RS Systems is clean, and is version 5.** Read §3.5 before touching anything SMS.
 - `docs/security/SECURITY_OVERVIEW.md` — security features
 - `docs/security/INCIDENT_RESPONSE.md` — emergency procedures
 - `docs/development/TESTING.md` — testing procedures

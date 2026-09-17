@@ -64,6 +64,27 @@ class BaseNotificationPreference(AutoUpdateTimestampMixin, models.Model):
         help_text="End of quiet hours (e.g., 08:00)"
     )
 
+    # SMS consent record (A2P compliance).
+    # `receive_sms_notifications` is the switch; these two are the evidence that
+    # the person themselves turned it on, which is what a carrier asks for. A
+    # switch with no consent timestamp is an owner or an admin acting on someone
+    # else's behalf, and is not consent — see docs/operations/SMS_REGISTRATION.md.
+    SMS_CONSENT_SOURCE_CHOICES = [
+        ('SELF_SERVICE', 'Turned on by the recipient in their own settings'),
+        ('IMPORTED', 'Recorded outside the app (documented separately)'),
+    ]
+    sms_consent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this person themselves agreed to receive texts"
+    )
+    sms_consent_source = models.CharField(
+        max_length=20,
+        blank=True,
+        choices=SMS_CONSENT_SOURCE_CHOICES,
+        help_text="How that consent was captured"
+    )
+
     # Contact verification
     email_verified = models.BooleanField(
         default=False,
@@ -96,8 +117,29 @@ class BaseNotificationPreference(AutoUpdateTimestampMixin, models.Model):
         return self.receive_email_notifications and self.email_verified
 
     def can_send_sms(self):
-        """Check if SMS notifications are enabled and verified"""
-        return self.receive_sms_notifications and self.phone_verified
+        """Enabled, verified, AND consented — all three, or we do not text.
+
+        The consent timestamp is the one a carrier audit asks for; without it
+        the switch alone cannot show who turned it on.
+        """
+        return bool(
+            self.receive_sms_notifications
+            and self.phone_verified
+            and self.sms_consent_at
+        )
+
+    def record_sms_consent(self, source='SELF_SERVICE'):
+        """Stamp consent the first time this person turns texts on.
+
+        Idempotent: re-saving preferences must not move the timestamp, because
+        the original moment is the evidence.
+        """
+        if self.receive_sms_notifications and not self.sms_consent_at:
+            from django.utils import timezone
+            self.sms_consent_at = timezone.now()
+            self.sms_consent_source = source
+            return True
+        return False
 
     def is_in_quiet_hours(self):
         """Check if current time is within quiet hours"""

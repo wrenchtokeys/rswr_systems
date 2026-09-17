@@ -3545,11 +3545,17 @@ def customer_verify_phone(request):
     message = f"Your RS Systems verification code is: {code}. This code expires in 10 minutes."
 
     try:
-        if hasattr(settings, 'SMS_ENABLED') and settings.SMS_ENABLED:
-            SMSService.send_sms(
+        # See the note in technician_portal/views/notifications.py: the flag alone
+        # is not the gate — without an origination identity the send no-ops.
+        if SMSService.is_enabled():
+            sent, _log = SMSService.send_sms(
                 phone_number=customer.phone,
                 message=message
             )
+            if not sent:
+                logger.error("Verification SMS was not sent for customer %s", customer.pk)
+                messages.error(request, "Failed to send verification code. Please try again later.")
+                return redirect('customer_notification_preferences')
             messages.success(request, f"Verification code sent to {customer.phone}")
         else:
             # Development mode - show code in message

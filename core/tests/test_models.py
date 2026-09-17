@@ -204,7 +204,11 @@ class TechnicianNotificationPreferenceTestCase(TestCase):
             receive_email_notifications=True,
             receive_sms_notifications=True,
             email_verified=True,
-            phone_verified=True
+            phone_verified=True,
+            # Texting needs a consent record, not just the switch — see
+            # docs/operations/SMS_REGISTRATION.md.
+            sms_consent_at=timezone.now(),
+            sms_consent_source='SELF_SERVICE',
         )
 
     def test_can_send_email_verified(self):
@@ -232,6 +236,37 @@ class TechnicianNotificationPreferenceTestCase(TestCase):
         self.prefs.phone_verified = False
         self.prefs.save()
         self.assertFalse(self.prefs.can_send_sms())
+
+    def test_can_send_sms_requires_consent_record(self):
+        """The switch alone is not consent — a carrier asks who turned it on.
+
+        An owner can tick a tech's SMS box for them; only the tech's own action
+        writes sms_consent_at, and that is what we have to be able to show.
+        """
+        self.prefs.sms_consent_at = None
+        self.prefs.save()
+        self.assertFalse(self.prefs.can_send_sms())
+
+    def test_record_sms_consent_is_idempotent(self):
+        """Re-saving other preferences must not move the consent timestamp."""
+        original = self.prefs.sms_consent_at
+        self.assertFalse(self.prefs.record_sms_consent())
+        self.assertEqual(self.prefs.sms_consent_at, original)
+
+    def test_record_sms_consent_stamps_on_first_opt_in(self):
+        """Turning texts on for the first time writes the record."""
+        self.prefs.sms_consent_at = None
+        self.prefs.sms_consent_source = ''
+        self.assertTrue(self.prefs.record_sms_consent())
+        self.assertIsNotNone(self.prefs.sms_consent_at)
+        self.assertEqual(self.prefs.sms_consent_source, 'SELF_SERVICE')
+
+    def test_record_sms_consent_noop_when_switch_off(self):
+        """Never stamp consent for somebody who has texts turned off."""
+        self.prefs.receive_sms_notifications = False
+        self.prefs.sms_consent_at = None
+        self.assertFalse(self.prefs.record_sms_consent())
+        self.assertIsNone(self.prefs.sms_consent_at)
 
     def test_is_in_quiet_hours_disabled(self):
         """Test quiet hours when disabled"""

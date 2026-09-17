@@ -175,3 +175,14 @@ class CustomerNotificationPreferenceForm(forms.ModelForm):
             )
 
         return cleaned_data
+
+    def save(self, commit=True):
+        """Stamp the consent record the first time this person turns texts on.
+
+        Same contract as the technician form — see the note there.
+        """
+        preferences = super().save(commit=False)
+        preferences.record_sms_consent(source='SELF_SERVICE')
+        if commit:
+            preferences.save()
+        return preferences

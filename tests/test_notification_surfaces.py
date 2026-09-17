@@ -255,10 +255,18 @@ class NotificationListTests(TestCase):
         self.tech = Technician.objects.create(user=self.user, tenant=self.tenant)
 
     def test_day_headers_group_the_list(self):
-        now = timezone.now()
-        _make_notification(self.tech, title='A', created_at=now - timedelta(hours=1))
-        _make_notification(self.tech, title='B', created_at=now - timedelta(hours=2))
-        _make_notification(self.tech, title='C', created_at=timezone.localtime(now).replace(hour=12) - timedelta(days=1))
+        # Anchor every row to local NOON, not to `now`. Offsetting backwards from
+        # the clock ("now - 1h") put both "today" rows on yesterday's date whenever
+        # the suite ran between midnight and 02:00 local, so the assertion below
+        # found zero Today headers and blamed whoever was running the tests.
+        # The header grouping is by local date, so a fixed midday is stable at
+        # every hour of the day.
+        noon_today = timezone.localtime(timezone.now()).replace(
+            hour=12, minute=0, second=0, microsecond=0
+        )
+        _make_notification(self.tech, title='A', created_at=noon_today)
+        _make_notification(self.tech, title='B', created_at=noon_today - timedelta(hours=1))
+        _make_notification(self.tech, title='C', created_at=noon_today - timedelta(days=1))
         qs = Notification.objects.filter(recipient_id=self.tech.id).order_by('-created_at')
         html = render_to_string('components/notification_list.html', {'notifications': qs})
         self.assertEqual(len(re.findall(r'>\s*Today\s*<', html)), 1, 'one Today header, not one per row')

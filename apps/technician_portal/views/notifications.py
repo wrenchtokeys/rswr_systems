@@ -354,13 +354,22 @@ def verify_phone(request):
     message = f"Your RS Systems verification code is: {code}. This code expires in 10 minutes."
 
     try:
-        from django.conf import settings
-        if hasattr(settings, 'SMS_ENABLED') and settings.SMS_ENABLED:
-            SMSService.send_sms(
+        # is_enabled() — not settings.SMS_ENABLED — is the real gate: the kill
+        # switch needs BOTH the flag and a registered origination identity, and
+        # without the second one every send no-ops. Checking the flag alone told
+        # the user their code was on its way when nothing had been sent.
+        if SMSService.is_enabled():
+            sent, _log = SMSService.send_sms(
                 phone_number=technician.phone_number,
                 message=message
             )
-            messages.success(request, f"Verification code sent to {technician.phone_number}")
+            if sent:
+                messages.success(request, f"Verification code sent to {technician.phone_number}")
+            else:
+                logger.error(
+                    "Verification SMS was not sent for technician %s", technician.pk
+                )
+                messages.error(request, "Failed to send verification code. Please try again later.")
         else:
             messages.info(request, f"Development mode: Your verification code is {code}")
     except Exception as e:

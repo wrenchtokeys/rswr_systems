@@ -213,6 +213,36 @@ class SMSService:
             return False, delivery_log
 
     @staticmethod
+    def send_sms(
+        phone_number: str,
+        message: str,
+        tenant=None,
+    ) -> Tuple[bool, Optional[NotificationDeliveryLog]]:
+        """
+        Send a one-off SMS that has no Notification row behind it.
+
+        This is the transport for messages that are not lifecycle notifications
+        — phone-verification codes above all. It is a thin wrapper over
+        `send_notification_sms` with `notification_id=None`, so it inherits the
+        same kill-switch, normalization, truncation, delivery log and retry
+        accounting; there is deliberately no second transport path.
+
+        Args:
+            phone_number: Recipient number in any common US format
+            message: Message body (truncated at 160 chars like every other send)
+            tenant: Tenant to stamp on the delivery log (optional)
+
+        Returns:
+            Tuple of (success: bool, log: NotificationDeliveryLog or None)
+        """
+        return SMSService.send_notification_sms(
+            notification_id=None,
+            recipient_phone=phone_number,
+            message=message,
+            tenant=tenant,
+        )
+
+    @staticmethod
     def _validate_phone(phone: str) -> bool:
         """
         Validate phone number is in E.164 format.
