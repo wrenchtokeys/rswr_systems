@@ -212,6 +212,26 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1">Price</label>
                 {{ form.price }}
                 {% if form.price.errors %}<p class="text-sm text-red-600 mt-1">{{ form.price.errors.0 }}</p>{% endif %}
+                {% if shop_offers_replacements %}
+                {% comment %}
+                Price book (B6): what this shop charged for this glass on this
+                vehicle, from static/js/price_book_suggestion.js. Fills an empty
+                price box and says so; offers "Use" beside a typed one. Keyed on
+                year/make/model (More details) or, for a fleet unit, on the
+                vehicle the shop's earlier jobs on that unit recorded.
+                {% endcomment %}
+                <div id="priceBookSuggestion" class="hidden mt-2"
+                     data-pricebook-endpoint="{% url 'get_price_book_suggestion' %}"
+                     data-pricebook-year="id_vehicle_year"
+                     data-pricebook-make="id_vehicle_make"
+                     data-pricebook-model="id_vehicle_model"
+                     data-pricebook-position="id_glass_position"
+                     data-pricebook-customer="id_customer"
+                     data-pricebook-unit="id_unit_number"
+                     data-pricebook-price="id_price"
+                     data-pricebook-type-name="service_type"
+                     data-pricebook-type-value="replacement"></div>
+                {% endif %}
                 {% if shop_offers_repairs %}
                 <p class="text-xs text-gray-400 mt-1" id="price-hint-repair">Leave blank on a repair to auto-price from your price book.</p>
                 {% endif %}
@@ -624,6 +644,8 @@ document.addEventListener('DOMContentLoaded', function() {
             syncTaxExempt();
             syncServiceLocation();
             checkDuplicateJob();
+            // The picker writes the hidden select directly — no input event.
+            if (window.PriceBookSuggestion) window.PriceBookSuggestion.refreshAll();
         }
 
         // Service-location prefill (S2): picking a customer fills the
@@ -876,6 +898,10 @@ It lived only in the old repair_form.html, so it disappeared the day every
 were never touched. The container above carries the input id and the endpoint.
 {% endcomment %}
 <script src="{% static 'js/viscosity_suggestion.js' %}"></script>
+{% endif %}
+
+{% if shop_offers_replacements %}
+<script src="{% static 'js/price_book_suggestion.js' %}"></script>
 {% endif %}
 
 {% include 'technician_portal/partials/photo_crop_modal.html' %}

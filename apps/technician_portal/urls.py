@@ -77,6 +77,7 @@ urlpatterns = [
     path('repairs/bulk-reassign/', views.portal_bulk_reassign, name='portal_bulk_reassign'),
     path('api/batch-pricing/', views.get_batch_pricing_json, name='get_batch_pricing'),
     path('api/viscosity-suggestion/', views.get_viscosity_suggestion, name='get_viscosity_suggestion'),
+    path('api/price-book-suggestion/', views.get_price_book_suggestion, name='get_price_book_suggestion'),
 
     # Multi-break batch management (technician portal)
     path('batch/<uuid:batch_id>/', views.technician_batch_detail, name='technician_batch_detail'),

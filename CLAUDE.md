@@ -254,6 +254,7 @@ python manage.py export_photo_dataset --out DIR   # images/ + dataset.jsonl trai
 python manage.py security_audit              # Security checks
 python manage.py setup_simplified_rewards    # Seed 4 default reward options
 python manage.py audit_remediation_data      # Read-only data-drift audit (A1/A2/A3/C2)
+python manage.py seed_price_book --dry-run   # B6: rebuild each shop's price book from completed replacements (pinned rows kept)
 python manage.py sync_job_prices_from_invoices                    # Dry run — job vs invoiced price drift
 python manage.py sync_job_prices_from_invoices --customer x --apply  # Back-fill job cost from invoice
 ```
@@ -422,6 +423,19 @@ emails). The aging card counts `outstanding_amount` (short clamped to the invoic
 claim the customer covered is short on its page but not "owed". Claim mutations are the first
 writers of `SecurityAuditLog`, via `apps/security/audit.log_event` — an unknown event type
 raises. Owner/manager only; no portal surface. `tests/test_claims.py` is in the guard set.
+
+**Price book (B6, Sep 2026)**: `PriceBookEntry` (`apps/technician_portal/price_book_models.py`)
+is tenant-scoped, keyed (make_key, model_key, vehicle_year, glass_position); year 0 = any year.
+All writes go through `services/price_book.py`: `Replacement.save` calls `learn_from_job` on
+every save of a COMPLETED job (`count=` first completion), Mygrant apply calls it with
+`source=QUOTE`, the owner page pins rows. Precedence: **PINNED is never overwritten by a job;
+a QUOTE never replaces a charge; a re-save of an older job never clobbers a newer price.**
+`price` is the pre-discount number (what becomes `cost_override`), never `cost`. Suggest, never
+silently apply: the endpoint is read-only and `static/js/price_book_suggestion.js` fills only an
+empty box (with a note + Undo) or offers "Use $X" beside a typed one — don't add a caller that
+writes a price without one of those two. Never fabricate a parts/labor split from a one-number
+row. Deploying to a shop with history: `seed_price_book` once (idempotent). `tests/test_price_book.py`
+is in the guard set.
 
 **Multi-Break Batch Repairs**: Multiple repairs for same unit in one session. Each break is a separate `Repair` linked via `repair_batch_id` (UUID). Progressive pricing: Break N priced as repair #(existing_count + N). Created atomically. URL: `/tech/repairs/create-multi-break/`.
 

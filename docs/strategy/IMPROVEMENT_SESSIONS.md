@@ -654,8 +654,14 @@ one closed; the aging card counts short-paid claims separately from unpaid invoi
 **Goal:** A replacement prices itself from *this shop's* history — vehicle/glass → the price
 this shop last charged — with no licence and no catalog ingestion.
 **Size:** M · **Depends on:** —
-**Status:** **NEXT — spine feature 3** (`PRODUCT_DIRECTION.md`, 2026-09-02). Promoted out of
-D2's "much cheaper 80%"; own session after the fork carries Drake's name.
+**Status:** **BUILT 2026-09-16 → PR #257** (spine feature 3, the last). Both
+decisions below taken as recommended: the book is learned *and* editable (an edited row is
+pinned and never overwritten), and a Mygrant quote writes in as a quote that a charge replaces.
+`PriceBookEntry` + `services/price_book.py`; suggestion endpoint + `price_book_suggestion.js`
+on the job form and both owner replacement forms; `/owner/price-book/`; `seed_price_book`
+(run once on prod after deploying); quote-form lines and an individual's "2019 Ford F-150"
+vehicle text covered the same day. `tests/test_price_book.py` in the guard set. Was: NEXT — spine feature 3 (2026-09-02), promoted out of
+D2's "much cheaper 80%".
 
 **Why it matters.** See D2: the valuable part of NAGS for a small shop is not the part number,
 it is not re-typing the same price for the same glass. Progressive repair pricing already
@@ -931,7 +937,7 @@ sessions, with the done ones struck.
 | ~~1~~ | ~~**C1**~~ | **DONE 2026-09-06**, PR #250 deployed 2026-09-07 00:59 UTC |
 | ~~2~~ | ~~**B3**~~ | **DONE** — PR #253 merged 2026-09-12, deployed 2026-09-14 — spine 1 |
 | ~~3~~ | ~~**B5**~~ | **BUILT 2026-09-16**, PR #255 — spine 2 |
-| 4 | **B6** | **NEXT — spine 3** |
+| ~~4~~ | ~~**B6**~~ | **BUILT 2026-09-16**, PR #257 — spine 3 |
 | — | **C2, A2** | verify on prod, then either nothing or minutes |
 | — | **A3, A4, A6, B4** | filler; A4 needs re-verifying first |
 | — | **B2, D1, D2** | memos; B2 waits on the toll-free number |

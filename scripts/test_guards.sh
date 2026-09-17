@@ -36,6 +36,7 @@ GUARDS=(
   tests.test_tenant_branding        # per-tenant theming + tenant scoping
   tests.test_quotes                 # B3: quote → accept → jobs at the locked price
   tests.test_claims                 # B5: insurance claim tracking + short-pay reconciliation
+  tests.test_price_book             # B6: shop-owned price book learns, suggests, pins
   tests.test_customer_portal_views  # portal views the quote pages build on
 )
 

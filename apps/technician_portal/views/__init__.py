@@ -134,6 +134,7 @@ from .notifications import (
 # API endpoints
 from .api import (
     get_batch_pricing_json,
+    get_price_book_suggestion,
     get_viscosity_suggestion,
     update_technician_profile,
 )
