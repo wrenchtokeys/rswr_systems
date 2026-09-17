@@ -654,7 +654,7 @@ one closed; the aging card counts short-paid claims separately from unpaid invoi
 **Goal:** A replacement prices itself from *this shop's* history — vehicle/glass → the price
 this shop last charged — with no licence and no catalog ingestion.
 **Size:** M · **Depends on:** —
-**Status:** **BUILT 2026-09-16 → PR #257** (spine feature 3, the last). Both
+**Status:** **DEPLOYED 2026-09-17 14:20 UTC (`8da23bbe`)**; `seed_price_book` run on prod, 0 rows (no replacement records on prod yet — the book learns from the first completed one). Built 2026-09-16 → PR #257 (spine feature 3, the last). Both
 decisions below taken as recommended: the book is learned *and* editable (an edited row is
 pinned and never overwritten), and a Mygrant quote writes in as a quote that a charge replaces.
 `PriceBookEntry` + `services/price_book.py`; suggestion endpoint + `price_book_suggestion.js`
@@ -937,7 +937,7 @@ sessions, with the done ones struck.
 | ~~1~~ | ~~**C1**~~ | **DONE 2026-09-06**, PR #250 deployed 2026-09-07 00:59 UTC |
 | ~~2~~ | ~~**B3**~~ | **DONE** — PR #253 merged 2026-09-12, deployed 2026-09-14 — spine 1 |
 | ~~3~~ | ~~**B5**~~ | **BUILT 2026-09-16**, PR #255 — spine 2 |
-| ~~4~~ | ~~**B6**~~ | **BUILT 2026-09-16**, PR #257 — spine 3 |
+| ~~4~~ | ~~**B6**~~ | **DEPLOYED 2026-09-17** (PR #257, `8da23bbe`) — spine 3; the spine is complete |
 | — | **C2, A2** | verify on prod, then either nothing or minutes |
 | — | **A3, A4, A6, B4** | filler; A4 needs re-verifying first |
 | — | **B2, D1, D2** | memos; B2 waits on the toll-free number |
