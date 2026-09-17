@@ -57,8 +57,12 @@ COMPANY = 'RS Systems'
 WEBSITE = 'rssystems.io'
 SUPPORT_EMAIL = 'support@rssystems.io'
 
+# No sample names any company but the registrant. A shop's or a fleet's name in a
+# sample is what invites the reviewer to make the association that killed v4
+# ("Message Use Case Mismatch" -- registrant one brand, samples another). The unit
+# number carries the same meaning to a technician without naming a third party.
 SAMPLES = [
-    ("RS Systems: New repair request from Penske - Unit 4821, windshield chip. "
+    ("RS Systems: New repair request - Unit 4821, windshield chip. "
      "View: https://rssystems.io/tech/repairs/1042/ Reply STOP to opt out."),
     ("RS Systems: Job #1042 assigned to you - 2019 F-150, chip repair, due today. "
      "https://rssystems.io/tech/repairs/1042/ Reply STOP to opt out."),
