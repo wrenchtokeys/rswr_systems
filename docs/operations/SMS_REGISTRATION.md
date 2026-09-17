@@ -7,18 +7,28 @@ Anything else that mentions SMS status (`FIELD_OPS_SESSIONS.md` Appendix A, `ROA
 **Last verified against AWS: 2026-09-16** (`aws pinpoint-sms-voice-v2`, us-east-1,
 account 973196283632, tier PRODUCTION).
 
+> ## Read §3.5 first — the answer depends on WHO is being texted
+>
+> This doc originally concluded "the toll-free number is dead, do not submit a version 5."
+> **That was too broad, and it was wrong for half the product.** It is correct for texting a
+> *shop's customers* as the shop. It is wrong for texting **RS Systems' own users** — the shop
+> owners and technicians with accounts on rssystems.io. For those, RS Systems *is* the brand on
+> the message, and the registration is clean. **That is a version 5, and it should be filed.**
+
 ---
 
 ## 1. Current state
 
 | Number | Number status | Registration | Usable |
 |---|---|---|---|
-| `+18663115189` (RS Systems) | **PENDING** | `REQUIRES_UPDATES` — **version 4 DENIED 2026-09-02 18:58 UTC** | **No** |
+| `+18663115189` (RS Systems) | **PENDING** | `REQUIRES_UPDATES` — **version 4 DENIED 2026-09-02 18:58 UTC** | Not yet — **version 5 (staff scope) is the live plan, §3.5** |
 | `+18559394817` (Rockstar Windshield Repair) | ACTIVE | COMPLETE (approved 2026-07-30, first try) | Yes — Rockstar only |
 
-Four versions submitted, four denied. The number has never been able to send. It has been
-leasing at **$2/mo since 2026-08-09** — about **$2.50 of dead spend at time of writing**, which
-is not the problem; the two months of blocked feature work is.
+Four versions submitted, four denied — **all four scoped as customer-facing texts sent on behalf
+of shops**, which is the thing that cannot be registered here (§3). The number itself is fine and
+should be **kept**: a version 5 scoped to RS Systems texting its own users (§3.5) is an ordinary
+registration. It leases at $2/mo, which was never the cost that mattered; two months of blocked
+feature work was.
 
 Prod is inert, not broken: `SMS_ENABLED=true` but `SMS_ORIGINATION_IDENTITY` is unset, and
 `SMSService.is_enabled()` requires both, so every send quietly no-ops with `(False, None)`.
@@ -61,7 +71,7 @@ in the architecture.
 
 ---
 
-## 3. Root cause — it is structural, and no fifth version fixes it
+## 3. Root cause — why every *customer-facing* version failed
 
 Read what v4 actually submitted, side by side:
 
@@ -102,11 +112,66 @@ Carriers do not grant a shared-number exception for this. Toll-free verification
 on 2026-02-17 (business registration number now required for non-sole-proprietors), and multi-brand
 sending from one toll-free number is the pattern the tightening targets.
 
-**Stop resubmitting.** Versions 5, 6 and 7 fail the same way.
+**For customer-facing texts, stop resubmitting** — versions 5, 6 and 7 fail the same way. But
+that verdict does not reach the other half of the product; see the next section.
 
 ---
 
-## 4. The three real paths, with the constraints verified against AWS
+## 3.5 The split that matters — two audiences, two different answers
+
+RS Systems sends texts to **two populations that have nothing in common** for registration
+purposes, and collapsing them is what produced four denials and one over-broad conclusion.
+
+| | **Staff notifications** | **Customer notifications** |
+|---|---|---|
+| Who receives it | The shop owner / technician — **an RS Systems account holder** | A shop's customer, who has never heard of RS Systems |
+| Brand on the message | **RS Systems** | The shop ("Hensley Auto Glass") |
+| Registrant brand matches? | **Yes** | No — this is the denial |
+| Where consent happens | Their own Settings page on rssystems.io, logged in | The public invoice page |
+| Circular opt-in? | **No** — they are already a user; the text is not how they reach us | Yes — the text *is* the invoice link |
+| Examples | `repair_request_submitted`, `repair_assigned`, `repair_approved`, `repair_denied`, `batch_approved`, `repair_reassigned_away`, phone-verification codes | Invoice links, review requests, `repair_pending_approval` |
+
+**The staff half resolves all three contradictions in §3 at once.** RS Systems texting its own
+users, as RS Systems, about their own account activity, with consent collected on a page they
+log into, is the most ordinary A2P registration there is — it is what every SaaS product with
+alerts files. The use case is `ACCOUNT_NOTIFICATIONS`, not `CUSTOMER_CARE`.
+
+Note the verification code the product already sends: *"Your **RS Systems** verification code
+is: 123456."* That message was always brand-consistent. It was filed under a registration
+describing customer care on behalf of shops, which is a use-case mismatch the reviewer named
+explicitly.
+
+### What this unblocks
+
+The urgent shop-facing events are the ones that most need a channel that isn't a bell nobody is
+looking at. `repair_request_submitted` — a customer asking for work — goes to
+`repair.technician` (`apps/technician_portal/signals.py:635`), an RS Systems user. Every event
+in the left-hand column above is registrable **now**.
+
+### Version 5 — scope it to staff only
+
+- `companyInfo.companyName` **RS Systems** / `website` **rssystems.io** — unchanged, and now
+  consistent with the samples.
+- `messagingUseCase.useCaseCategory` → **`ACCOUNT_NOTIFICATIONS`** (was `CUSTOMER_CARE`).
+- `useCaseDetails` — RS Systems is job-management software; we text **our own registered users**
+  (shop owners and technicians) about activity on their own account. No message goes to a
+  third party's customers under this registration.
+- `messageSamples` — **all branded RS Systems, all with STOP on the first message:**
+  1. `RS Systems: New repair request from Penske - Unit 4821, windshield chip. View: https://rssystems.io/tech/repairs/1042/ Reply STOP to opt out.`
+  2. `RS Systems: Job #1042 assigned to you - 2019 F-150, chip repair, due today. Reply STOP to opt out.`
+  3. `RS Systems: Your verification code is 123456. Expires in 10 minutes.`
+- `optInType` **`DIGITAL_FORM`** — and this time it is true and non-circular: the box lives at
+  **Settings → Notifications**, on a page the user must log in to reach.
+- `optInImage` — a screenshot of that consent block **in its default state, unchecked**
+  (see §7 trap 4). It is guarded by `tests/test_sms_consent_surface.py`.
+- `privacyPolicyUrl` `https://rssystems.io/privacy/` and `termsAndConditionsUrl`
+  `https://rssystems.io/terms/` — **both newly REQUIRED, see §6.**
+
+Customer-facing texts stay off this registration and take Path C below.
+
+---
+
+## 4. The paths for CUSTOMER-facing texts (the staff answer is §3.5)
 
 ### Path A — one number per shop, registered to *that shop* ✅ recommended for shops that qualify
 
@@ -165,13 +230,18 @@ shop's own mobile number — a number the customer already has in their contacts
 
 ### The decision
 
-**Ship Path C as the default for every shop. Offer Path A as an opt-in upgrade** for a shop that
-has its own domain and wants unattended texting, and charge the $2/mo through to them.
+**Staff notifications (§3.5): file version 5 on `+18663115189` now.** Keep the number — it has a
+valid registration after all, just not the one that was filed four times. This is the path that
+gives RS Systems texting at all, and it covers the urgent events (`repair_request_submitted`
+above all).
 
-**Release `+18663115189`.** It is not "pending" — it is unregisterable as specified, because
-RS Systems never texts anyone as itself; it always texts as a shop. There is no valid
-registration for this number under the current product. Keeping it costs $2/mo to preserve the
-illusion that the blocker is a carrier's clock.
+**Customer-facing: ship Path C as the default for every shop. Offer Path A as an opt-in upgrade**
+for a shop that has its own domain and wants unattended texting, and charge the $2/mo through.
+
+**Do not release `+18663115189`** — that was this doc's original call and it was wrong, because it
+followed from "RS Systems never texts anyone as itself," which is false: it texts its own users
+constantly. One number carries the staff registration; per-shop numbers carry Path A if a shop
+ever takes it.
 
 <details>
 <summary>The one remaining wording play, recorded and not recommended</summary>
@@ -187,7 +257,7 @@ circular opt-in). Recorded so nobody rediscovers it as a fresh idea.
 
 ---
 
-## 5. If Path A is taken — what must change in the submission
+## 5. If Path A (per-shop customer texts) is taken — what must change
 
 Beyond swapping the brand to the shop's:
 
@@ -260,14 +330,18 @@ Paid AWS actions are classifier-blocked for Claude — Drake runs them in his ow
 
 ## 8. Activation checklist — if and when any number clears
 
-1. `eb setenv SMS_ORIGINATION_IDENTITY=<number>` against `rs-systems-production`
+1. `eb setenv SMS_ORIGINATION_IDENTITY=+18663115189` against `rs-systems-production`
    (expect a deploy cycle — `eb setenv` triggers the collectstatic confighooks).
-   Under Path A this becomes a per-tenant field, not an env var.
-2. `python manage.py test_sms` to a real cell — the invoice-text path is the easiest
-   end-to-end check.
-3. Flip the shop toggles: Settings → Billing "Text Invoices", Settings → Reviews
-   "Send by Text When Possible", and the per-customer "OK to text" checkboxes.
-4. FIELD_OPS **N2** (tech assignment texts) becomes unblocked.
+   Under Path A a per-shop number becomes a per-tenant field, not this env var.
+2. `python manage.py test_sms` to a real cell.
+3. **Staff texts turn themselves on, one user at a time:** each owner/tech ticks
+   *"Text me urgent job alerts"* at Settings → Notifications, then verifies their mobile.
+   `can_send_sms()` requires all three — switch, verified number, consent record — so nobody
+   is texted because somebody else ticked a box for them.
+4. FIELD_OPS **N2** (tech assignment texts) is then live.
+5. **Customer-facing toggles stay off** — Settings → Billing "Text Invoices" and
+   Settings → Reviews "Send by Text When Possible" are Path A/C, not this registration.
+   Sending a shop-branded text from this number is what got versions 1–4 denied.
 
 ---
 
@@ -280,6 +354,30 @@ no phone is on file).
 
 None of it is wasted under Path C: the composition, consent storage, opt-in surfaces and toggles
 all stand. Only `SMSService`'s transport call is replaced by a deep link.
+
+## 10. What was built for the staff path (2026-09-17)
+
+- **`SMSService.send_sms(phone_number, message, tenant=None)`** now exists. Two shipped
+  phone-verification flows had been calling it since 2026-08-09 — it never existed, so both
+  raised `AttributeError` into a bare `except` and failed **100% of the time in production**.
+  It delegates to `send_notification_sms` so there is still exactly one transport.
+- **Both verification callers now gate on `SMSService.is_enabled()`**, not `settings.SMS_ENABLED`.
+  The flag alone is not the switch — without an origination identity every send no-ops, and the
+  old check told the user their code was on its way when nothing had been sent.
+- **A consent record**: `sms_consent_at` + `sms_consent_source` on `BaseNotificationPreference`
+  (migration `core/0035`), stamped by the preference forms the first time someone turns texts on,
+  and **idempotent** — the original moment is the evidence, so a later save never moves it.
+- **`can_send_sms()` now requires all three** — switch, verified phone, consent record — and
+  `NotificationService._queue_delivery` routes through it instead of checking the raw fields.
+  An owner ticking a tech's box for them is not consent and no longer sends.
+- **The consent block at Settings → Notifications** carries message types, frequency,
+  "Msg & data rates may apply", STOP/HELP, and links to `/sms/`, the privacy policy and terms.
+  **This is the screenshot surface for version 5.**
+- **`tests/test_sms_consent_surface.py`** pins it: every required element present, and the
+  checkbox asserted unchecked *in the rendered HTML* — because what version 3 was denied for was
+  a screenshot of rendered HTML, not a model default.
+
+**Still to do:** file version 5 (Drake — paid AWS action), then the §8 checklist.
 
 **Related:** [`SES_OPERATIONS.md`](SES_OPERATIONS.md) · `docs/strategy/FIELD_OPS_SESSIONS.md` (N2, N4)
 

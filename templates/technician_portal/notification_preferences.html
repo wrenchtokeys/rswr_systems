@@ -122,15 +122,47 @@
                             </div>
                         </div>
 
-                        <div class="flex items-start">
+                        {% comment %}
+                        A2P consent surface. Every line below is load-bearing for
+                        toll-free registration — message types, frequency, "Msg &
+                        data rates", STOP/HELP, and links to the program terms,
+                        privacy policy and terms. Registration version 1 was denied
+                        for a checkbox whose whole label was "SMS Notifications".
+                        This block is what gets screenshotted; screenshot it in its
+                        DEFAULT state, never filled in or pre-ticked.
+                        See docs/operations/SMS_REGISTRATION.md before editing.
+                        {% endcomment %}
+                        <div class="flex items-start" id="sms-consent">
                             <div class="flex items-center h-5">
                                 {{ form.receive_sms_notifications }}
                             </div>
                             <div class="ml-3">
                                 <label for="{{ form.receive_sms_notifications.id_for_label }}" class="font-medium text-gray-700 cursor-pointer">
-                                    SMS Notifications
+                                    Text me urgent job alerts
                                 </label>
-                                <p class="text-sm text-gray-500">{{ form.receive_sms_notifications.help_text }}</p>
+                                <p class="text-sm text-gray-700 mt-1">
+                                    I agree to receive automated text messages from RS Systems at the
+                                    mobile number on my account — new repair requests, job assignments
+                                    and approvals. Message frequency varies with job activity, typically
+                                    a few messages per working day. Consent is not a condition of using
+                                    RS Systems.
+                                </p>
+                                <p class="text-xs text-gray-500 mt-2">
+                                    Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help.
+                                    See our <a href="/sms/" class="underline hover:text-gray-700">text program terms</a>,
+                                    <a href="{% url 'privacy_policy' %}" class="underline hover:text-gray-700">privacy policy</a>
+                                    and <a href="{% url 'terms_of_service' %}" class="underline hover:text-gray-700">terms</a>.
+                                </p>
+                                {% if preferences.sms_consent_at %}
+                                <p class="text-xs text-gray-500 mt-2">
+                                    You agreed to texts on {{ preferences.sms_consent_at|date:"M j, Y" }}.
+                                </p>
+                                {% endif %}
+                                {% if not technician.phone_verified %}
+                                <p class="text-xs text-amber-700 mt-2">
+                                    Texts start once your mobile number is verified above.
+                                </p>
+                                {% endif %}
                             </div>
                         </div>
                     </div>

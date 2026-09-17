@@ -7,6 +7,8 @@ Covers:
 - The public /sms/ disclosure page (toll-free registration opt-in evidence)
 """
 
+from unittest.mock import patch
+
 from django.test import TestCase, override_settings
 
 from core.models.notification_delivery_log import NotificationDeliveryLog
@@ -67,6 +69,40 @@ class SmsMasterGateTests(TestCase):
     @override_settings(SMS_ENABLED=True, SMS_ORIGINATION_IDENTITY='+18885550100')
     def test_enabled_when_both_set(self):
         self.assertTrue(SMSService.is_enabled())
+
+
+class SendSmsTests(TestCase):
+    """`send_sms` is the transport for messages with no Notification behind them.
+
+    It existed only as a call site until 2026-09-17: two shipped phone-verification
+    flows called `SMSService.send_sms(...)`, which did not exist, so both raised
+    AttributeError into a bare `except` and failed 100% of the time in production.
+    """
+
+    @override_settings(SMS_ENABLED=True, SMS_ORIGINATION_IDENTITY='')
+    def test_respects_the_master_gate(self):
+        success, log = SMSService.send_sms(
+            phone_number='+15012827129',
+            message='Your RS Systems verification code is: 123456.',
+        )
+        self.assertFalse(success)
+        self.assertIsNone(log)
+        self.assertEqual(NotificationDeliveryLog.objects.count(), 0)
+
+    def test_method_exists_and_is_callable(self):
+        """The regression itself: the attribute must be there."""
+        self.assertTrue(callable(getattr(SMSService, 'send_sms', None)))
+
+    @override_settings(SMS_ENABLED=True, SMS_ORIGINATION_IDENTITY='+18885550100')
+    def test_delegates_to_the_one_transport(self):
+        """No second send path — it must go through send_notification_sms."""
+        with patch.object(
+            SMSService, 'send_notification_sms', return_value=(True, None)
+        ) as delegate:
+            SMSService.send_sms(phone_number='+15012827129', message='hi')
+        delegate.assert_called_once()
+        self.assertIsNone(delegate.call_args.kwargs['notification_id'])
+        self.assertEqual(delegate.call_args.kwargs['recipient_phone'], '+15012827129')
 
 
 class SmsProgramPageTests(TestCase):

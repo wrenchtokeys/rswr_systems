@@ -288,10 +288,12 @@ class NotificationService:
                 except Exception as e:
                     logger.error(f"Email error for notification {notification.id}: {e}")
 
-        # Send SMS synchronously if channel enabled
-        if 'sms' in channels and preferences.receive_sms_notifications:
+        # Send SMS synchronously if channel enabled.
+        # can_send_sms() is the single gate — enabled AND verified AND consented.
+        # Checking the switch alone here is what let an unconsented number through.
+        if 'sms' in channels and preferences.can_send_sms():
             phone = NotificationService._get_recipient_phone(recipient)
-            if phone and preferences.phone_verified:
+            if phone:
                 from core.tasks import send_notification_sms
 
                 sms_message = rendered.get('sms', notification.message[:160])

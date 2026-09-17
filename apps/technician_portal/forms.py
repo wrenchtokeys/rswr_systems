@@ -861,6 +861,20 @@ class TechnicianNotificationPreferenceForm(forms.ModelForm):
 
         return cleaned_data
 
+    def save(self, commit=True):
+        """Stamp the consent record the first time this person turns texts on.
+
+        The timestamp is the evidence a carrier asks for, so it is written here
+        rather than in the view — every path that saves this form is a path where
+        someone ticked the box themselves. `record_sms_consent` is idempotent, so
+        re-saving other preferences never moves it.
+        """
+        preferences = super().save(commit=False)
+        preferences.record_sms_consent(source='SELF_SERVICE')
+        if commit:
+            preferences.save()
+        return preferences
+
 
 class CustomerEmailSelect(forms.Select):
     """Customer dropdown whose options carry data attributes for the picker:
