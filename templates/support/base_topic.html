@@ -16,12 +16,6 @@
         <p class="text-gray-500">{{ topic.blurb }}</p>
     </div>
 
-    {% if topic.video_label %}
-    <div class="mb-8">
-        {% include "components/video_slot.html" with label=topic.video_label %}
-    </div>
-    {% endif %}
-
     <div class="space-y-6">
         {% block guide %}{% endblock %}
     </div>

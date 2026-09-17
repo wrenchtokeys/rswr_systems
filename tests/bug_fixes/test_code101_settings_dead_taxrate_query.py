@@ -114,8 +114,7 @@ class SettingsDeadTaxRateQueryTest(TestCase):
         """Ensure removing tax_rates didn't accidentally remove other context vars."""
         response = self._get_settings()
         for var in ['tenant', 'membership', 'members', 'shop_join_url',
-                    'customers', 'active_tab', 'reminder_day_choices',
-                    'active_reminder_days', 'batch_month_days']:
+                    'customers', 'active_tab', 'batch_month_days']:
             self.assertIn(var, response.context,
                 f"'{var}' missing from settings context after CODE-101 fix")
 

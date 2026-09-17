@@ -122,11 +122,11 @@ HELP_TOPICS = {
     'paid-on-time': {
         'section': 'money',
         'title': 'Get paid on time',
-        'blurb': 'Overdue reminders, fleet batch invoicing, statements, and who-owes-you at a glance.',
+        'blurb': 'Who owes you at a glance, fleet batch invoicing, and one payment across many invoices.',
         'icon': 'fas fa-hourglass-half',
         'color': 'green',
         'video_label': 'Watch: chasing less, collecting more (2 min)',
-        'keywords': 'overdue late reminder aging owed batch monthly statement collect',
+        'keywords': 'overdue late aging owed batch monthly collect check receive payment',
         'owner_only': True,
     },
 
@@ -221,6 +221,36 @@ HELP_TOPICS = {
 }
 
 
+def _limit_text(value):
+    return 'unlimited' if value is None else f'{value:,}'
+
+
+def trial_facts():
+    """What the trial guide is allowed to say, read from where it is decided.
+
+    The guide used to say "30-day grace period" while settings said 14, and
+    nothing noticed for six weeks. Every number on that page now comes from
+    settings or the trial plan row, and tests/test_help_truth.py asserts the
+    rendered page agrees with both.
+    """
+    from apps.tenants.models import SubscriptionPlan
+
+    trial = SubscriptionPlan.objects.filter(slug='trial').first()
+    starter = SubscriptionPlan.objects.filter(slug='starter').first()
+    facts = {
+        'trial_days': (trial.trial_days if trial and trial.trial_days else 30),
+        'trial_grace_days': getattr(settings, 'TRIAL_GRACE_DAYS', 14),
+        'trial_max_customers': _limit_text(trial.max_customers if trial else None),
+        'trial_max_jobs': _limit_text(trial.max_repairs_per_month if trial else None),
+        'trial_matches_starter': bool(
+            trial and starter
+            and trial.max_customers == starter.max_customers
+            and trial.max_repairs_per_month == starter.max_repairs_per_month
+        ),
+    }
+    return facts
+
+
 def _is_owner_or_manager(request):
     role = get_user_role(request.user, getattr(request, 'tenant', None))
     return role in ('superuser', 'owner', 'manager')
@@ -271,11 +301,14 @@ def help_topic(request, slug):
             next_slug = section_slugs[idx + 1]
             next_topic = {'slug': next_slug, **HELP_TOPICS[next_slug]}
 
-    return render(request, f'support/{slug}.html', {
+    context = {
         'topic': topic,
         'slug': slug,
         'next_topic': next_topic,
-    })
+    }
+    if slug == 'trial-ending':
+        context.update(trial_facts())
+    return render(request, f'support/{slug}.html', context)
 
 
 @login_required

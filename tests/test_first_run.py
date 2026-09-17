@@ -262,14 +262,13 @@ class HelpPagesTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'Create your first job')
         # Every registered topic renders (registry-driven, so new guides are
-        # covered automatically) and carries its video slot when it has one.
+        # covered automatically). The "video coming soon" slot was retired
+        # 2026-09-17 (HELP_CENTER_SESSIONS H4) — video_label keys stay as the
+        # labels for whenever a recording exists, but nothing renders them.
         for slug, topic in HELP_TOPICS.items():
             r = client.get(f'/help/{slug}/')
             self.assertEqual(r.status_code, 200, f'/help/{slug}/ failed')
-            if topic.get('video_label'):
-                self.assertContains(r, 'Video coming soon')
-            else:
-                self.assertNotContains(r, 'Video coming soon')
+            self.assertNotContains(r, 'coming soon')
         # Every topic's section exists in the section list
         section_keys = {key for key, _ in HELP_SECTIONS}
         for slug, topic in HELP_TOPICS.items():

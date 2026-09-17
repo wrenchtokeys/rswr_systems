@@ -20,6 +20,7 @@ from django.contrib.auth.models import User
 from django.core import mail
 from django.core.cache import cache
 from django.test import TestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.support.models import SupportMessage
@@ -202,8 +203,9 @@ class ContactFormExpiredTenantTests(TestCase):
     def setUp(self):
         cache.clear()
         self.user, self.tenant = make_tenant('Expired Shop', 'expired_owner')
-        # 30-day trial started 40 days ago, no grace period → hard block
-        self.tenant.trial_started_at = timezone.now() - timedelta(days=40)
+        # 30-day trial started 60 days ago: past the trial AND past the
+        # TRIAL_GRACE_DAYS read-only window → hard block.
+        self.tenant.trial_started_at = timezone.now() - timedelta(days=60)
         self.tenant.save(update_fields=['trial_started_at'])
         self.client.force_login(self.user)
         session = self.client.session
@@ -211,7 +213,7 @@ class ContactFormExpiredTenantTests(TestCase):
         session.save()
 
     def test_app_is_blocked_but_contact_form_works(self):
-        blocked = self.client.get('/owner/dashboard/')
+        blocked = self.client.get(reverse('owner_dashboard'))
         self.assertEqual(blocked.status_code, 302)
         self.assertIn('/subscription-blocked/', blocked['Location'])
 

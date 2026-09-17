@@ -38,6 +38,8 @@ GUARDS=(
   tests.test_claims                 # B5: insurance claim tracking + short-pay reconciliation
   tests.test_price_book             # B6: shop-owned price book learns, suggests, pins
   tests.test_customer_portal_views  # portal views the quote pages build on
+  tests.test_help_truth             # guides promise only what the product does (H1/H4)
+  tests.test_support_contact        # /help/contact/ + public /contact/ (H2/H5)
 )
 
 BASELINE="docs/strategy/test_baseline_main.txt"
