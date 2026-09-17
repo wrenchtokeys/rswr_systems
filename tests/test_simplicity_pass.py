@@ -178,20 +178,16 @@ class SettingsExplainerContextTests(OwnerClientMixin, TestCase):
         self.assertTrue(resp.context['has_batch_customers'])
         self.assertNotIn('none of your customers are set to Batch', resp.content.decode())
 
-    def test_reminders_misconfigured_flag(self):
+    def test_reminders_card_is_retired(self):
+        # HELP_CENTER_SESSIONS H1 (2026-09-17): overdue-reminder emails are
+        # DISABLED BY POLICY, so the card that let an owner "enable" them is
+        # gone — even for a shop whose row still says enabled.
         self.config.overdue_reminder_enabled = True
         self.config.overdue_reminder_days = ''
         self.config.save()
         resp = self.client.get('/owner/settings/?tab=billing')
-        self.assertTrue(resp.context['reminders_misconfigured'])
-        self.assertIn('no days are selected', resp.content.decode())
-
-    def test_reminders_configured_no_flag(self):
-        self.config.overdue_reminder_enabled = True
-        self.config.overdue_reminder_days = '7,14,30'
-        self.config.save()
-        resp = self.client.get('/owner/settings/?tab=billing')
-        self.assertFalse(resp.context['reminders_misconfigured'])
+        self.assertNotIn('reminders_misconfigured', resp.context)
+        self.assertNotIn('Overdue Reminders', resp.content.decode())
 
 
 @override_settings(**TEST_OVERRIDES)

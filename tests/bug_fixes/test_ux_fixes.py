@@ -846,37 +846,6 @@ class CustomerListTableRenderTest(TestCase):
 
 # --- From test_billing_settings_ux.py ---
 
-class UX010EmailSubjectTextareaTest(TestCase):
-    """UX-010: Email Subject should use <textarea>, not <input type=text>."""
-
-    def setUp(self):
-        self.html = _read_template('saas', 'owner_settings.html')
-
-    def test_overdue_subject_uses_textarea(self):
-        """Email Subject must be a <textarea> so long template strings are visible."""
-        # Should use textarea, not a plain text input for the subject
-        self.assertIn('<textarea name="overdue_reminder_subject"', self.html,
-                      "Email Subject must use <textarea> to prevent truncation of long template strings.")
-
-    def test_overdue_subject_no_text_input(self):
-        """The old single-line input for subject should be gone."""
-        self.assertNotIn('<input type="text" name="overdue_reminder_subject"', self.html,
-                         "Old <input type=text> for overdue_reminder_subject must be replaced by <textarea>.")
-
-    def test_subject_textarea_has_resize_none(self):
-        """Textarea should not be freely resizable (keeps layout tidy)."""
-        self.assertIn('resize-none', self.html,
-                      "Subject textarea should have resize-none class to keep layout stable.")
-
-    def test_subject_helper_text_present(self):
-        """Template variable hint must still be shown below the subject field."""
-        self.assertIn('{invoice_number}', self.html,
-                      "Helper text with {invoice_number} must still be present for owners.")
-        self.assertIn('{customer_name}', self.html)
-        self.assertIn('{amount_due}', self.html)
-        self.assertIn('{days_overdue}', self.html)
-
-
 class UX011BatchDayFieldVisibilityTest(TestCase):
     """UX-011: Batch Invoicing Day field must have JS hooks to hide when Disabled."""
 
