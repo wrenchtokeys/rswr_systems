@@ -1,0 +1,50 @@
+{% extends "support/base_topic.html" %}
+{% load ui %}
+
+{% block guide %}
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-brand-700">1</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Price the work first</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Open <strong>Quotes</strong> in the top nav and hit <strong>New Quote</strong>. Pick the customer and vehicle, add a line per piece of work, and set the price. Nothing is scheduled and nothing is charged — a quote is a number the customer can say yes to.</p>
+            <a href="{% url 'quote_list' %}" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-800 mt-2">Open Quotes {% icon 'arrow-right' class="text-xs ml-1.5" %}</a>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-brand-700">2</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Send it — by email or by link</h2>
+            <p class="text-sm text-gray-600 leading-relaxed"><strong>Send quote</strong> emails it. Prefer texting? The quote page also gives you a link you can copy — anyone with it can view and accept, no login. Customers with a portal account see the same quote under <strong>Quotes</strong> when they sign in.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-brand-700">3</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">They accept, the jobs appear</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">When the customer taps <strong>Accept</strong>, RS Systems creates the jobs for you — already approved, at the quoted price, locked so nobody re-prices them by accident. They land in the queue like any other work. Said yes on the phone instead? Use <strong>Mark accepted &amp; create jobs</strong> on the quote and it does the same thing.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-brand-700">4</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Quotes expire; revise, don't edit</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">A quote stays open for a set number of days (30 to start — change it in <strong>Settings → Pricing &amp; Invoicing</strong>) because glass prices move. Once sent, a quote is never edited: <strong>Revise</strong> makes a fresh draft that replaces it, so the customer always sees one current number and you keep the history. Only a draft that was never sent can be deleted.</p>
+        </div>
+    </div>
+</div>
+
+<div class="rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
+    {% icon 'lightbulb' class="text-amber-500 mt-0.5" %}
+    <p class="text-sm text-gray-700 leading-relaxed"><strong>Fleet on a discount?</strong> Type the price the customer will actually pay. Their account discount is already in the number on the quote, and the jobs come out at exactly that.</p>
+</div>
+{% endblock %}

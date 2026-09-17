@@ -128,6 +128,35 @@ HELP_TOPICS = {
         'keywords': 'overdue late aging owed batch monthly collect check receive payment',
         'owner_only': True,
     },
+    'quotes': {
+        'section': 'money',
+        'title': 'Send a quote before the work',
+        'blurb': 'Price it, the customer accepts online, and the jobs are created at that price.',
+        'icon': 'fas fa-file-signature',
+        'color': 'blue',
+        'video_label': 'Watch: quotes (2 min)',
+        'keywords': 'quote estimate bid price accept decline expire revise link',
+    },
+    'insurance-claims': {
+        'section': 'money',
+        'title': 'Track an insurance claim',
+        'blurb': 'What you billed the insurer, what came in, and what is still short — without a spreadsheet.',
+        'icon': 'fas fa-shield-alt',
+        'color': 'blue',
+        'video_label': 'Watch: insurance claims (2 min)',
+        'keywords': 'insurance insurer claim deductible adjuster eob short paid write off authorization',
+        'owner_only': True,
+    },
+    'price-book': {
+        'section': 'money',
+        'title': 'Your price book',
+        'blurb': 'The prices you actually charge for each glass, learned from finished jobs and filled in for you.',
+        'icon': 'fas fa-book',
+        'color': 'green',
+        'video_label': 'Watch: the price book (90 sec)',
+        'keywords': 'price book book price replacement glass suggest pin pinned rebuild windshield cost filled',
+        'owner_only': True,
+    },
 
     # --- Your team -----------------------------------------------------------
     'team-roles': {
@@ -214,7 +243,7 @@ HELP_TOPICS = {
         'keywords': (
             'faq problem wrong missing didn’t receive spam email invoice tax '
             'replacement price locked paid review points deleted restore undo '
-            'login error help stuck'
+            'login error help stuck quote expired claim short price book filled'
         ),
     },
 }

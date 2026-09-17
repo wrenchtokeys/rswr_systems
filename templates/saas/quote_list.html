@@ -8,6 +8,7 @@
     <div>
         <h1 class="text-2xl font-bold text-gray-900">Quotes</h1>
         <p class="text-sm text-gray-500 mt-1">Price the work first. When the customer accepts, the jobs are created at the quoted price.</p>
+        <p class="mt-2 text-xs text-gray-400">{% icon 'help-circle' class="mr-1" %}Guides: <a href="{% url 'help_topic' 'quotes' %}" class="text-brand-500 hover:text-brand-700 font-medium">Send a quote before the work</a> · <a href="{% url 'help_topic' 'troubleshooting' %}" class="text-brand-500 hover:text-brand-700 font-medium">Troubleshooting</a></p>
     </div>
     <div class="flex items-center gap-3">
         <a href="{% url 'quote_create' %}" class="btn-primary press">
