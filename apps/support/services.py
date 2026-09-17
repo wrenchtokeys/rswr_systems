@@ -67,28 +67,35 @@ def notify_admins(record):
         return False
 
 
-def send_acknowledgement(record):
-    """Tell the sender their message arrived. Never raises.
+def acknowledgement_kwargs(record):
+    """The send_branded_email() kwargs for the sender's acknowledgement.
 
-    RS Systems talking, not a shop — platform branding, no shop colour.
-    Plain subject: no brackets, no emoji (docs/operations/SES_OPERATIONS.md).
+    Separate from the send so `manage.py preview_emails` renders exactly
+    what a sender gets. RS Systems talking, not a shop — platform branding,
+    no shop colour. Plain subject: no brackets, no emoji
+    (docs/operations/SES_OPERATIONS.md).
     """
+    return dict(
+        subject=ACK_SUBJECT,
+        recipient_list=[record.email],
+        headline='Got it — your message is in',
+        body_paragraphs=[
+            f"Hi {record.first_name or 'there'},",
+            "A real person will read your message and reply to this address. "
+            "Replies usually come the same business day.",
+            "Here is what you sent us, for your records:",
+            record.message,
+        ],
+        platform=True,
+        lede='No bots, no ticket numbers.',
+        note='If you did not send this, you can ignore it — nothing was changed on any account.',
+    )
+
+
+def send_acknowledgement(record):
+    """Tell the sender their message arrived. Never raises."""
     try:
-        send_branded_email(
-            subject=ACK_SUBJECT,
-            recipient_list=[record.email],
-            headline='Got it — your message is in',
-            body_paragraphs=[
-                f"Hi {record.first_name or 'there'},",
-                "A real person will read your message and reply to this address. "
-                "Replies usually come the same business day.",
-                "Here is what you sent us, for your records:",
-                record.message,
-            ],
-            platform=True,
-            lede='No bots, no ticket numbers.',
-            note='If you did not send this, you can ignore it — nothing was changed on any account.',
-        )
+        send_branded_email(**acknowledgement_kwargs(record))
         record.acknowledged = True
         record.save(update_fields=['acknowledged'])
         return True

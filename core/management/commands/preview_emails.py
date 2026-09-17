@@ -280,8 +280,20 @@ class Command(BaseCommand):
                 platform=True,
             )),
         ]
+        # The support acknowledgement, through the same kwargs builder the
+        # contact forms use, so the preview cannot drift from a real send.
+        from apps.support.services import acknowledgement_kwargs
+        fixtures.append((
+            'platform — support acknowledgement', 'branded_support_ack.html',
+            acknowledgement_kwargs(NS(
+                first_name='Ray', email='ray@example.invalid',
+                message='My invoice email never arrived at the customer. '
+                        'I checked the address twice.',
+            )),
+        ))
         pages = []
         for title, name, kwargs in fixtures:
+            kwargs = {k: v for k, v in kwargs.items() if k != 'recipient_list'}
             html, _text = render_branded_email(**kwargs)
             pages.append({'title': title, 'file': self._write(out_dir, name, html)})
         return pages

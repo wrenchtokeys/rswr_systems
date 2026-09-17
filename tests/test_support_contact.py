@@ -373,3 +373,63 @@ class PublicContactTests(TestCase):
             self.assertContains(resp, f'href="{PUBLIC_URL}"')
             self.assertNotContains(resp, '/help/contact/')
             self.assertNotContains(resp, 'mailto:contact@rssystems.io')
+
+
+@override_settings(**TEST_SETTINGS)
+class SweepSupportMessagesTests(TestCase):
+    """The sweep is what turns emailed_ok=False from a silent row into a sent email (H5)."""
+
+    def setUp(self):
+        cache.clear()
+        old = timezone.now() - timedelta(minutes=30)
+        self.failed = SupportMessage.objects.create(
+            name='Old Failed', email='old@test.com', message='This one never reached Drake.',
+            emailed_ok=False, acknowledged=False,
+        )
+        SupportMessage.objects.filter(pk=self.failed.pk).update(created_at=old)
+        self.fine = SupportMessage.objects.create(
+            name='Old Fine', email='fine@test.com', message='This one was fine.',
+            emailed_ok=True, acknowledged=True,
+        )
+        SupportMessage.objects.filter(pk=self.fine.pk).update(created_at=old)
+        # Fresh and failed: could still be mid-request — must be left alone.
+        self.fresh = SupportMessage.objects.create(
+            name='Fresh', email='fresh@test.com', message='Just arrived.',
+            emailed_ok=False, acknowledged=False,
+        )
+
+    def _run(self, *args):
+        from io import StringIO
+        from django.core.management import call_command
+        out = StringIO()
+        call_command('sweep_support_messages', *args, stdout=out)
+        return out.getvalue()
+
+    def test_dry_run_reports_and_sends_nothing(self):
+        out = self._run('--dry-run')
+        self.assertIn('1 message(s) never reached the admins', out)
+        self.assertIn('1 sender(s) never got an acknowledgement', out)
+        self.assertIn(f'#{self.failed.pk}', out)
+        self.assertNotIn(f'#{self.fresh.pk}', out)
+        self.assertEqual(len(mail.outbox), 0)
+        self.failed.refresh_from_db()
+        self.assertFalse(self.failed.emailed_ok)
+
+    def test_real_run_resends_and_stamps_only_stale_rows(self):
+        out = self._run()
+        self.assertIn('Re-sent 1 admin notification(s) and 1 acknowledgement(s)', out)
+        self.failed.refresh_from_db()
+        self.assertTrue(self.failed.emailed_ok)
+        self.assertTrue(self.failed.acknowledged)
+        self.fresh.refresh_from_db()
+        self.assertFalse(self.fresh.emailed_ok)
+        admin = _admin_mail()
+        self.assertEqual(len(admin), 1)
+        self.assertEqual(admin[0].reply_to, ['old@test.com'])
+        self.assertIn('never reached Drake', admin[0].body)
+        acks = _ack_mail()
+        self.assertEqual(len(acks), 1)
+        self.assertEqual(acks[0].to, ['old@test.com'])
+        # Idempotent: a second run has nothing to do.
+        self._run()
+        self.assertEqual(len(mail.outbox), 2)
