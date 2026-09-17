@@ -46,7 +46,7 @@ section; every other doc points here rather than restating it.
   owner resumes onboarding from Settings → Payments. It stays the top item, owned by Drake.
 - **The foundation is real and is not the constraint.** All three Stripe legs with webhook
   durability, cron that runs, tenant isolation swept, soft delete, loyalty, warranty, review
-  requests, SMS transport (dark until the toll-free number clears), a report-only CSP, zero
+  requests, SMS transport (dark — the shared toll-free number was abandoned 2026-09-16, see `docs/operations/SMS_REGISTRATION.md`), a report-only CSP, zero
   third-party asset hosts, a 16-minute suite with a committed baseline.
 - **Nothing brings a stranger to the signup page.** The landing page is now honest (C1,
   live since 2026-09-07 00:59 UTC — real captures, founder note, no filler stats) but
