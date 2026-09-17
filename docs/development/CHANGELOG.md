@@ -14,6 +14,24 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-09-17 — Pricing page audit (C2) and the insurance-shop interview script
+
+### Fixed
+- **The plan table called the monthly cap "Repairs per month"** while the plan cards on the
+  landing page said "jobs a month". The cap counts every job (repairs and replacements), so it
+  is "Jobs per month" on both now — the wording a customer could have disputed a bill over.
+- **`seed_plans` no longer skips a whole plan row it already knows.** Prices and limits are
+  still never touched without `--force`, but a feature key the seed knows and the row lacks is
+  now added. That gap is how the "Customer portal" row could have rendered as "not included" on
+  every plan (C2's scare); prod turned out to be correct, and now it stays correct when the
+  next flag is added. `tests/test_pricing_audit.py`.
+
+### Added
+- **`docs/strategy/INSURANCE_SHOP_INTERVIEWS.md`** — the script for the five insurance-shop
+  calls that decide Path B: the four questions the calls must answer, who to call and how to
+  ask, a timed 25-minute script, what not to do, a same-day capture sheet, and a decision rule
+  agreed before the first call. 0 of 5 held.
+
 ## 2026-09-17 — Deployed: price book (#257) and staff SMS (#258) are on prod
 
 **Deployed 2026-09-17 14:20 UTC as `8da23bbe`** (health green; `technician_portal/0063` and

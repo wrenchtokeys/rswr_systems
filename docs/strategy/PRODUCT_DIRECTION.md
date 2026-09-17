@@ -95,7 +95,10 @@ corrects.
    task sits beside it: read the live landing copy once (the switching section promises
    "send your customer list through the contact form" — a manual import by Drake).
 6. **Go-to-market, which no code moves**: three shops that are not family on the product,
-   and the five insurance-shop interviews.
+   and the five insurance-shop interviews. The interview script, capture sheet and the
+   decision rule agreed in advance are in `IMPROVEMENT_SESSIONS.md`'s companion
+   `INSURANCE_SHOP_INTERVIEWS.md` (2026-09-17); the sixth-section "can I show you in a week"
+   ask is how the trial shops come from the same calls.
 
 **Parked, on purpose** — no user is waiting on them, and a fresh session must not pick
 them up by default: the Font Awesome → `{% icon %}` sweep (1,217 call sites), enforcing the
@@ -119,6 +122,7 @@ Not features shipped. These are the only numbers that say the direction is worki
 | Date | Change |
 |---|---|
 | 2026-06-12 | Initial version — post-stabilization direction for Q3 2026 (90-day plan: growth quick wins → adoption gaps → engagement depth). |
+| 2026-09-17 | **Go-to-market prep.** C2 (pricing page audit) closed: prod plan data is correct, the label/seed defects fixed. `INSURANCE_SHOP_INTERVIEWS.md` written — the five calls now have a script, a capture sheet and a decision rule for Path B fixed before the first call. Nothing else in step 6 is a session. |
 | 2026-09-17 | **B5 and B6 on prod.** #258 (staff SMS) merged into `main` first because it was already live from a feature-branch deploy; `main` at `8da23bbe` deployed 14:20 UTC, health green, `technician_portal/0063` + `core/0035` applied, live routes answer. `seed_price_book` run on the instance: 0 rows — prod has no replacement records yet, the book learns from the first one. The spine is done; the head of the queue is step 6 (three non-family shops, five insurance interviews), not a session. |
 | 2026-09-16 | **B6 built** (PR #257): a completed replacement teaches the shop's own price book what that glass on that vehicle costs; the next replacement on it fills its price in with a note saying where it came from; the owner sees, pins and rebuilds the book. Spine feature 3 — the last — is built. Next: merge and deploy #255 and #257 (then `seed_price_book` on prod), and go-to-market (step 6). |
 | 2026-09-16 | **B5 built** (PR #255): a job marked "Insurance claim" makes its invoice a tracked claim; the owner records what the insurer actually sent and the claim reads short, paid or closed; the "Owed to you" card counts short-paid claims and claims waiting on an insurer separately. Spine feature 2 is done; B6 (price book) is the head of the queue. |
