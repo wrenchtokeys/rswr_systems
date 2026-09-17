@@ -17,14 +17,22 @@ from .models import GuideFeedback, SupportMessage
 
 @admin.register(SupportMessage)
 class SupportMessageAdmin(admin.ModelAdmin):
-    list_display = ('created_at', 'name', 'email', 'tenant', 'topic', 'preview', 'status', 'emailed_ok')
+    list_display = ('created_at', 'name', 'email', 'tenant', 'source', 'topic', 'preview', 'status', 'emailed_ok')
     list_editable = ('status',)
-    list_filter = ('status', 'topic', 'emailed_ok', 'tenant')
+    list_filter = ('status', 'source', 'topic', 'emailed_ok', 'acknowledged', 'tenant')
     search_fields = ('name', 'email', 'message', 'tenant__name')
     date_hierarchy = 'created_at'
     ordering = ('-created_at',)
-    readonly_fields = ('tenant', 'user', 'name', 'email', 'topic', 'message', 'page', 'emailed_ok', 'created_at')
+    readonly_fields = ('tenant', 'user', 'role', 'source', 'name', 'email', 'topic', 'message',
+                       'page_label', 'page', 'emailed_ok', 'acknowledged', 'created_at')
     fields = ('status',) + readonly_fields
+
+    @admin.display(description='Where they were')
+    def page_label(self, obj):
+        # `page` is document.referrer — a URL. Say which guide or settings
+        # tab that is, so "which page were they on" reads at a glance.
+        from .views import describe_page
+        return describe_page(obj.page)
 
     @admin.display(description='Message')
     def preview(self, obj):

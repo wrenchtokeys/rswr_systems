@@ -25,6 +25,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, Sp
 from . import views
 from apps.saas import views as saas_views
 from apps.saas import quote_views as saas_quote_views
+from apps.support import views as support_views
 from core.views import preview_email_template, test_notification, check_notification_prefs
 from apps.technician_portal.review_views import review_click, review_opt_out
 from common.csp_views import csp_report
@@ -105,6 +106,7 @@ urlpatterns = [
     # Clawdbot endpoint (Amelia's experimental namespace)
     path('clawdbot/', include('apps.clawdbot.urls')),
     path('help/', include('apps.support.urls')),
+    path('contact/', support_views.public_contact, name='public_contact'),  # no login — the landing page links here
 
     # SaaS UI (signup, onboarding, owner dashboard, pricing, billing, replacement)
     path('', include('apps.saas.urls')),
