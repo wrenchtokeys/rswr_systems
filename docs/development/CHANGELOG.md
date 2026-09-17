@@ -27,10 +27,16 @@ forward, this is the single canonical changelog — see `docs/README.md`.
   next flag is added. `tests/test_pricing_audit.py`.
 
 ### Added
-- **`docs/strategy/INSURANCE_SHOP_INTERVIEWS.md`** — the script for the five insurance-shop
-  calls that decide Path B: the four questions the calls must answer, who to call and how to
-  ask, a timed 25-minute script, what not to do, a same-day capture sheet, and a decision rule
-  agreed before the first call. 0 of 5 held.
+- **`docs/strategy/INSURANCE_SHOP_INTERVIEWS.md`** — written as the script for five dedicated
+  insurance-shop calls, then **reframed the same day on Drake's call**: the five interviews
+  are dropped from the success criteria (they decide Path B, which nothing this quarter
+  depends on, while the product has no non-family customer). The script stays as the
+  discovery call for trial shops; two insurance questions are asked on every prospect and the
+  answers accrue in its §6 tally. Path B is revisited when a paying customer asks.
+
+### Changed
+- **`PRODUCT_DIRECTION.md`** — §The decision and the success criteria no longer name the five
+  interviews; step 6 is one thing: three non-family shops on the product.
 
 ## 2026-09-17 — Deployed: price book (#257) and staff SMS (#258) are on prod
 

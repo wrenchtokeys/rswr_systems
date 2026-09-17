@@ -1,13 +1,23 @@
-# The five insurance-shop interviews
+# Insurance-shop conversations: the discovery call and the Path B tally
 
-**Written:** 2026-09-17 · **Owner:** Drake · **Decides:** the Path B question in
+**Written:** 2026-09-17 · **Owner:** Drake · **Feeds:** the Path B question in
 `PRODUCT_DIRECTION.md` (system of record for insurance/TPA shops — yes, no, or not yet).
-**Status:** 0 of 5 held. Record each one in §6 as it happens.
+**Status (2026-09-17, same day):** **not a gate.** Written first as a script for five dedicated
+research calls; reframed hours later on Drake's call because those calls answer a question
+nothing this quarter depends on, while the product has no customer outside the family.
 
-This is the script for the calls `IMPROVEMENT_SESSIONS.md` D1 and D2 have asked for since
-2026-08-07. Nothing in Track D gets built until these are written up. The spine (quotes, claim
-tracking, price book) is on prod, so on these calls you can show a shop something real rather
-than describe a plan.
+**How to use it now:**
+- **As the discovery call for a trial shop.** Sections 1, 2, 4 and 6 of §3 are a good first
+  conversation with any shop you are trying to get on the product; §2's "the ask" is the phone
+  opener. Skip §3.3 and §3.5 unless the shop is insurance-heavy.
+- **Two questions on every prospect, whatever the call is about:** *how often does the insurer
+  pay short, and what do you do about it* (Q2) and *would submitting the claim from inside the
+  software change what you pay for* (Q3b). Two lines on the capture sheet.
+- **The §6 table fills from those conversations**, one row per shop, over months. It is read
+  when a paying customer asks for submission — not on a schedule.
+
+Everything below is kept as written, so a full 25-minute version is there if a shop turns out
+to be exactly the insurance-volume kind and wants to talk.
 
 ---
 
@@ -192,11 +202,13 @@ Demo booked:    Y/N  date        Referral:                 Wants the write-up: Y
 The one sentence I'll remember from this call:
 ```
 
-## 6. After five: the decision rule
+## 6. The tally, and the decision rule
 
-Write the five records into the table below, then answer the four questions in one
-paragraph each in `PRODUCT_DIRECTION.md` §The decision. The rule, agreed in advance so the
-answers cannot be bent to fit:
+One row per shop you have talked to — trial conversations included, most rows will have only
+Q2 and Q3b filled. Read it when a paying customer asks for submission, or when it has five
+insurance-heavy rows, whichever comes first; then answer the four questions in one paragraph
+each in `PRODUCT_DIRECTION.md` §The decision. The rule, agreed in advance so the answers
+cannot be bent to fit:
 
 - **Path B is on** if at least three of five say submission (Q3b) changes what they would
   buy *and* at least one of them described a credentialing route a shop of two techs could
@@ -221,4 +233,4 @@ answers cannot be bent to fit:
 
 | Date | Change |
 |---|---|
-| 2026-09-17 | Written. The spine is on prod; the interviews are the head of the go-to-market step. |
+| 2026-09-17 | Written as the script for five dedicated calls; reframed the same day — the interviews are no longer a gate, the script is the trial-shop discovery call and the §6 tally fills from prospects over time. |
