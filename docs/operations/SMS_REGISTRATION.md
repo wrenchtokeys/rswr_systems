@@ -169,6 +169,31 @@ in the left-hand column above is registrable **now**.
 
 Customer-facing texts stay off this registration and take Path C below.
 
+### Filing it — two commands
+
+```bash
+python scripts/sms_optin_shot.py                       # -> sms_optin.png
+python scripts/submit_tollfree_registration.py sms_optin.png            # validate only
+python scripts/submit_tollfree_registration.py sms_optin.png --submit   # file it
+```
+
+`sms_optin_shot.py` drives the real Settings → Notifications page (reusing
+`landing_shots.py`'s throwaway-DB + headless-Chrome machinery) and **refuses to save a
+screenshot whose consent box is checked** — v3's denial, asserted against the live DOM rather
+than the template source, because what gets reviewed is a picture of rendered HTML. It also
+crops out the tenant-branded page chrome, so no shop's name or logo reaches the artifact, and
+shoots a demo account so no real user's details do either.
+
+`submit_tollfree_registration.py` copies version 4, applies the staff-scope overrides, and runs
+four guards before it will write anything. The one that matters is **`assert_brand_consistency`:
+every message sample must lead with the registrant's company name.** That is precisely what v4
+was denied for, and no script checked it. Without `--submit` it validates and prints the payload
+without opening a version — which also sidesteps trap 1, since an abort after
+`create_registration_version` leaves a dead draft behind.
+
+Two caps worth knowing, both found by running it: **`useCaseDetails` is 500 characters**, not the
+1500 that `optInDescription` gets. The script re-reads both from the live schema.
+
 ---
 
 ## 4. The paths for CUSTOMER-facing texts (the staff answer is §3.5)
@@ -377,7 +402,21 @@ all stand. Only `SMSService`'s transport call is replaced by a deep link.
   checkbox asserted unchecked *in the rendered HTML* — because what version 3 was denied for was
   a screenshot of rendered HTML, not a model default.
 
-**Still to do:** file version 5 (Drake — paid AWS action), then the §8 checklist.
+**Also built (2026-09-17):**
+- **`scripts/sms_optin_shot.py`** — regenerates the registration screenshot from the real page,
+  with the unchecked-box and full-disclosure assertions baked in (§3.5).
+- **`scripts/submit_tollfree_registration.py`** rewritten for the staff scope, with
+  `assert_brand_consistency` — the guard that would have caught version 4.
+
+**Still to do:** run the two commands above and file version 5 (Drake — the payload asserts
+business facts, including declared monthly volume, that are his to make), then the §8 checklist.
+
+**Unrelated fix that rode along:** `tests.test_notification_surfaces` had a test that built rows
+at `now − 1h`/`now − 2h` and asserted a "Today" day-header, so it failed for anyone running the
+suite between midnight and ~02:00 local — and since it is absent from the baseline,
+`test_guards.sh` reported it as the running session's own regression. Rows are now anchored to
+local noon. Verified both ways against `TIME_ZONE='Pacific/Noumea'`, which was at 00:45 at the
+time: old code fails, new code passes.
 
 **Related:** [`SES_OPERATIONS.md`](SES_OPERATIONS.md) · `docs/strategy/FIELD_OPS_SESSIONS.md` (N2, N4)
 

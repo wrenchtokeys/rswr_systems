@@ -106,3 +106,7 @@ coverage.xml
 .claude/
 bin/tailwindcss
 email_previews/
+
+# Toll-free registration artifact — regenerate with scripts/sms_optin_shot.py.
+# Not committed: it is a build output and carries demo-account data.
+sms_optin.png
