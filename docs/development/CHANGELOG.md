@@ -242,6 +242,36 @@ below (#238 through #243); none carries a migration.
 
 ---
 
+## 2026-09-17 — Toll-free registration version 5 submitted (staff scope)
+
+### Changed
+- **Version 5 SUBMITTED 15:41 UTC, `REVIEWING`.** First version scoped to RS Systems
+  texting **its own registered users** — `ACCOUNT_NOTIFICATIONS`, every sample branded
+  RS Systems with STOP, opt-in on a logged-in Settings page, plus the two fields that
+  became REQUIRED after v4 (`privacyPolicyUrl`, `termsAndConditionsUrl`).
+- It cleared automated validation: v2 was auto-denied in 3 seconds for a missing field;
+  v5 reached `ReviewingTimestamp` at +3s and stayed, so it is with a human.
+- Late fix before filing: sample 1 read *"New repair request from Penske"*. Naming any
+  third party in a sample invites exactly the brand association v4 was denied for. It now
+  reads *"New repair request - Unit 4821, windshield chip"*.
+
+### Added
+- `scripts/sms_optin_shot.py` — regenerates the registration screenshot from the real
+  Settings → Notifications page; refuses to save a checked consent box (asserted against
+  the live DOM), asserts all seven disclosure phrases are in the crop, and crops out
+  tenant-branded chrome so no shop's logo reaches an RS-Systems-branded artifact.
+- `scripts/submit_tollfree_registration.py` rewritten to the staff scope with
+  `assert_brand_consistency` — every sample must lead with the registrant's company name,
+  which is what v4 was denied for and nothing checked. `--submit` is required to write.
+
+### Fixed
+- `tests.test_notification_surfaces.test_day_headers_group_the_list` anchored its "today"
+  rows to `now − 1h`/`now − 2h`, so both landed on yesterday between midnight and ~02:00
+  local. Absent from the baseline, so `test_guards.sh` blamed the running session. Rows
+  now anchor to local noon; verified both directions under `TIME_ZONE='Pacific/Noumea'`.
+
+---
+
 ## 2026-09-17 — SMS: staff notifications are registrable; the 09-16 verdict was too broad
 
 ### Changed

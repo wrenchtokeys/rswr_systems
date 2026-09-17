@@ -7,13 +7,19 @@ Anything else that mentions SMS status (`FIELD_OPS_SESSIONS.md` Appendix A, `ROA
 **Last verified against AWS: 2026-09-16** (`aws pinpoint-sms-voice-v2`, us-east-1,
 account 973196283632, tier PRODUCTION).
 
-> ## Read §3.5 first — the answer depends on WHO is being texted
+> ## Version 5 was SUBMITTED 2026-09-17 15:41 UTC and is `REVIEWING`
 >
-> This doc originally concluded "the toll-free number is dead, do not submit a version 5."
-> **That was too broad, and it was wrong for half the product.** It is correct for texting a
-> *shop's customers* as the shop. It is wrong for texting **RS Systems' own users** — the shop
-> owners and technicians with accounts on rssystems.io. For those, RS Systems *is* the brand on
-> the message, and the registration is clean. **That is a version 5, and it should be filed.**
+> Scoped to **staff notifications** — RS Systems texting its own registered users (§3.5).
+> It cleared automated validation: version 2 was auto-denied in three seconds for a missing
+> field, whereas v5 reached `ReviewingTimestamp` at +3s and stayed there, so it is with a human
+> reviewer. Rockstar's took days.
+>
+> **Check the VERSION, not the registration** (`§1`). Two denials have already hidden behind a
+> `REQUIRES_UPDATES` registration status — one for 5 days, one for 14.
+>
+> This doc originally concluded "the number is dead, do not submit a version 5." That was too
+> broad: correct for texting a *shop's customers* as the shop, wrong for texting **RS Systems'
+> own users**, where RS Systems *is* the brand on the message.
 
 ---
 
@@ -21,7 +27,7 @@ account 973196283632, tier PRODUCTION).
 
 | Number | Number status | Registration | Usable |
 |---|---|---|---|
-| `+18663115189` (RS Systems) | **PENDING** | `REQUIRES_UPDATES` — **version 4 DENIED 2026-09-02 18:58 UTC** | Not yet — **version 5 (staff scope) is the live plan, §3.5** |
+| `+18663115189` (RS Systems) | **PENDING** | **`REVIEWING` — version 5 submitted 2026-09-17 15:41 UTC** (v1–v4 denied) | Pending review — staff scope, §3.5 |
 | `+18559394817` (Rockstar Windshield Repair) | ACTIVE | COMPLETE (approved 2026-07-30, first try) | Yes — Rockstar only |
 
 Four versions submitted, four denied — **all four scoped as customer-facing texts sent on behalf
@@ -54,6 +60,7 @@ aws pinpoint-sms-voice-v2 describe-registration-versions --region us-east-1 \
 | 2 | 2026-08-25 | DENIED in 3s | Missing required field — the empty-draft API trap (§6) |
 | 3 | 2026-08-25 | DENIED 08-26 | Unofficial Business Email + Pre-selected Opt-in |
 | 4 | 2026-08-31 | **DENIED 09-02** | **Message Use Case Mismatch + Opt-in Workflow Mismatch** |
+| **5** | **2026-09-17** | **`REVIEWING`** | First version scoped to **staff** notifications (§3.5) — `ACCOUNT_NOTIFICATIONS`, all samples branded RS Systems, consent on a logged-in page |
 
 v4's two reasons, verbatim:
 
@@ -408,8 +415,13 @@ all stand. Only `SMSService`'s transport call is replaced by a deep link.
 - **`scripts/submit_tollfree_registration.py`** rewritten for the staff scope, with
   `assert_brand_consistency` — the guard that would have caught version 4.
 
-**Still to do:** run the two commands above and file version 5 (Drake — the payload asserts
-business facts, including declared monthly volume, that are his to make), then the §8 checklist.
+**Version 5 filed 2026-09-17 15:41 UTC** — `REVIEWING`, attachment
+`attachment-379042b7587b4a83b44b1c17e17f70ca`. One late fix before it went: sample 1 had read
+*"New repair request from Penske"*, and putting any third party's name in a sample invites the
+same association v4 was denied for. It now reads *"New repair request - Unit 4821, windshield
+chip"*.
+
+**Still to do:** watch the **version** status (not the registration's — §1), then the §8 checklist.
 
 **Unrelated fix that rode along:** `tests.test_notification_surfaces` had a test that built rows
 at `now − 1h`/`now − 2h` and asserted a "Today" day-header, so it failed for anyone running the

@@ -1923,12 +1923,15 @@ Status, denial history, root-cause analysis, the path decision, every API trap a
 activation checklist live there. Do not restate a status here — that is how this appendix
 came to claim "version 4 REVIEWING" for the fourteen days after it was denied.
 
+**Status, 2026-09-17 15:41 UTC: version 5 SUBMITTED and `REVIEWING`** — the first version
+scoped to staff notifications. Check the **version**, not the registration.
+
 **Headline, 2026-09-17:** `+18663115189` has been denied **four times**, and the root cause is
 structural — but it is structural *about one audience*. All four versions were scoped as
 customer-facing texts sent **on behalf of a shop**, where registrant brand ≠ message brand, and
 that cannot be registered. **Texting RS Systems' own users — owners and technicians, as
-RS Systems — is a different and ordinary registration, and it is the plan:** version 5, scoped to
-staff notifications, `ACCOUNT_NOTIFICATIONS`. Keep the number. Customer-facing texts take the
+RS Systems — is a different and ordinary registration, and it is now filed:** version 5, scoped to
+staff notifications, `ACCOUNT_NOTIFICATIONS`, submitted 2026-09-17 and `REVIEWING`. Keep the number. Customer-facing texts take the
 `sms:` hand-off (Path C) instead.
 
 **What this means for N2 and N4:** N2 is **unblocked and largely built** (2026-09-17) — the staff
