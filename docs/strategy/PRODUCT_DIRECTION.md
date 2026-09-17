@@ -1,6 +1,6 @@
 # RS Systems — Product Direction (September 2026)
 
-**Last updated:** 2026-09-17 (B5 #255 and B6 #257 deployed 14:20 UTC as `8da23bbe`; B3 on prod since 2026-09-14. **All three spine features are on prod.** Step 5 is closed; what is left is step 6, go-to-market, which no code moves)
+**Last updated:** 2026-09-17 (all three spine features on prod as of `8da23bbe`; step 5 closed; the five insurance interviews dropped as a gate — step 6 is three non-family shops, and Path B waits for a paying customer to ask)
 **Status:** Path A with a B-ready spine — **decided. Signed off by Drake 2026-09-08** under
 §The decision. Every session plans against it; changing it means editing that section, not
 arguing with it in a PR.
@@ -28,9 +28,13 @@ the interviews say to go there:
 
 Path B — becoming the system of record for shops doing insurance/TPA volume — is **not
 rejected**; it is not decidable yet. Its gate is business development (can a shop this size
-get credentialed, what does an aggregator cost), not code. The five insurance-shop interviews
-`IMPROVEMENT_SESSIONS.md` asked for on 2026-08-07 are still the thing that decides it, and
-nobody has held one.
+get credentialed, what does an aggregator cost), not code. **Decided 2026-09-17: the five
+dedicated insurance-shop interviews are no longer a gate.** They had sat "still not held" since
+2026-08-07 because they answer a question nobody can act on this quarter, while the product has
+no customer outside the family. The Path B evidence now comes from real prospects: every
+trial-shop conversation asks the two questions that matter (how often does the insurer pay
+short; would submitting from inside the software change what you buy) and the answers accrue
+in `INSURANCE_SHOP_INTERVIEWS.md` §6. Path B is revisited when a paying customer asks for it.
 
 *Sign-off:* Drake D. · date 09/08/2026. If you want this written differently, change this
 section; every other doc points here rather than restating it.
@@ -94,8 +98,11 @@ corrects.
    B5 (Tier 1 claim tracking, **built 2026-09-16, PR #255**), then B6 (price book, **built 2026-09-16, PR #257**). **All three are on prod as of 2026-09-17 14:20 UTC (`8da23bbe`)**; `seed_price_book` was run and found nothing to read (no replacements on prod yet). **This step is closed.** Nothing else in this list is a session. One owner
    task sits beside it: read the live landing copy once (the switching section promises
    "send your customer list through the contact form" — a manual import by Drake).
-6. **Go-to-market, which no code moves**: three shops that are not family on the product,
-   and the five insurance-shop interviews.
+6. **Go-to-market, which no code moves**: three shops that are not family on the product.
+   The five dedicated insurance-shop interviews were **dropped as a gate on 2026-09-17** (see
+   §The decision); `INSURANCE_SHOP_INTERVIEWS.md` is kept as the discovery-call outline for
+   trial shops (its sections 1, 2, 4 and 6) and as the place the two insurance questions'
+   answers accrue.
 
 **Parked, on purpose** — no user is waiting on them, and a fresh session must not pick
 them up by default: the Font Awesome → `{% icon %}` sweep (1,217 call sites), enforcing the
@@ -109,9 +116,10 @@ Not features shipped. These are the only numbers that say the direction is worki
 - **A shop that is not family pays.** One paying stranger by the end of Q4 2026.
 - **Three non-family shops are on the product** (trial or paid) and one of them has sent a
   quote and turned it into a job.
-- **Five insurance-shop interviews held and written up**, with the Path B question
-  answered on evidence: can we get credentialed, at what cost, and does it change their
-  buying decision.
+- **Every trial-shop conversation records the two insurance answers** (short-pay frequency;
+  would in-app submission change what they buy) in `INSURANCE_SHOP_INTERVIEWS.md` §6. Path B is
+  decided from those, when there are enough of them — not from dedicated research calls.
+  *(Replaced 2026-09-17; was "five insurance-shop interviews held and written up".)*
 - **The Glass Guy has taken a card payment through RS Systems.**
 
 ## Document history
@@ -119,6 +127,7 @@ Not features shipped. These are the only numbers that say the direction is worki
 | Date | Change |
 |---|---|
 | 2026-06-12 | Initial version — post-stabilization direction for Q3 2026 (90-day plan: growth quick wins → adoption gaps → engagement depth). |
+| 2026-09-17 | **Go-to-market prep, and the interviews dropped as a gate.** C2 (pricing page audit) closed: prod plan data is correct, the label/seed defects fixed. `INSURANCE_SHOP_INTERVIEWS.md` written as a script — then, on Drake's call the same day, **the five dedicated interviews were removed from the success criteria**: they decide Path B, which nothing this quarter depends on, while the product has no non-family customer. The script stays as the trial-shop discovery call; the two insurance questions are asked on every prospect and Path B is revisited when a paying customer asks. Step 6 is now one thing: three non-family shops. |
 | 2026-09-17 | **B5 and B6 on prod.** #258 (staff SMS) merged into `main` first because it was already live from a feature-branch deploy; `main` at `8da23bbe` deployed 14:20 UTC, health green, `technician_portal/0063` + `core/0035` applied, live routes answer. `seed_price_book` run on the instance: 0 rows — prod has no replacement records yet, the book learns from the first one. The spine is done; the head of the queue is step 6 (three non-family shops, five insurance interviews), not a session. |
 | 2026-09-16 | **B6 built** (PR #257): a completed replacement teaches the shop's own price book what that glass on that vehicle costs; the next replacement on it fills its price in with a note saying where it came from; the owner sees, pins and rebuilds the book. Spine feature 3 — the last — is built. Next: merge and deploy #255 and #257 (then `seed_price_book` on prod), and go-to-market (step 6). |
 | 2026-09-16 | **B5 built** (PR #255): a job marked "Insurance claim" makes its invoice a tracked claim; the owner records what the insurer actually sent and the claim reads short, paid or closed; the "Owed to you" card counts short-paid claims and claims waiting on an insurer separately. Spine feature 2 is done; B6 (price book) is the head of the queue. |

@@ -128,9 +128,25 @@ class Command(BaseCommand):
             existing = SubscriptionPlan.objects.filter(slug=slug).first()
             
             if existing and not force:
-                self.stdout.write(
-                    self.style.WARNING(f"  Skipped '{slug}' — already exists (use --force to update)")
-                )
+                # Prices and limits are the shop's contract — never touched
+                # without --force. Feature keys are different: a key the seed
+                # knows and this row lacks is a flag nobody could have set,
+                # and the pricing table reads a missing key as "not included"
+                # on every plan (IMPROVEMENT_SESSIONS C2). Add the missing
+                # ones; leave every value that already exists alone.
+                features = dict(existing.features or {})
+                missing = {k: v for k, v in plan_data['features'].items() if k not in features}
+                if missing:
+                    features.update(missing)
+                    existing.features = features
+                    existing.save(update_fields=['features'])
+                    self.stdout.write(self.style.SUCCESS(
+                        f"  Kept '{slug}' — added missing feature flag(s): {', '.join(sorted(missing))}"
+                    ))
+                else:
+                    self.stdout.write(
+                        self.style.WARNING(f"  Skipped '{slug}' — already exists (use --force to update)")
+                    )
                 skipped_count += 1
                 continue
             

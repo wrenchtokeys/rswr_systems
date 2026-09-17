@@ -127,9 +127,11 @@ signed by Drake 2026-09-08 in `PRODUCT_DIRECTION.md` §The decision:** **Path A 
 spine.** Three Track B sessions are the spine — **B3** quotes → job, **B5** Tier 1 insurance
 claim tracking with short-payment reconciliation (promoted out of D1), **B6** a shop-owned price
 book seeded from history (promoted out of D2). None needs NAGS or EDI; each is what Path B
-would stand on. D1's and D2's remaining scope (EDI, a NAGS licence) stays a memo behind the
-five interviews, which have still not been held. Nothing here is "blocked" any more; it is
-sequenced.
+would stand on. D1's and D2's remaining scope (EDI, a NAGS licence) stays a memo. **The five
+dedicated interviews were dropped as a gate on 2026-09-17** (`PRODUCT_DIRECTION.md` §The
+decision): the two insurance questions are asked on every trial-shop conversation instead, the
+answers accrue in `INSURANCE_SHOP_INTERVIEWS.md` §6, and Path B is revisited when a paying
+customer asks. Nothing here is "blocked" any more; it is sequenced.
 
 ---
 
@@ -769,7 +771,7 @@ proposed in `docs/proposals/website-integration-widget.md`).
 
 **Goal:** The comparison table tells the truth, and the plan ladder justifies its own prices.
 **Size:** XS · **Depends on:** —
-**Status:** **VERIFY ON PROD** (2026-09-02). `PRICING_TIERS.md` was reduced to what the code enforces the same day; the `customer_portal` flag-rendering question below is a one-line check on production's `SubscriptionPlan.features`. Then the page is either right or it is a five-minute fix.
+**Status:** **DONE 2026-09-17.** Checked on prod: every plan row carries `customer_portal: True` and the live table shows a check on all three plans — the feared dash was not happening. Fixed the two things that were real: the table said "Repairs per month" beside plan cards saying "jobs a month" (now "Jobs per month" everywhere — the cap counts every job), and `seed_plans` now adds feature keys an existing row lacks instead of skipping the row, so the next new flag cannot render as "not included" on every plan. `tests/test_pricing_audit.py`. Was: VERIFY ON PROD (2026-09-02).
 
 **Why it matters.** A prospect comparing plans is the highest-intent visitor on the site. Two
 things on that table are working against the sale.
@@ -829,7 +831,7 @@ the §1 fork.*
 
 **Goal (eventual):** A shop can bill a TPA from inside RS Systems.
 **Size:** XL · **Depends on:** §1 decision, and realistically B3
-**Status:** **Tier 1 promoted to B5** (2026-09-02) — claim tracking needs no EDI and no fork decision. Tiers 2–3 (assisted submission, true EDI) stay **a memo behind the five interviews**, which have not been held. Not parked; gated on business development.
+**Status:** **Tier 1 promoted to B5** (2026-09-02, on prod 2026-09-17). Tiers 2–3 (assisted submission, true EDI) stay **a memo until a paying customer asks** — the five dedicated interviews were dropped as a gate 2026-09-17; the two questions that would have decided it are asked on every trial-shop conversation instead (`INSURANCE_SHOP_INTERVIEWS.md`). Not parked; gated on a customer.
 
 **Why it matters.** This is the honest answer to "why can't a shop afford to leave?" A large
 share of retail auto glass revenue is billed not to the driver but to a third-party
@@ -867,7 +869,9 @@ reverse.**
   stricter. `apps/security` audit logging exists and should be extended, not bypassed.
 
 **Decisions needed.** The §1 fork. Then: can you get credentialed? What does an aggregator
-cost? Would 5 real shops pay more for this? **Go interview them before writing a line.**
+cost? Would 5 real shops pay more for this? **Ask every prospect, not five researchers** — the
+two questions and the tally are in `INSURANCE_SHOP_INTERVIEWS.md`; build nothing until the tally
+says so or a paying customer asks.
 
 **Acceptance criteria (for the memo, not the code).** A written answer to: is TPA access
 achievable at our size, at what cost, on what timeline, and do target shops say it changes
