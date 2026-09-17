@@ -21,7 +21,8 @@
 > read before starting a session: `IMPROVEMENT_SESSIONS.md` (now carries a Status line per
 > session; B3/B5/B6 are the spine), `FIELD_OPS_SESSIONS.md` (S11–S14 scheduling UX open),
 > `PHOTO_ML_SESSIONS.md` (P8 is its last code), `UI_MAGIC_SESSIONS.md` (arc clear; sweeps
-> parked), `JOB_QUEUE_SESSIONS.md` (Q5/Q6 parked), `TEST_SUITE_SESSIONS.md`.
+> parked), `JOB_QUEUE_SESSIONS.md` (Q5/Q6 parked), `TEST_SUITE_SESSIONS.md`,
+> `HELP_CENTER_SESSIONS.md` (H1–H6 built 2026-09-17 on `feat/help-center`; H7 backlog).
 > For dated detail on anything below, `CHANGELOG.md` is canonical.
 
 ---

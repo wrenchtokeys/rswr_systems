@@ -14,6 +14,50 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-09-17 — Help center: truth pass, public contact form, guides for the spine
+
+Queue: `docs/strategy/HELP_CENTER_SESSIONS.md` (H1–H6). One PR, one commit per session.
+
+### Fixed
+- **Three guides and a Settings card promised overdue-reminder emails** that the cron has been
+  DISABLED BY POLICY since 2026-08-11. The guides now say what happens (invoices mark themselves
+  Overdue; chasing is the shop's call) and the "Overdue Reminders" card, its two form handlers and
+  its context are gone. `BillingConfig.overdue_reminder_*` fields stay.
+- **The trial guide said "30-day grace period"; `TRIAL_GRACE_DAYS` is 14.** Trial length, grace
+  days and limits now render from settings and the plan rows (`support.views.trial_facts`), and
+  the guide claims Starter parity only when the rows actually match.
+- **The landing page's contact link dead-ended on a login wall** (`/help/contact/` is
+  `@login_required`). See Added.
+- `tests/test_support_contact.py::test_app_is_blocked_but_contact_form_works` was red on `main`:
+  its fixture sat inside the read-only grace window and used a moved dashboard URL.
+
+### Added
+- **Public `/contact/`** — the same record-first `SupportMessage` path with no account: name is a
+  field, Cloudflare Turnstile + a honeypot + 5/h per IP stand in for the login. Landing
+  "switching" link, landing footer and `/sms/` point at it; 404/500 keep `mailto:`.
+  `SupportMessage.source` (app/public/portal), `role`, `acknowledged`.
+- **The support loop is two-way.** Senders get one plain platform-branded acknowledgement with a
+  copy of what they wrote; the signed-in form lists their own past messages ("Received" /
+  "Answered by email" / "Closed"). `manage.py sweep_support_messages` (every 20 min via EB cron)
+  re-sends any admin notification or acknowledgement that failed. Not a ticket system.
+- **Guides for quotes, insurance claims and the price book**, four troubleshooting entries for the
+  questions they raise, "Guides:" links on the quotes list/page, claims list, the claim panel on
+  the invoice page and the price book, and tap-the-break / Download-all in the technician guide.
+- **Feedback you can read.** A thumbs-down asks "What were you looking for?" (optional; the thumb
+  alone still counts); the `GuideFeedback` admin opens with a per-guide rollup, worst first; a hub
+  search that matches nothing logs `help.search.miss`; the contact admin shows a readable "where
+  they were" instead of a referrer URL.
+- **`tests/test_help_truth.py`** (guard set): banned phrases, trial numbers tied to settings and plan
+  rows, no "coming soon" on any guide, no reminders card on Settings.
+
+### Changed
+- **The "Video coming soon" slot is gone from every guide.** No video was ever recorded; six weeks
+  of "coming soon" read as unfinished. `components/video_slot.html` and the `video_label` keys
+  stay for whenever a recording exists.
+- `preview_emails` renders the support acknowledgement (33 emails).
+
+---
+
 ## 2026-09-17 — Pricing page audit (C2) and the insurance-shop interview script
 
 ### Fixed
