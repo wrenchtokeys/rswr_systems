@@ -47,12 +47,42 @@ def list_price_of(job):
     return price if price > 0 else None
 
 
-def _key_of(job):
+def parse_vehicle_text(text):
+    """'2019 Ford F-150' → (2019, 'Ford', 'F-150'); anything else → None.
+
+    An individual's vehicle lives in the unit box as free text (the job form
+    labels it "Vehicle" for them), so a walk-in's Camry has no year/make/
+    model fields to key on. A leading model year followed by at least two
+    words is unambiguous enough to read; a fleet unit like "T-1045" or
+    "4521" never matches.
+    """
+    tokens = (text or '').split()
+    if len(tokens) < 3 or not tokens[0].isdigit() or len(tokens[0]) != 4:
+        return None
+    year = int(tokens[0])
+    if not 1900 <= year <= 2100:
+        return None
+    return year, tokens[1][:50], ' '.join(tokens[2:])[:50]
+
+
+def vehicle_of(job):
+    """(year, make, model) the book should key this job on, or None.
+
+    The explicit fields win; an individual's job with blank fields is keyed
+    on the vehicle text in its unit box when that parses.
+    """
+    if job.vehicle_make and job.vehicle_model:
+        return job.vehicle_year, job.vehicle_make, job.vehicle_model
+    return parse_vehicle_text(job.unit_number)
+
+
+def _key_of(job, vehicle):
+    year, make, model = vehicle
     return dict(
         tenant=job.tenant,
-        make_key=normalize_key(job.vehicle_make),
-        model_key=normalize_key(job.vehicle_model),
-        vehicle_year=job.vehicle_year or ANY_YEAR,
+        make_key=normalize_key(make),
+        model_key=normalize_key(model),
+        vehicle_year=year or ANY_YEAR,
         glass_position=job.glass_position or '',
     )
 
@@ -66,15 +96,18 @@ def learn_from_job(job, *, source=PriceBookEntry.SOURCE_LEARNED, count=True):
     price correction propagates, an older job re-saved does not clobber a
     newer price).
     """
-    if job.tenant_id is None or not (job.vehicle_make and job.vehicle_model):
+    if job.tenant_id is None:
+        return None
+    vehicle = vehicle_of(job)
+    if vehicle is None:
         return None
     price = list_price_of(job)
     if price is None:
         return None
-    key = _key_of(job)
+    key = _key_of(job, vehicle)
     values = dict(
-        vehicle_make=job.vehicle_make,
-        vehicle_model=job.vehicle_model,
+        vehicle_make=vehicle[1],
+        vehicle_model=vehicle[2],
         parts_cost=job.parts_cost,
         labor_cost=job.labor_cost,
         adas_calibration_cost=(
@@ -126,9 +159,10 @@ def rebuild_for_tenant(tenant):
     """
     from apps.technician_portal.models import Replacement
 
+    # No vehicle pre-filter: learn_from_job decides (an individual's job
+    # may carry its vehicle only as text in the unit box).
     jobs = (
         Replacement.objects.filter(tenant=tenant, queue_status='COMPLETED')
-        .exclude(vehicle_make='').exclude(vehicle_model='')
         .order_by('service_date', 'pk')
     )
     with transaction.atomic():
@@ -139,8 +173,8 @@ def rebuild_for_tenant(tenant):
         PriceBookEntry.objects.filter(tenant=tenant).update(times_used=0, last_job=None)
         read = 0
         for job in jobs.iterator():
-            read += 1
-            learn_from_job(job, count=True)
+            if learn_from_job(job, count=True) is not None:
+                read += 1
     return read, PriceBookEntry.objects.filter(tenant=tenant).count()
 
 
@@ -155,10 +189,18 @@ def resolve_vehicle(tenant, *, customer_id=None, unit_number='', year=None, make
     windshield repaired last spring taught us it is a 2019 F-150).
     """
     make, model = (make or '').strip(), (model or '').strip()
-    if (make and model) or not customer_id or not (unit_number or '').strip():
+    unit = (unit_number or '').strip()
+    if (make and model) or not unit:
+        return year, make, model
+    # What is on screen right now beats history: an individual who typed
+    # "2019 Ford F-150" in the vehicle box means that car, even if their
+    # last job was in another one.
+    parsed = parse_vehicle_text(unit)
+    if parsed:
+        return year or parsed[0], parsed[1], parsed[2]
+    if not customer_id:
         return year, make, model
     from apps.technician_portal.models import Repair, Replacement
-    unit = unit_number.strip()
     for model_cls in (Replacement, Repair):
         prior = (
             model_cls.objects.filter(

@@ -47,11 +47,17 @@ migration (`technician_portal/0063`).
   thing as the owner's Rebuild button). **Run it on prod once after deploying.**
 - `ReplacementForm` (owner create/edit) now exposes year/make/model — it had no key to look a
   price up by.
-- `tests/test_price_book.py` (29 tests) in the guard set.
+- **Quote lines price themselves too.** Each replacement line on the quote form carries the
+  same note, keyed on the header's vehicle or the line's own unit; a line switched back to
+  Repair gives the filled price back. Rows added at runtime attach on creation.
+- **An individual's car is read out of the vehicle box.** A walk-in's job has no year/make/
+  model fields filled — the car is typed as "2019 Ford F-150" where a fleet types a unit
+  number. The book keys such jobs on that text (a leading model year plus at least two words;
+  "T-1045" never matches), and a lookup with only that text — no customer yet — still answers.
+  What is on screen beats history: a customer's second car is not priced as their first.
+- `tests/test_price_book.py` (33 tests) in the guard set.
 
 ### Not built (on purpose)
-- No suggestion on the quote form's line rows yet (they are built at runtime); B3's quote →
-  job path still carries the quoted price. A follow-up, not a gap in the acceptance criteria.
 - No NAGS data, no vehicle → glass lookup, no VIN decode (session doc's out-of-scope list).
 
 ## 2026-09-16 — Insurance claims: what you billed, what came in, what is short (PR #255)

@@ -1,4 +1,5 @@
 {% extends "base_app.html" %}
+{% load static %}
 {% load ui %}
 
 {% block title %}{% if quote %}Edit {{ quote.quote_number }}{% else %}New Quote{% endif %} | {{ tenant.name }} | RS Systems{% endblock %}
@@ -79,7 +80,7 @@
             <div class="card-body">
                 <div id="quote-lines" class="space-y-3">
                     {% for li in lines %}
-                    <div class="quote-line rounded-lg border border-gray-200 p-3 bg-gray-50/60">
+                    <div class="quote-line rounded-lg border border-gray-200 p-3 bg-gray-50/60" data-pricebook-row>
                         <div class="grid grid-cols-12 gap-2">
                             <div class="col-span-12 sm:col-span-3">
                                 <select name="line_type" class="line-type w-full px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-brand-500 focus:border-brand-500" onchange="lineTypeChanged(this)">
@@ -123,11 +124,29 @@
                                 </select>
                             </div>
                         </div>
+                        {% comment %}
+                        Price book (B6): what the shop charged for this glass on the
+                        header's vehicle (or this line's unit). Replacement lines only;
+                        static/js/price_book_suggestion.js fills an empty price and
+                        says so, or offers "Use" beside a typed one.
+                        {% endcomment %}
+                        <div class="pricebook-note hidden mt-2"
+                             data-pricebook-endpoint="{% url 'get_price_book_suggestion' %}"
+                             data-pricebook-year="vehicle_year"
+                             data-pricebook-make="vehicle_make"
+                             data-pricebook-model="vehicle_model"
+                             data-pricebook-customer="customer"
+                             data-pricebook-unit="unit_number"
+                             data-pricebook-row-unit="input[name=line_unit]"
+                             data-pricebook-row-position="select[name=line_glass]"
+                             data-pricebook-row-price="input[name=line_price]"
+                             data-pricebook-row-type="select[name=line_type]"
+                             data-pricebook-type-value="REPLACEMENT"></div>
                     </div>
                     {% endfor %}
                 </div>
                 <template id="quote-line-template">
-                    <div class="quote-line rounded-lg border border-gray-200 p-3 bg-gray-50/60">
+                    <div class="quote-line rounded-lg border border-gray-200 p-3 bg-gray-50/60" data-pricebook-row>
                         <div class="grid grid-cols-12 gap-2">
                             <div class="col-span-12 sm:col-span-3">
                                 <select name="line_type" class="line-type w-full px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-brand-500 focus:border-brand-500" onchange="lineTypeChanged(this)">
@@ -171,6 +190,24 @@
                                 </select>
                             </div>
                         </div>
+                        {% comment %}
+                        Price book (B6): what the shop charged for this glass on the
+                        header's vehicle (or this line's unit). Replacement lines only;
+                        static/js/price_book_suggestion.js fills an empty price and
+                        says so, or offers "Use" beside a typed one.
+                        {% endcomment %}
+                        <div class="pricebook-note hidden mt-2"
+                             data-pricebook-endpoint="{% url 'get_price_book_suggestion' %}"
+                             data-pricebook-year="vehicle_year"
+                             data-pricebook-make="vehicle_make"
+                             data-pricebook-model="vehicle_model"
+                             data-pricebook-customer="customer"
+                             data-pricebook-unit="unit_number"
+                             data-pricebook-row-unit="input[name=line_unit]"
+                             data-pricebook-row-position="select[name=line_glass]"
+                             data-pricebook-row-price="input[name=line_price]"
+                             data-pricebook-row-type="select[name=line_type]"
+                             data-pricebook-type-value="REPLACEMENT"></div>
                     </div>
                 </template>
 
@@ -223,6 +260,7 @@
     </form>
 </div>
 
+<script src="{% static 'js/price_book_suggestion.js' %}"></script>
 <script nonce="{{ csp_nonce }}">
 (function () {
     const form = document.getElementById('quote-form');
@@ -256,6 +294,7 @@
         document.getElementById('quote-lines').appendChild(node);
         lineTypeChanged(node.querySelector('.line-type'));
         applyCustomerType();
+        if (window.PriceBookSuggestion) PriceBookSuggestion.attachAll(node);
         node.querySelector('input[name="line_desc"]').focus();
     };
 

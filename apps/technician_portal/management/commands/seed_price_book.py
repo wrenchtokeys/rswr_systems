@@ -10,11 +10,13 @@ The owner has the same button on the price book page.
     python manage.py seed_price_book --dry-run
     python manage.py seed_price_book --tenant the-glass-guy
 """
+from types import SimpleNamespace
+
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.technician_portal.models import Replacement
 from apps.technician_portal.price_book_models import PriceBookEntry
-from apps.technician_portal.services.price_book import rebuild_for_tenant
+from apps.technician_portal.services.price_book import rebuild_for_tenant, vehicle_of
 from apps.tenants.models import Tenant
 
 
@@ -36,9 +38,12 @@ class Command(BaseCommand):
                 raise CommandError(f'No tenant matches {key!r}.')
 
         for tenant in tenants:
-            learnable = (
-                Replacement.objects.filter(tenant=tenant, queue_status='COMPLETED')
-                .exclude(vehicle_make='').exclude(vehicle_model='').count()
+            # values(), not only(): Replacement.__init__ reads queue_status,
+            # and a deferred field there re-enters __init__ without end.
+            learnable = sum(
+                1 for row in Replacement.objects.filter(tenant=tenant, queue_status='COMPLETED')
+                .values('vehicle_year', 'vehicle_make', 'vehicle_model', 'unit_number')
+                if vehicle_of(SimpleNamespace(**row)) is not None
             )
             pinned = PriceBookEntry.objects.filter(
                 tenant=tenant, source=PriceBookEntry.SOURCE_PINNED,

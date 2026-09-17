@@ -659,8 +659,8 @@ decisions below taken as recommended: the book is learned *and* editable (an edi
 pinned and never overwritten), and a Mygrant quote writes in as a quote that a charge replaces.
 `PriceBookEntry` + `services/price_book.py`; suggestion endpoint + `price_book_suggestion.js`
 on the job form and both owner replacement forms; `/owner/price-book/`; `seed_price_book`
-(run once on prod after deploying). `tests/test_price_book.py` in the guard set. Not done:
-the quote form's runtime line rows. Was: NEXT — spine feature 3 (2026-09-02), promoted out of
+(run once on prod after deploying); quote-form lines and an individual's "2019 Ford F-150"
+vehicle text covered the same day. `tests/test_price_book.py` in the guard set. Was: NEXT — spine feature 3 (2026-09-02), promoted out of
 D2's "much cheaper 80%".
 
 **Why it matters.** See D2: the valuable part of NAGS for a small shop is not the part number,

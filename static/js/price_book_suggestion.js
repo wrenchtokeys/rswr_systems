@@ -27,6 +27,21 @@
  * (data-pricebook-fixed-year="2019" ...) for a page that shows the vehicle
  * but does not edit it.
  *
+ * A form with many rows (the quote form) puts one container in each row and
+ * names the row's own inputs by CSS selector, resolved inside the nearest
+ * data-pricebook-row ancestor — those win over the page-level ids when they
+ * have a value, so a line's own unit or glass beats the header's:
+ *
+ *     <div class="quote-line" data-pricebook-row>
+ *       ... <div data-pricebook-endpoint="..." data-pricebook-year="vehicle_year" ...
+ *                data-pricebook-row-unit="input[name=line_unit]"
+ *                data-pricebook-row-position="select[name=line_glass]"
+ *                data-pricebook-row-price="input[name=line_price]"
+ *                data-pricebook-row-type="select[name=line_type]"
+ *                data-pricebook-type-value="REPLACEMENT"></div>
+ *
+ * Rows added later call PriceBookSuggestion.attachAll(rowElement).
+ *
  * Suggest, never silently apply: an EMPTY price box is filled and the note
  * says so, with an Undo; a box the tech already typed in is left alone and
  * the note offers a "Use" button instead. A box this module filled is still
@@ -46,20 +61,31 @@
         var endpoint = box.dataset.pricebookEndpoint;
         if (!endpoint) return null;
         var d = box.dataset;
+        var row = box.closest('[data-pricebook-row]');
+        function inRow(sel) { return (row && sel) ? row.querySelector(sel) : null; }
         var inputs = {
             year: byId(d.pricebookYear), make: byId(d.pricebookMake),
             model: byId(d.pricebookModel), position: byId(d.pricebookPosition),
             customer: byId(d.pricebookCustomer), unit: byId(d.pricebookUnit)
+        };
+        // Row-scoped inputs: read first, fall back to the page-level ones.
+        var rowInputs = {
+            year: inRow(d.pricebookRowYear), make: inRow(d.pricebookRowMake),
+            model: inRow(d.pricebookRowModel), position: inRow(d.pricebookRowPosition),
+            customer: inRow(d.pricebookRowCustomer), unit: inRow(d.pricebookRowUnit)
         };
         var fixed = {
             year: d.pricebookFixedYear, make: d.pricebookFixedMake,
             model: d.pricebookFixedModel, position: d.pricebookFixedPosition
         };
         var targets = {
-            price: byId(d.pricebookPrice), parts: byId(d.pricebookParts),
-            labor: byId(d.pricebookLabor), adas: byId(d.pricebookAdas),
-            adasCost: byId(d.pricebookAdasCost)
+            price: inRow(d.pricebookRowPrice) || byId(d.pricebookPrice),
+            parts: inRow(d.pricebookRowParts) || byId(d.pricebookParts),
+            labor: inRow(d.pricebookRowLabor) || byId(d.pricebookLabor),
+            adas: inRow(d.pricebookRowAdas) || byId(d.pricebookAdas),
+            adasCost: inRow(d.pricebookRowAdasCost) || byId(d.pricebookAdasCost)
         };
+        var rowType = inRow(d.pricebookRowType);
         var layout = box.className.replace(/\bhidden\b/g, '').trim();
         var timer = null;
         var latest = 0;
@@ -67,6 +93,7 @@
         var filled = {};            // target key -> value we wrote
 
         function gateOpen() {
+            if (rowType) return rowType.value === d.pricebookTypeValue;
             if (!d.pricebookTypeName) return true;
             var checked = document.querySelector('input[name="' + d.pricebookTypeName + '"]:checked')
                 || document.querySelector('input[name="' + d.pricebookTypeName + '"]');
@@ -74,6 +101,8 @@
         }
 
         function read(key) {
+            var v = rowInputs[key] ? (rowInputs[key].value || '').trim() : '';
+            if (v) return v;
             if (inputs[key]) return (inputs[key].value || '').trim();
             return (fixed[key] || '').trim();
         }
@@ -203,7 +232,10 @@
             if (!gateOpen()) { clearOurs(); clear(); return; }
             var make = read('make'), model = read('model');
             var customer = read('customer'), unit = read('unit');
-            if (!((make && model) || (customer && unit))) { clearOurs(); clear(); return; }
+            // A unit alone is enough: the server reads "2019 Ford F-150" out
+            // of an individual's vehicle box, or the vehicle off a fleet
+            // unit's earlier jobs when a customer is known.
+            if (!((make && model) || unit)) { clearOurs(); clear(); return; }
             timer = setTimeout(function () {
                 var token = ++latest;
                 var q = '?year=' + encodeURIComponent(read('year')) +
@@ -225,12 +257,15 @@
             }, DEBOUNCE_MS);
         }
 
-        Object.keys(inputs).forEach(function (key) {
-            var el = inputs[key];
-            if (!el) return;
-            el.addEventListener('input', refresh);
-            el.addEventListener('change', refresh);
+        [inputs, rowInputs].forEach(function (set) {
+            Object.keys(set).forEach(function (key) {
+                var el = set[key];
+                if (!el) return;
+                el.addEventListener('input', refresh);
+                el.addEventListener('change', refresh);
+            });
         });
+        if (rowType) rowType.addEventListener('change', refresh);
         if (d.pricebookTypeName) {
             var radios = document.querySelectorAll('input[name="' + d.pricebookTypeName + '"]');
             for (var i = 0; i < radios.length; i++) radios[i].addEventListener('change', refresh);

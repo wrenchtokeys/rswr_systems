@@ -131,6 +131,23 @@ class LearningTests(PriceBookTestCase):
         entry = self.entries().get()
         self.assertEqual((entry.price, entry.times_used), (D('410.00'), 1))
 
+    def test_individuals_vehicle_text_is_the_key(self):
+        # A walk-in's car lives in the unit box as "2019 Ford F-150"; the
+        # year/make/model fields stay blank on the job form.
+        person = Customer.objects.create(name='Pat Person', tenant=self.tenant, customer_type='RETAIL')
+        self.make_replacement(customer=person, unit_number='2019 Ford F-150',
+                              year=None, make='', model='', cost_override=D('440'))
+        entry = self.entries().get()
+        self.assertEqual((entry.vehicle_year, entry.vehicle_make, entry.vehicle_model),
+                         (2019, 'Ford', 'F-150'))
+        # A fleet unit number never parses as a vehicle.
+        self.assertIsNone(price_book.parse_vehicle_text('T-1045'))
+        self.assertIsNone(price_book.parse_vehicle_text('4521'))
+        self.assertIsNone(price_book.parse_vehicle_text('2019 Ford'))
+        self.assertEqual(price_book.parse_vehicle_text(' 2021  Toyota Camry LE '), (2021, 'Toyota', 'Camry LE'))
+        read, rows = price_book.rebuild_for_tenant(self.tenant)
+        self.assertEqual((read, rows), (1, 1))
+
     def test_make_and_model_are_case_and_space_insensitive(self):
         self.make_replacement(make='Ford ', model='f-150', cost_override=D('400'))
         self.make_replacement(make='FORD', model='F-150', cost_override=D('420'))
@@ -265,6 +282,29 @@ class LookupTests(PriceBookTestCase):
         })
         self.assertTrue(resp.json()['found'])
         self.assertEqual(resp.json()['price'], '400.00')
+
+    def test_endpoint_reads_the_vehicle_out_of_an_individuals_unit_box(self):
+        self.make_replacement(cost_override=D('400'))
+        # No customer yet (a new individual being added on the job form),
+        # no year/make/model fields — only the vehicle text.
+        resp = self.client.get(reverse('get_price_book_suggestion'), {
+            'unit_number': '2019 ford f-150', 'glass_position': 'WINDSHIELD',
+        })
+        self.assertTrue(resp.json()['found'])
+        self.assertEqual(resp.json()['price'], '400.00')
+        # The text on screen beats the unit's history: this customer's unit
+        # 4521 is an F-150, but the box now says a Camry.
+        self.make_replacement(make='Toyota', model='Camry', year=2021, cost_override=D('425'))
+        resp = self.client.get(reverse('get_price_book_suggestion'), {
+            'customer': self.customer.pk, 'unit_number': '2021 Toyota Camry', 'glass_position': 'WINDSHIELD',
+        })
+        self.assertEqual(resp.json()['price'], '425.00')
+
+    def test_quote_form_rows_carry_the_suggestion(self):
+        resp = self.client.get(reverse('quote_create'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'data-pricebook-row-price="input[name=line_price]"')
+        self.assertContains(resp, 'price_book_suggestion.js')
 
     def test_endpoint_says_not_found_for_a_vehicle_never_done(self):
         resp = self.client.get(reverse('get_price_book_suggestion'), {
