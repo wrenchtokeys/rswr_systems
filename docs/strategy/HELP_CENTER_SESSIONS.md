@@ -2,7 +2,7 @@
 
 **Created:** 2026-09-17
 **Author:** Claude (assessment session with Drake)
-**Status:** H1–H6 BUILT 2026-09-17 on `feat/help-center` (one PR, one commit per session; see §"What shipped" under each). D1–D3 decided by Drake the same day (§0.4). H7 stays BACKLOG behind a second shop.
+**Status:** H1–H6 BUILT 2026-09-17 on `feat/help-center` → PR #263 OPEN (one commit per session; see §"What shipped" under each). D1–D3 decided by Drake the same day (§0.4). H7 stays BACKLOG behind a second shop.
 **Companions:** `docs/proposals/launch-readiness-roadmap.md` (Phases 2–3 built what this doc updates; its decisions log is the origin of every "by design" below), `docs/strategy/PRODUCT_DIRECTION.md` (go-to-market step 6 — the help center is what a stranger shop reads instead of calling Drake), `docs/strategy/IMPROVEMENT_SESSIONS.md` (B3/B5/B6 — the spine features H3 documents), `docs/development/ROADMAP.md`.
 
 This file is the **work queue** for the help center and customer-support experience. It exists because the product outran its own help: three guides now promise something the platform deliberately does not do, the landing page's contact link dead-ends on a login wall, and the three newest features (quotes, claims, price book) have no guide at all. Each session is self-contained — a fresh Claude session with no memory should be able to execute exactly one using only §0 and that session's table.
