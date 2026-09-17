@@ -102,6 +102,9 @@ class GuideFeedback(models.Model):
     )
     slug = models.SlugField(max_length=64)
     helpful = models.BooleanField()
+    # Optional, thumbs-down only: "What were you looking for?" — "No" on its
+    # own tells you nothing to fix.
+    reason = models.CharField(max_length=300, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

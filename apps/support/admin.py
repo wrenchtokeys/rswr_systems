@@ -42,14 +42,53 @@ class SupportMessageAdmin(admin.ModelAdmin):
         return False  # messages come from the contact form, never typed in here
 
 
+def feedback_rollup():
+    """Per-guide totals: slug, title, up, down, % helpful, last vote.
+
+    Sorted by down-votes desc so the guide that fails most is first. One
+    aggregate query; no new model.
+    """
+    from django.db.models import Count, Max, Q
+
+    from .views import HELP_TOPICS
+
+    rows = (
+        GuideFeedback.objects.values('slug')
+        .annotate(
+            up=Count('id', filter=Q(helpful=True)),
+            down=Count('id', filter=Q(helpful=False)),
+            last=Max('updated_at'),
+        )
+    )
+    out = []
+    for row in rows:
+        total = row['up'] + row['down']
+        topic = HELP_TOPICS.get(row['slug'])
+        out.append({
+            'slug': row['slug'],
+            'title': topic['title'] if topic else row['slug'],
+            'up': row['up'],
+            'down': row['down'],
+            'pct': round(100 * row['up'] / total) if total else None,
+            'last': row['last'],
+        })
+    out.sort(key=lambda r: (-r['down'], -(r['up'] + r['down']), r['slug']))
+    return out
+
+
 @admin.register(GuideFeedback)
 class GuideFeedbackAdmin(admin.ModelAdmin):
-    list_display = ('slug', 'helpful', 'user', 'tenant', 'updated_at')
+    change_list_template = 'admin/support/guidefeedback/change_list.html'
+    list_display = ('slug', 'helpful', 'reason', 'user', 'tenant', 'updated_at')
     list_filter = ('helpful', 'slug', 'tenant')
-    search_fields = ('slug', 'user__username', 'user__email', 'tenant__name')
+    search_fields = ('slug', 'reason', 'user__username', 'user__email', 'tenant__name')
     date_hierarchy = 'updated_at'
     ordering = ('-updated_at',)
-    readonly_fields = ('user', 'tenant', 'slug', 'helpful', 'updated_at')
+    readonly_fields = ('user', 'tenant', 'slug', 'helpful', 'reason', 'updated_at')
 
     def has_add_permission(self, request):
         return False  # votes come from the help pages, never typed in here
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = dict(extra_context or {}, rollup=feedback_rollup())
+        return super().changelist_view(request, extra_context=extra_context)

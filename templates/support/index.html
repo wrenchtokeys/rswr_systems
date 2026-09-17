@@ -104,6 +104,23 @@
     var empty = document.getElementById('help-no-results');
     var emptyQ = document.getElementById('help-no-results-q');
 
+    // A search that matches nothing is the exact phrase a shop owner used
+    // for something we have no guide for. Reported once it has sat for 2s
+    // (they stopped typing), once per phrase, and never more than that.
+    var missTimer = null;
+    var reported = {};
+    function reportMiss(q) {
+        if (!q || reported[q]) return;
+        reported[q] = true;
+        var body = new URLSearchParams();
+        body.append('q', q);
+        fetch("{% url 'help_search_miss' %}", {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/x-www-form-urlencoded'},
+            body: body.toString(),
+        }).catch(function () {});
+    }
+
     function apply() {
         var words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
         var anyVisible = false;
@@ -121,6 +138,11 @@
         extras.forEach(function (el) { el.classList.toggle('hidden', words.length > 0); });
         empty.classList.toggle('hidden', anyVisible || words.length === 0);
         if (emptyQ) emptyQ.textContent = input.value.trim();
+        if (missTimer) clearTimeout(missTimer);
+        if (!anyVisible && words.length > 0) {
+            var q = input.value.trim();
+            missTimer = setTimeout(function () { reportMiss(q); }, 2000);
+        }
     }
 
     input.addEventListener('input', apply);

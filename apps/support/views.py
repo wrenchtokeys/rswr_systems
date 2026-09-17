@@ -535,7 +535,9 @@ def guide_feedback(request, slug):
     """POST /help/<slug>/feedback/ — thumbs up/down on a guide.
 
     One vote per user per guide; voting again overwrites (people change
-    their minds after re-reading). Answer is 'yes' or 'no'.
+    their minds after re-reading). Answer is 'yes' or 'no'. A 'no' may carry
+    an optional `reason` ("What were you looking for?"); it is sent as a
+    second POST after the thumb, so the thumb alone always counts.
     """
     from .models import GuideFeedback
 
@@ -545,12 +547,38 @@ def guide_feedback(request, slug):
     if answer not in ('yes', 'no'):
         return JsonResponse({'ok': False, 'error': 'helpful must be yes or no'}, status=400)
 
+    helpful = answer == 'yes'
+    defaults = {
+        'helpful': helpful,
+        'tenant': getattr(request, 'tenant', None),
+    }
+    reason = request.POST.get('reason', '').strip()[:300]
+    if helpful:
+        defaults['reason'] = ''          # a flipped vote drops the old complaint
+    elif reason or 'reason' in request.POST:
+        defaults['reason'] = reason      # the bare thumb keeps whatever was said before
     GuideFeedback.objects.update_or_create(
         user=request.user,
         slug=slug,
-        defaults={
-            'helpful': answer == 'yes',
-            'tenant': getattr(request, 'tenant', None),
-        },
+        defaults=defaults,
     )
+    return JsonResponse({'ok': True})
+
+
+@require_POST
+@login_required
+@ratelimit(key='user', rate='30/h', method='POST', block=True)
+def search_miss(request):
+    """POST /help/search-miss/ — a search on the hub that matched nothing.
+
+    The "No guides match" state is the most useful signal the help center
+    has: it is the exact words a shop owner used for something we have no
+    guide for. Logged, not stored — grep the log for `help.search.miss`;
+    promote to a model only if the log proves useful (HELP_CENTER_SESSIONS H6).
+    """
+    query = request.POST.get('q', '').strip()[:120]
+    if query:
+        tenant = getattr(request, 'tenant', None)
+        logger.info('help.search.miss tenant=%s user=%s q=%r',
+                    getattr(tenant, 'id', None), request.user.id, query)
     return JsonResponse({'ok': True})
