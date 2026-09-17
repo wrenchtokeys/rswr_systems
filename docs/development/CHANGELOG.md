@@ -14,9 +14,75 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-09-17 — Deployed: price book (#257) and staff SMS (#258) are on prod
+
+**Deployed 2026-09-17 14:20 UTC as `8da23bbe`** (health green; `technician_portal/0063` and
+`core/0035` verified applied with `showmigrations` on the instance; the price-book JS, the
+suggestion endpoint and `/owner/price-book/` all answer). Prod had been running the *unmerged*
+#258 branch (`dd0b6101`, deployed 13:48 UTC the same day from a feature branch — the `eb deploy`
+ships-the-current-branch trap), so #258 was merged into `main` first (docs-only conflicts,
+resolved to #258's wording) and both shipped in one deploy — nothing that was live came off.
+
+`seed_price_book --dry-run` and then `seed_price_book` were run through `run-cron.sh` at 14:2x UTC:
+**0 jobs read, 0 rows** on every shop. That is correct, not a fault — no shop on prod has a
+replacement record at all yet (The Glass Guy was cleaned of seed data on 2026-08-14 and has
+logged none since). The book fills itself from the first completed replacement; the command
+only matters for a shop that arrives with history.
+
+**All three spine features are now on prod** (B3 2026-09-14, B5 + B6 2026-09-17). What is
+left in `PRODUCT_DIRECTION.md` step 5 is nothing; step 6 (go-to-market) is not code.
+
+## 2026-09-17 — SMS: staff notifications are registrable; the 09-16 verdict was too broad
+
+### Changed
+- **Yesterday's conclusion is corrected.** "The number is unregisterable, release it,
+  no version 5" followed from "RS Systems never texts anyone as itself" — which is
+  false. `repair_request_submitted`, `repair_assigned`, `repair_approved`,
+  `repair_denied`, `batch_approved` and the phone-verification codes all go to
+  **RS Systems' own account holders**, and that verification text has always read
+  *"Your RS Systems verification code is…"*.
+- **All four denied versions were scoped as customer-facing texts sent on behalf of a
+  shop.** That audience genuinely cannot be registered here (registrant brand ≠ message
+  brand). **Staff notifications are a different, ordinary registration** —
+  `ACCOUNT_NOTIFICATIONS`, brand-consistent, consent on a logged-in page, non-circular —
+  and that is **version 5**. The number is kept, not released.
+
+### Fixed
+- **`SMSService.send_sms` now exists.** Two shipped phone-verification flows
+  (technician and customer) had called it since 2026-08-09; it never existed, so both
+  raised `AttributeError` into a bare `except` and **failed 100% of the time in
+  production**. It delegates to `send_notification_sms` — still one transport.
+- **Both callers now gate on `SMSService.is_enabled()`**, not `settings.SMS_ENABLED`.
+  The flag alone is not the switch, so they had been reporting "code sent" while the
+  send no-opped.
+- Retired a stale note: `repair_request_submitted` was fixed by `core/0033` and does
+  reach the shop by email today.
+
+### Added
+- **SMS consent record** — `sms_consent_at` + `sms_consent_source` on
+  `BaseNotificationPreference` (`core/0035`), stamped by the preference forms on first
+  opt-in and **idempotent**, because the original moment is the evidence.
+- **`can_send_sms()` requires all three** — switch, verified phone, consent record — and
+  `NotificationService._queue_delivery` routes through it rather than checking raw
+  fields. An owner ticking a technician's box for them is not consent and no longer sends.
+- **Compliant consent block at Settings → Notifications** (message types, frequency,
+  "Msg & data rates may apply", STOP/HELP, links to `/sms/`, privacy and terms). This is
+  version 5's screenshot surface.
+- **`tests/test_sms_consent_surface.py`** — pins every required element and asserts the
+  checkbox renders unchecked *in the HTML*, since a screenshot of rendered HTML is what
+  version 3 was denied over.
+
+### Known issue (not introduced here)
+- `tests.test_notification_surfaces.NotificationListTests.test_day_headers_group_the_list`
+  builds rows at `now − 1h`/`now − 2h` and asserts one "Today" header, so it fails for
+  anyone running the suite between midnight and ~02:00 local. Absent from the baseline,
+  so `test_guards.sh` reports it as the running session's regression.
+
+---
+
 ## 2026-09-16 — Price book: a replacement prices itself from your own history (PR #257)
 
-**Built 2026-09-16, PR #257.** `IMPROVEMENT_SESSIONS.md` B6 — the third and last spine feature in
+**Built 2026-09-16, PR #257; deployed 2026-09-17 14:20 UTC as `8da23bbe`.** `IMPROVEMENT_SESSIONS.md` B6 — the third and last spine feature in
 `PRODUCT_DIRECTION.md`: the cheaper 80% of NAGS with no licence and no catalog. One additive
 migration (`technician_portal/0063`).
 
@@ -285,54 +351,6 @@ below (#238 through #243); none carries a migration.
 - 60 templates gained `nonce="{{ csp_nonce }}"`; the one `<style>` built in
   Python is `{% tenant_brand_css %}`. Settings `CSP_ENABLED`,
   `CSP_REPORT_ONLY`, `CSP_REPORT_URI`. CLAUDE.md gains a CSP section.
-
----
-
-## 2026-09-17 — SMS: staff notifications are registrable; the 09-16 verdict was too broad
-
-### Changed
-- **Yesterday's conclusion is corrected.** "The number is unregisterable, release it,
-  no version 5" followed from "RS Systems never texts anyone as itself" — which is
-  false. `repair_request_submitted`, `repair_assigned`, `repair_approved`,
-  `repair_denied`, `batch_approved` and the phone-verification codes all go to
-  **RS Systems' own account holders**, and that verification text has always read
-  *"Your RS Systems verification code is…"*.
-- **All four denied versions were scoped as customer-facing texts sent on behalf of a
-  shop.** That audience genuinely cannot be registered here (registrant brand ≠ message
-  brand). **Staff notifications are a different, ordinary registration** —
-  `ACCOUNT_NOTIFICATIONS`, brand-consistent, consent on a logged-in page, non-circular —
-  and that is **version 5**. The number is kept, not released.
-
-### Fixed
-- **`SMSService.send_sms` now exists.** Two shipped phone-verification flows
-  (technician and customer) had called it since 2026-08-09; it never existed, so both
-  raised `AttributeError` into a bare `except` and **failed 100% of the time in
-  production**. It delegates to `send_notification_sms` — still one transport.
-- **Both callers now gate on `SMSService.is_enabled()`**, not `settings.SMS_ENABLED`.
-  The flag alone is not the switch, so they had been reporting "code sent" while the
-  send no-opped.
-- Retired a stale note: `repair_request_submitted` was fixed by `core/0033` and does
-  reach the shop by email today.
-
-### Added
-- **SMS consent record** — `sms_consent_at` + `sms_consent_source` on
-  `BaseNotificationPreference` (`core/0035`), stamped by the preference forms on first
-  opt-in and **idempotent**, because the original moment is the evidence.
-- **`can_send_sms()` requires all three** — switch, verified phone, consent record — and
-  `NotificationService._queue_delivery` routes through it rather than checking raw
-  fields. An owner ticking a technician's box for them is not consent and no longer sends.
-- **Compliant consent block at Settings → Notifications** (message types, frequency,
-  "Msg & data rates may apply", STOP/HELP, links to `/sms/`, privacy and terms). This is
-  version 5's screenshot surface.
-- **`tests/test_sms_consent_surface.py`** — pins every required element and asserts the
-  checkbox renders unchecked *in the HTML*, since a screenshot of rendered HTML is what
-  version 3 was denied over.
-
-### Known issue (not introduced here)
-- `tests.test_notification_surfaces.NotificationListTests.test_day_headers_group_the_list`
-  builds rows at `now − 1h`/`now − 2h` and asserts one "Today" header, so it fails for
-  anyone running the suite between midnight and ~02:00 local. Absent from the baseline,
-  so `test_guards.sh` reports it as the running session's regression.
 
 ---
 

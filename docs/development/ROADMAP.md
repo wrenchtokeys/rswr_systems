@@ -1,16 +1,19 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: September 16, 2026 (B6 price book built as PR #257 and B5 insurance claim tracking built as PR #255 — neither merged; B3 quotes on prod since 2026-09-14 as `e47cd18b`; all three spine features are built).*
+*Last Updated: September 17, 2026 (B6 price book #257 and staff SMS #258 deployed 14:20 UTC as `8da23bbe`; B5 #255 rode the same deploy; all three spine features are on prod; `seed_price_book` run — empty, prod has no replacements yet).*
 
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
-> snapshot):** production runs `e47cd18b`, deployed **2026-09-14 15:11 UTC** — everything
-> merged through #253 is live, including #253 (B3 quotes: `/quotes/`, the public accept
-> page, `/app/quotes/` in the portal; `billing/0036` + `technician_portal/0062` applied,
-> verified with `showmigrations` on the instance). The media bucket's `repair_photos/*`
-> prefix has been private since 2026-09-06 22:04 UTC. Nothing is merged and undeployed. `eb deploy` ships the current branch's HEAD — `git checkout main &&
-> git pull` first (or a `deploy-main` branch at `origin/main` when `main` is held by another
-> worktree).
+> snapshot):** production runs `8da23bbe`, deployed **2026-09-17 14:20 UTC** — everything
+> merged through #258 is live: #255 (B5 insurance claims), #257 (B6 price book:
+> `/owner/price-book/`, the suggestion endpoint, `technician_portal/0063`), #258 (staff SMS
+> consent record, `core/0035`), all verified with `showmigrations` on the instance.
+> `seed_price_book` was run on the instance at 14:2x UTC and read 0 jobs — no shop on prod has
+> a replacement record yet, so the book starts from the first completed one. The media bucket's
+> `repair_photos/*` prefix has been private since 2026-09-06 22:04 UTC. Only this docs PR is
+> merged and undeployed (nothing to ship). `eb deploy` ships the current branch's HEAD — on
+> 2026-09-17 that put an unmerged feature branch on prod for 32 minutes; `git checkout main &&
+> git pull` first (or `rs_main_deploy_wt`, the worktree that holds `main`).
 
 > **Scope note.** This file is the long-horizon view. The direction — Path A with a
 > B-ready spine — is in `docs/strategy/PRODUCT_DIRECTION.md` (September 2026; signed by
