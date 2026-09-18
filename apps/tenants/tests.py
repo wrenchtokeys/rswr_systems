@@ -67,8 +67,20 @@ class BaseTestCase(TestCase):
                 features={'invoicing': True, 'rewards': False},
             ),
         )
-        # Ensure test-specific values
+        # Ensure test-specific values.
+        #
+        # The defaults above are dead on any database where migration 0004 has
+        # already seeded the row -- which is every test run. These tests cover
+        # UsageService's counting and gauges, not what the trial is priced at,
+        # so pin the numbers they assert against instead of inheriting whatever
+        # the live trial happens to be. (Three of them silently tracked the real
+        # trial limits until tenants/0028 raised them.) The trial's actual size
+        # is asserted in tests/test_trial_limits.py, which is where it belongs.
         self.trial_plan.features = {'invoicing': True, 'rewards': False}
+        self.trial_plan.max_repairs_per_month = 50
+        self.trial_plan.max_technicians = 2
+        self.trial_plan.max_customers = 10
+        self.trial_plan.max_storage_mb = 100
         self.trial_plan.save()
 
         self.starter_plan, _ = SubscriptionPlan.objects.get_or_create(

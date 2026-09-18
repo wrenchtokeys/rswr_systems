@@ -24,10 +24,16 @@ PLANS = [
         'name': 'Trial',
         'monthly_price': Decimal('0.00'),
         'annual_price': None,
-        'max_repairs_per_month': 50,
-        'max_technicians': 2,
-        'max_customers': 10,
-        'max_storage_mb': 100,
+        # Deliberately identical to Starter. The landing page invites a shop to
+        # "run both for a month" beside their old system and to send over their
+        # customer list; the old 10 customers / 50 jobs were hard blocks at
+        # creation, which a 1-5 tech shop hits inside week one. A trial a real
+        # shop cannot finish is worse than no trial -- they hit the wall at the
+        # exact moment they have committed effort. Time is the only limit now.
+        'max_repairs_per_month': 200,
+        'max_technicians': 5,
+        'max_customers': 50,
+        'max_storage_mb': 500,
         'trial_days': 30,
         'features': {
             'invoicing': True,
