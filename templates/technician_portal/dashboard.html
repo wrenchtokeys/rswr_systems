@@ -21,6 +21,8 @@
 </style>
 {% endblock %}
 
+{% block title %}Dashboard{% if request.tenant %} | {{ request.tenant.name }}{% endif %} | RS Systems{% endblock %}
+
 {% block content %}
 <div class="min-h-screen bg-gray-50">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -474,14 +476,31 @@
         </div>
         {% endif %}
 
-        <!-- Active Work Section -->
+        {% comment %}
+        Multi-break batches, and nothing else.
+
+        These two cards are what is left of the pre-queue layout. They used to
+        list individual jobs as well, which is exactly what Today's Queue
+        renders at the top of this page -- with the address, the Call link and
+        the scheduled time, none of which these have. The same job appeared
+        twice on one screen under two different verbs ("Continue" up there,
+        "Complete" down here), and the tiles counted these truncated lists
+        rather than the work.
+
+        A batch is the one thing the queue genuinely cannot express: it lists
+        every break as its own row, with no grouping, no progress and no way to
+        start all of them at once. So the cards keep batches and give up the
+        duplication. A shop that does not do multi-break work now sees neither
+        card, which is the intended end state for almost everyone.
+        {% endcomment %}
+        {% if batch_repairs_in_progress or batch_repairs_approved %}
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <!-- In Progress Work -->
-            {% if batch_repairs_in_progress or individual_repairs_in_progress %}
+            <!-- card: started -->
+            {% if batch_repairs_in_progress %}
             <div class="card">
                 <div class="px-6 py-4 border-b border-gray-100">
-                    <h2 class="text-lg font-semibold text-gray-900">🔧 In Progress</h2>
-                    <p class="text-xs text-gray-500 mt-1">Currently working on</p>
+                    <h2 class="text-lg font-semibold text-gray-900">Batches you've started</h2>
+                    <p class="text-xs text-gray-500 mt-1">Multi-break jobs, part-way through</p>
                 </div>
                 <div class="divide-y divide-gray-200 max-h-96 overflow-y-auto">
                     <!-- Batch Repairs -->
@@ -521,32 +540,16 @@
                     </div>
                     {% endfor %}
 
-                    <!-- Individual Repairs -->
-                    {% for repair in individual_repairs_in_progress %}
-                    <div class="p-4 hover:bg-gray-50 transition-colors">
-                        <div class="flex justify-between items-center gap-3">
-                            <div class="flex-1 min-w-0">
-                                <div class="font-semibold text-gray-900">Unit {{ repair.unit_number }}</div>
-                                <div class="text-xs text-gray-600">
-                                    {{ repair.customer.name }} • ${{ repair.cost|floatformat:2 }}
-                                </div>
-                            </div>
-                            <a href="{% url 'update_repair' repair.id %}" class="flex-shrink-0 inline-flex items-center px-3 py-2 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors press">
-                                Complete
-                            </a>
-                        </div>
-                    </div>
-                    {% endfor %}
                 </div>
             </div>
             {% endif %}
 
-            <!-- Ready to Start -->
-            {% if batch_repairs_approved or individual_repairs_approved %}
+            <!-- card: ready -->
+            {% if batch_repairs_approved %}
             <div class="card">
                 <div class="px-6 py-4 border-b border-gray-100">
-                    <h2 class="text-lg font-semibold text-gray-900">✅ Ready to Start</h2>
-                    <p class="text-xs text-gray-500 mt-1">Approved by customer</p>
+                    <h2 class="text-lg font-semibold text-gray-900">Batches ready to start</h2>
+                    <p class="text-xs text-gray-500 mt-1">Approved and waiting</p>
                 </div>
                 <div class="divide-y divide-gray-200 max-h-96 overflow-y-auto">
                     <!-- Batch Repairs -->
@@ -588,33 +591,18 @@
                     </div>
                     {% endfor %}
 
-                    <!-- Individual Repairs -->
-                    {% for repair in individual_repairs_approved %}
-                    <div class="p-4 hover:bg-gray-50 transition-colors">
-                        <div class="flex justify-between items-center gap-3">
-                            <div class="flex-1 min-w-0">
-                                <div class="font-semibold text-gray-900">Unit {{ repair.unit_number }}</div>
-                                <div class="text-xs text-gray-600">
-                                    {{ repair.customer.name }} • ${{ repair.estimated_cost|floatformat:2 }}
-                                </div>
-                            </div>
-                            <a href="{% url 'repair_detail' repair.id %}" class="flex-shrink-0 inline-flex items-center px-3 py-2 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors press">
-                                Start Work
-                            </a>
-                        </div>
-                    </div>
-                    {% endfor %}
                 </div>
             </div>
             {% endif %}
         </div>
+        {% endif %}
 
         <!-- Rewards Section (Compact) -->
         {% if assigned_redemptions or all_pending_redemptions %}
         <div class="card mb-6">
             <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                 <div>
-                    <h2 class="text-lg font-semibold text-gray-900">🎁 Reward Redemptions</h2>
+                    <h2 class="text-lg font-semibold text-gray-900">Reward redemptions</h2>
                     <p class="text-xs text-gray-500 mt-1">
                         {% if assigned_redemptions %}{{ assigned_redemptions|length }} assigned to you{% endif %}
                         {% if assigned_redemptions and all_pending_redemptions %} • {% endif %}

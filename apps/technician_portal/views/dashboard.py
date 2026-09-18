@@ -11,7 +11,7 @@ from datetime import timedelta
 import logging
 
 from apps.technician_portal.models import Technician, Repair, Replacement, TechnicianNotification
-from apps.customer_portal.models import RepairApproval
+# (RepairApproval is no longer read here -- see the "Ready" comment below.)
 from apps.rewards_referrals.models import RewardRedemption
 from core.models import Customer, Notification
 from apps.technician_portal.forms import TechnicianRegistrationForm
@@ -102,23 +102,13 @@ def technician_dashboard(request):
         # Get unread notifications
         unread_notifications = technician.notifications.filter(read=False).order_by('-created_at')
 
-        # Get recently approved repairs for this technician (approved in last 24 hours)
-        recent_approvals = RepairApproval.objects.filter(
-            approved=True,
-            approval_date__gte=timezone.now() - timedelta(hours=24)
-        ).values_list('repair_id', flat=True)
-
-        repairs_recently_approved = Repair.objects.filter(
-            id__in=recent_approvals,
-            technician=technician,
-            queue_status='APPROVED'
-        ).select_related('customer').order_by('-service_date')
-
         # Get active work (IN_PROGRESS and APPROVED)
         repairs_active = Repair.objects.filter(
             technician=technician,
             queue_status__in=['IN_PROGRESS', 'APPROVED']
         ).select_related('customer').order_by('-service_date')
+        if tenant:
+            repairs_active = repairs_active.filter(tenant=tenant)
 
         # Get recently completed batch repairs (completed in last 7 days)
         recent_completions = Repair.objects.filter(
@@ -126,6 +116,8 @@ def technician_dashboard(request):
             queue_status='COMPLETED',
             service_date__gte=timezone.now() - timedelta(days=7)
         ).select_related('customer').order_by('-service_date')
+        if tenant:
+            recent_completions = recent_completions.filter(tenant=tenant)
 
         # --- Bulk-fetch all batch repairs in a SINGLE query (CODE-142 N+1 fix) ---
         # Previously: get_batch_summary() was called once per batch inside each of
@@ -135,11 +127,13 @@ def technician_dashboard(request):
         # Fix: collect all unique batch IDs from the three repair sets, fetch their
         # sibling repairs in one query, group in Python, then build summaries via
         # build_batch_summary_from_repairs() which does zero additional DB work.
-        _approved_slice = list(repairs_recently_approved[:10])
-        _active_slice = list(repairs_active[:30])
+        # Active work is materialised IN FULL, not sliced: the tiles report
+        # what the tech actually has on, and a cap of 30 is how they came to
+        # disagree with the queue. It is one technician's open jobs.
+        _active_all = list(repairs_active)
         _completed_slice = list(recent_completions[:20])
 
-        _all_dashboard_repairs = _approved_slice + _active_slice + _completed_slice
+        _all_dashboard_repairs = _active_all + _completed_slice
         _batch_ids_needed = {
             r.repair_batch_id
             for r in _all_dashboard_repairs
@@ -165,43 +159,49 @@ def technician_dashboard(request):
             # Fallback (should not normally be hit after the bulk-fetch above)
             return Repair.get_batch_summary(batch_id, tenant=tenant)
 
-        # Group recently-approved repairs and separate individual repairs
-        batch_repairs_approved = {}
-        individual_repairs_approved = []
-
-        for repair in _approved_slice:
+        # --- Which batch belongs in which card, and how the work counts ---
+        #
+        # ONE pass decides both, so the cards and the tiles below cannot
+        # disagree. A batch with any break under way is IN PROGRESS even if
+        # its other breaks are still only approved: a windshield you have
+        # started is not "ready to start", and counting it in both columns
+        # would double it in "Total active jobs".
+        #
+        # Python, not a SQL aggregate, because a batch is not simply "has a
+        # repair_batch_id" -- see Repair.is_part_of_batch, where a multi-break
+        # ESTIMATE is one row with no id and a stray id with
+        # total_breaks_in_batch <= 1 is not a batch at all. Reimplementing that
+        # predicate in a filter is how the two would drift.
+        _batch_state = {}
+        _solo_in_progress = []
+        _solo_ready = []
+        for repair in _active_all:
             if repair.is_part_of_batch:
-                if repair.repair_batch_id not in batch_repairs_approved:
-                    try:
-                        batch_summary = _batch_summary(repair.repair_batch_id)
-                        if batch_summary:
-                            batch_repairs_approved[repair.repair_batch_id] = batch_summary
-                    except Exception as e:
-                        logger.error(f"Error getting batch summary for batch {repair.repair_batch_id}: {e}", exc_info=True)
-            else:
-                individual_repairs_approved.append(repair)
-
-        individual_repairs_approved = individual_repairs_approved[:5]
+                if _batch_state.get(repair.repair_batch_id) != 'IN_PROGRESS':
+                    _batch_state[repair.repair_batch_id] = repair.queue_status
+            elif repair.queue_status == 'IN_PROGRESS':
+                _solo_in_progress.append(repair)
+            elif repair.queue_status == 'APPROVED':
+                _solo_ready.append(repair)
 
         batch_repairs_in_progress = {}
-        individual_repairs_in_progress = []
-
-        for repair in _active_slice:
-            if repair.is_part_of_batch:
-                if repair.repair_batch_id not in batch_repairs_in_progress:
-                    try:
-                        batch_summary = _batch_summary(repair.repair_batch_id)
-                        if batch_summary:
-                            incomplete_count = batch_summary.get('in_progress_count', 0) + batch_summary.get('approved_count', 0)
-                            if incomplete_count > 0 and repair.repair_batch_id not in batch_repairs_approved:
-                                batch_repairs_in_progress[repair.repair_batch_id] = batch_summary
-                    except Exception as e:
-                        logger.error(f"Error getting batch summary for batch {repair.repair_batch_id}: {e}", exc_info=True)
+        batch_repairs_approved = {}
+        for batch_id, state in _batch_state.items():
+            try:
+                batch_summary = _batch_summary(batch_id)
+            except Exception as e:
+                logger.error(f"Error getting batch summary for batch {batch_id}: {e}", exc_info=True)
+                continue
+            if not batch_summary:
+                continue
+            if state == 'IN_PROGRESS':
+                batch_repairs_in_progress[batch_id] = batch_summary
             else:
-                if repair.queue_status == 'IN_PROGRESS':
-                    individual_repairs_in_progress.append(repair)
+                batch_repairs_approved[batch_id] = batch_summary
 
-        individual_repairs_in_progress = individual_repairs_in_progress[:5]
+        # The card lists stay capped; the tiles below deliberately do not.
+        individual_repairs_in_progress = _solo_in_progress[:5]
+        individual_repairs_approved = _solo_ready[:5]
 
         batch_repairs_completed = {}
         individual_repairs_completed = []
@@ -221,12 +221,34 @@ def technician_dashboard(request):
 
         individual_repairs_completed = individual_repairs_completed[:5]
 
+        # --- The tiles ---
+        #
+        # COUNT THE WORK, NOT THE CARDS. Every one of these used to be `len()`
+        # of a list built for display and capped at 5 -- taken from a slice
+        # already capped at 10 or 30 -- so a tech with six jobs in progress
+        # read "5" and the numbers contradicted the queue rendered directly
+        # above them. They now read the uncapped pass made above, which is the
+        # same pass that decided the cards.
+        #
+        # "Ready to start" in particular used to count repairs with a
+        # RepairApproval row from the last 24 hours. RepairApproval is written
+        # ONLY by the customer portal; shop-created jobs auto-approve through
+        # resolve_initial_shop_status and never write one, so on a default
+        # AUTO_APPROVE shop -- which is every shop -- this tile was
+        # structurally always zero while the queue above showed jobs badged
+        # Ready.
+        _batches_in_progress = sum(1 for st in _batch_state.values() if st == 'IN_PROGRESS')
+        _batches_ready = sum(1 for st in _batch_state.values() if st == 'APPROVED')
+
         summary_stats = {
-            'batches_in_progress': len(batch_repairs_in_progress),
-            'individual_in_progress': len(individual_repairs_in_progress),
-            'pending_approval': len(batch_repairs_approved) + len(individual_repairs_approved),
+            'batches_in_progress': _batches_in_progress,
+            'individual_in_progress': len(_solo_in_progress),
+            'pending_approval': _batches_ready + len(_solo_ready),
             'completed_this_week': recent_completions.count(),
-            'total_active_work': len(batch_repairs_in_progress) + len(individual_repairs_in_progress) + len(batch_repairs_approved) + len(individual_repairs_approved),
+            'total_active_work': (
+                _batches_in_progress + _batches_ready
+                + len(_solo_in_progress) + len(_solo_ready)
+            ),
         }
 
         # --- Today's Work Queue ---
