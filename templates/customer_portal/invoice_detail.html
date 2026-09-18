@@ -271,6 +271,22 @@
 </div>
 {% endif %}
 
+{% if invoice.amount_due > 0 and invoice.status != 'CANCELLED' and invoice.status != 'PAID' and not can_pay_online %}
+{% comment %}
+    This shop hasn't finished Stripe Connect, so there is no card form to
+    show. Say so in the customer's terms rather than rendering nothing --
+    the invoice list used to send people here for a "Pay Now" that did not
+    exist on arrival.
+{% endcomment %}
+<div class="rounded-lg border border-gray-200 bg-gray-50 px-5 py-4 mb-6">
+    <p class="text-sm font-semibold text-gray-900">${{ invoice.amount_due|floatformat:2 }} due &mdash; payable directly to {{ shop.name }}</p>
+    <p class="text-sm text-gray-600 mt-1">
+        This shop doesn't take card payments through the portal.
+        {% if shop.business_phone or shop.business_email %}Reach them{% if shop.business_phone %} at <a href="tel:{{ shop.business_phone }}" class="text-brand-600 font-medium hover:underline">{{ shop.business_phone }}</a>{% endif %}{% if shop.business_phone and shop.business_email %} or{% endif %}{% if shop.business_email %} <a href="mailto:{{ shop.business_email }}" class="text-brand-600 font-medium hover:underline">{{ shop.business_email }}</a>{% endif %} to settle it.{% else %}Contact them to arrange payment.{% endif %}
+    </p>
+</div>
+{% endif %}
+
 <!-- Actions -->
 <div class="flex flex-col sm:flex-row gap-3 mb-8">
     {% if invoice.amount_due > 0 and invoice.status != 'CANCELLED' and invoice.status != 'PAID' and can_pay_online %}

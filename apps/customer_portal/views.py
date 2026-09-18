@@ -3866,6 +3866,22 @@ def customer_get_unread_count(request):
 # INVOICES
 # =============================================================================
 
+def _can_pay_online(tenant):
+    """Can this customer settle an invoice from this shop, in the browser?
+
+    The ONE answer both the invoice list and the invoice detail page ask, so
+    the list can never offer a "Pay Now" the detail page won't honour. It used
+    to: the list gated only on "is money owed", the detail page gated on this,
+    and a shop that hadn't finished Stripe Connect -- the day-one state of
+    every shop -- sent its fleet contacts to a page whose only control was
+    Download PDF, with nothing said.
+
+    The public emailed invoice gates on the same tenant property
+    (`rs_systems.views`, `billing.pay_links`); this is the logged-in twin.
+    """
+    return bool(tenant and tenant.can_accept_payments)
+
+
 @customer_required
 def customer_invoices(request):
     """List all invoices for the logged-in customer (excluding drafts)."""
@@ -3897,6 +3913,8 @@ def customer_invoices(request):
             'paid_count': paid_count,
             'outstanding_count': outstanding_count,
             'overdue_count': overdue_count,
+            'can_pay_online': _can_pay_online(customer.tenant),
+            'shop': customer.tenant,
         })
     except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
@@ -3928,10 +3946,7 @@ def customer_invoice_detail(request, invoice_id):
         pdf_url = reverse('customer_invoice_pdf', args=[invoice.id])
 
         # Determine if online payment is available (tenant has active Connect)
-        can_pay_online = (
-            invoice.tenant
-            and invoice.tenant.can_accept_payments
-        )
+        can_pay_online = _can_pay_online(invoice.tenant)
 
         return render(request, 'customer_portal/invoice_detail.html', {
             'invoice': invoice,
@@ -3940,6 +3955,7 @@ def customer_invoice_detail(request, invoice_id):
             'pdf_url': pdf_url,
             'customer': customer,
             'can_pay_online': can_pay_online,
+            'shop': invoice.tenant,
         })
     except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
