@@ -18,6 +18,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
 
+from common import captcha
 from common.auth import get_user_role
 
 logger = logging.getLogger(__name__)
@@ -278,26 +279,50 @@ def help_topic(request, slug):
     })
 
 
-@login_required
-@ratelimit(key='user', rate='10/h', method='POST', block=False)
+@ratelimit(key='user_or_ip', rate='10/h', method='POST', block=False)
 def contact(request):
-    """GET/POST /help/contact/ — write to a real person.
+    """GET/POST /help/contact/ — write to a real person. NO LOGIN REQUIRED.
+
+    This is the only non-mailto contact path on the landing page ("Have a
+    customer list in a spreadsheet, or questions about your setup? Send it
+    through the contact form"), so gating it on login closed it to exactly
+    the person that page was written for — a shop owner who is interested
+    but hasn't signed up. Marketing spend pointed at the landing page lost
+    its warmest leads at that link.
+
+    Anonymous senders are asked their name and what shop they're with,
+    because `user` and `tenant` are both null for them; a logged-in sender is
+    never asked, since both are already known and more reliable than typing.
 
     Record-first: the SupportMessage row is saved BEFORE the notification
     email is attempted, so an SES outage can't lose a message — it still
     lands in the admin (emailed_ok=False) and the sender still sees success.
     The path is subscription-middleware-exempt: a shop whose trial just
     expired is exactly who needs this form to work.
+
+    Spam defences, in order: a honeypot field bots fill and people never see,
+    Turnstile (dark without keys, as in dev/CI), and a rate limit now keyed
+    `user_or_ip` — `user` could not cover the anonymous case at all, since
+    every anonymous sender shares one bucket and one spammer would lock out
+    every visitor.
     """
     from .models import SupportMessage
 
     tenant = getattr(request, 'tenant', None)
-    default_email = (request.user.email or '').strip()
+    known = request.user.is_authenticated
+    default_email = (getattr(request.user, 'email', '') or '').strip() if known else ''
     ctx = {
         'topics': SupportMessage.TOPIC_CHOICES,
         'form_email': default_email,
         'form_topic': 'question',
         'form_message': '',
+        'form_name': '',
+        'form_shop': '',
+        'known': known,
+        # A visitor has no app chrome to render into, and base_app.html's
+        # navbar assumes a tenant. Same page, the shell that fits the reader.
+        'base_template': 'base_app.html' if known else 'saas/base_public.html',
+        'turnstile_site_key': '' if known else captcha.site_key(),
         'sent': request.GET.get('sent') == '1',
         # Popped so a bookmark of ?sent=1 shows the generic success line, not
         # a stale address; the query string never carries the email itself.
@@ -317,7 +342,22 @@ def contact(request):
     message = request.POST.get('message', '').strip()
     email = request.POST.get('email', '').strip() or default_email
     page = request.POST.get('page', '').strip()[:500]
-    ctx.update({'form_topic': topic, 'form_message': message, 'form_email': email})
+    sender_name = request.POST.get('name', '').strip()[:150]
+    shop_name = request.POST.get('shop_name', '').strip()[:150]
+    ctx.update({
+        'form_topic': topic, 'form_message': message, 'form_email': email,
+        'form_name': sender_name, 'form_shop': shop_name,
+    })
+
+    # Honeypot: a real person never sees this field, so anything in it is a
+    # bot. Answer exactly as if the message had been accepted — telling a
+    # scraper it was caught only teaches it to try again without the field.
+    if request.POST.get('website', '').strip():
+        logger.info(
+            'Support contact honeypot tripped from %s',
+            request.META.get('REMOTE_ADDR', '?'),
+        )
+        return redirect(f"{reverse('help_contact')}?sent=1")
 
     if not message:
         ctx['error'] = "Tell us what's going on — the message box is empty."
@@ -328,30 +368,43 @@ def contact(request):
         ctx['error'] = "That email doesn't look right — double-check it so our reply can reach you."
         return render(request, 'support/contact.html', ctx, status=400)
 
+    if not known and not captcha.verify(request):
+        ctx['error'] = "We couldn't confirm you're a person. Try that once more."
+        return render(request, 'support/contact.html', ctx, status=400)
+
     record = SupportMessage.objects.create(
-        tenant=tenant,
-        user=request.user,
-        name=request.user.get_full_name() or request.user.username,
+        tenant=tenant if known else None,
+        user=request.user if known else None,
+        name=(
+            (request.user.get_full_name() or request.user.username) if known
+            else sender_name
+        ),
+        shop_name='' if known else shop_name,
         email=email,
         topic=topic,
         message=message,
         page=page,
     )
 
-    role = get_user_role(request.user, tenant)
+    role = get_user_role(request.user, tenant) if known else None
+    if known:
+        shop_line = tenant.name if tenant else '(no tenant)'
+    else:
+        shop_line = f"{shop_name or '(not given)'} — visitor, not a customer"
     body = (
-        f"From: {record.name} <{email}>\n"
-        f"Shop: {tenant.name if tenant else '(no tenant)'}\n"
-        f"Role: {role or 'unknown'}\n"
+        f"From: {record.name or '(no name given)'} <{email}>\n"
+        f"Shop: {shop_line}\n"
+        f"Role: {role or ('visitor' if not known else 'unknown')}\n"
         f"Topic: {record.get_topic_display()}\n"
         f"Page: {page or '(not recorded)'}\n\n"
         f"{message}\n\n"
         f"—\nReply to this email to answer them directly. "
         f"Admin: {settings.BASE_URL}/admin/support/supportmessage/{record.pk}/change/"
     )
+    subject_who = (tenant.name if known and tenant else '') or record.shop_name or record.name or email
     try:
         EmailMessage(
-            subject=f"Support: {record.get_topic_display()} — {tenant.name if tenant else record.name}",
+            subject=f"Support: {record.get_topic_display()} — {subject_who}",
             body=body,
             to=[addr for _name, addr in settings.ADMINS],
             reply_to=[email],

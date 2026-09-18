@@ -1,14 +1,26 @@
-{% extends "base_app.html" %}
+{% extends base_template %}
 
 {% block title %}Contact us | Help | RS Systems{% endblock %}
 
+{% block extra_head %}
+{% if turnstile_site_key %}
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+{% endif %}
+{% endblock %}
+
 {% block content %}
-<div class="max-w-2xl mx-auto">
+{% comment %}
+    base_app.html's <main> already pads and centres; base_public.html's does
+    not, so the visitor's shell supplies its own gutters.
+{% endcomment %}
+<div class="max-w-2xl mx-auto{% if not known %} px-4 sm:px-6 py-10 sm:py-14{% endif %}">
+    {% if known %}
     <nav class="mb-6 text-sm" aria-label="Breadcrumb">
         <a href="{% url 'help_home' %}" class="text-brand-600 hover:text-brand-800 font-medium">
             <i class="fas fa-arrow-left text-xs mr-1.5"></i>All guides
         </a>
     </nav>
+    {% endif %}
 
     {% if sent %}
     <div class="card p-10 text-center">
@@ -20,9 +32,15 @@
             {% if sent_to %}A real person will read it and reply to <span class="font-medium text-gray-900">{{ sent_to }}</span>.{% else %}A real person will read it and reply to the email you gave us.{% endif %}
         </p>
         <div class="flex items-center justify-center gap-3">
+            {% if known %}
             <a href="{% url 'help_home' %}" class="inline-flex items-center rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition-colors press">
                 Back to guides
             </a>
+            {% else %}
+            <a href="/" class="inline-flex items-center rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition-colors press">
+                Back to the site
+            </a>
+            {% endif %}
             <a href="{% url 'help_contact' %}" class="inline-flex items-center rounded-xl border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors press">
                 Send another message
             </a>
@@ -31,7 +49,7 @@
     {% else %}
     <div class="mb-8">
         <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Talk to a real person</h1>
-        <p class="text-gray-500">No bots, no ticket numbers. Your message goes straight to us, and the reply lands in your inbox.</p>
+        <p class="text-gray-500">No bots, no ticket numbers. Your message goes straight to us, and the reply lands in your inbox.{% if not known %} You don't need an account to write.{% endif %}</p>
     </div>
 
     {% if error %}
@@ -56,6 +74,27 @@
             </div>
         </fieldset>
 
+        {% if not known %}
+        {% comment %}
+            A visitor has no `user` and no `tenant`, so these two are the only
+            thing that says who is writing. Asked only here; a logged-in sender
+            already has both on record and more reliably than typing.
+        {% endcomment %}
+        <div class="grid gap-6 sm:grid-cols-2">
+            <div>
+                <label for="contact-name" class="block text-sm font-semibold text-gray-900 mb-2">Your name</label>
+                <input type="text" name="name" id="contact-name" value="{{ form_name }}" autocomplete="name"
+                       class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 shadow-sm focus:border-brand-400 focus:ring-2 focus:ring-brand-100 focus:outline-none">
+            </div>
+            <div>
+                <label for="contact-shop" class="block text-sm font-semibold text-gray-900 mb-2">What shop are you with?</label>
+                <input type="text" name="shop_name" id="contact-shop" value="{{ form_shop }}" autocomplete="organization"
+                       placeholder="Your shop's name"
+                       class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-brand-400 focus:ring-2 focus:ring-brand-100 focus:outline-none">
+            </div>
+        </div>
+        {% endif %}
+
         <div>
             <label for="contact-message" class="block text-sm font-semibold text-gray-900 mb-2">What's going on?</label>
             <textarea name="message" id="contact-message" rows="6" required
@@ -68,6 +107,21 @@
             <input type="email" name="email" id="contact-email" value="{{ form_email }}" required
                    class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 shadow-sm focus:border-brand-400 focus:ring-2 focus:ring-brand-100 focus:outline-none">
         </div>
+
+        {% comment %}
+            Honeypot. Hidden from people (and from screen readers via
+            aria-hidden + tabindex), irresistible to a form-filling bot. The
+            view treats a filled one as a successful send so a scraper learns
+            nothing. Not a <input type="hidden">: bots skip those.
+        {% endcomment %}
+        <div class="hidden" aria-hidden="true">
+            <label for="contact-website">Leave this field empty</label>
+            <input type="text" name="website" id="contact-website" tabindex="-1" autocomplete="off">
+        </div>
+
+        {% if turnstile_site_key %}
+        <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
+        {% endif %}
 
         <div class="flex items-center justify-between gap-4 pt-2">
             <p class="text-xs text-gray-400">A real person reads every message.</p>

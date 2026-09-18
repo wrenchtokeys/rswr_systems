@@ -194,45 +194,14 @@ def _send_confirmation_email(request, user, tenant):
 # ------------------------------------------------------------------
 
 def _verify_turnstile(request) -> bool:
+    """Back-compat shim. The implementation is `common.captcha.verify`.
+
+    Moved when /help/contact/ became the second public form that needs it;
+    kept as a name because this module's callers and tests reference it.
     """
-    Verify Cloudflare Turnstile CAPTCHA token server-side.
+    from common.captcha import verify
 
-    Returns True if verification passes OR if Turnstile is not configured
-    (TURNSTILE_SECRET_KEY not set — so dev/test works without keys).
-    Returns False only when keys are configured but verification fails.
-    """
-    import os
-    import urllib.request
-    import urllib.parse
-    import json
-
-    secret_key = os.environ.get('TURNSTILE_SECRET_KEY', '')
-    if not secret_key:
-        # Not configured — skip validation (dev/CI mode)
-        return True
-
-    token = request.POST.get('cf-turnstile-response', '')
-    if not token:
-        return False
-
-    try:
-        data = urllib.parse.urlencode({
-            'secret': secret_key,
-            'response': token,
-            'remoteip': request.META.get('REMOTE_ADDR', ''),
-        }).encode()
-        req = urllib.request.Request(
-            'https://challenges.cloudflare.com/turnstile/v0/siteverify',
-            data=data,
-            method='POST',
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            result = json.loads(resp.read())
-        return result.get('success', False)
-    except Exception as e:
-        logger.warning(f"Turnstile verification error: {e}")
-        # Fail open on network errors to avoid blocking legitimate signups
-        return True
+    return verify(request)
 
 
 @ratelimit(key='ip', rate='5/h', method='POST', block=True)

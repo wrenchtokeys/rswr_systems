@@ -39,6 +39,14 @@ class SupportMessage(models.Model):
         related_name='support_messages',
     )
     name = models.CharField(max_length=150, blank=True)
+    # What shop the sender is with, in their own words. Only asked of, and only
+    # populated by, anonymous senders: a logged-in sender already has `tenant`,
+    # which is the real answer. For a visitor off the landing page this is the
+    # only thing that tells you who is writing.
+    shop_name = models.CharField(
+        max_length=150, blank=True,
+        help_text="Shop the sender named, when they weren't logged in",
+    )
     email = models.EmailField(help_text='Where the reply goes')
     topic = models.CharField(max_length=20, choices=TOPIC_CHOICES, default='question')
     message = models.TextField()
