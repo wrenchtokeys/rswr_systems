@@ -1,0 +1,39 @@
+{% extends "admin/change_list.html" %}
+{% comment %}
+Per-guide rollup above the vote list (HELP_CENTER_SESSIONS H6). The votes
+were collected for six weeks and never read; this is the reading. Worst
+guide first. Rows come from apps.support.admin.feedback_rollup.
+{% endcomment %}
+
+{% block content_title %}
+    <h1>Guide feedback</h1>
+    {% if rollup %}
+    <div style="margin: 16px 0 24px 0; overflow-x: auto;">
+        <table style="border-collapse: collapse; min-width: 560px;">
+            <thead>
+                <tr style="text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280;">
+                    <th style="padding: 6px 12px 6px 0;">Guide</th>
+                    <th style="padding: 6px 12px; text-align: right;">Yes</th>
+                    <th style="padding: 6px 12px; text-align: right;">No</th>
+                    <th style="padding: 6px 12px; text-align: right;">Helpful</th>
+                    <th style="padding: 6px 12px;">Last vote</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rollup %}
+                <tr style="border-top: 1px solid #e5e7eb;">
+                    <td style="padding: 8px 12px 8px 0;"><a href="?slug__exact={{ r.slug }}">{{ r.title }}</a> <span style="color:#9ca3af; font-size: 12px;">{{ r.slug }}</span></td>
+                    <td style="padding: 8px 12px; text-align: right;">{{ r.up }}</td>
+                    <td style="padding: 8px 12px; text-align: right; {% if r.down %}color: #b91c1c; font-weight: 600;{% endif %}">{{ r.down }}</td>
+                    <td style="padding: 8px 12px; text-align: right;">{% if r.pct is not None %}{{ r.pct }}%{% else %}—{% endif %}</td>
+                    <td style="padding: 8px 12px; white-space: nowrap;">{{ r.last|date:"M j, Y" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p style="color:#6b7280; font-size: 12px; margin-top: 8px;">Worst guide first. Click a guide to see its individual votes and the reasons people gave.</p>
+    </div>
+    {% else %}
+    <p style="color:#6b7280;">No votes yet.</p>
+    {% endif %}
+{% endblock %}

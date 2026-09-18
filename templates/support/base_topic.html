@@ -16,12 +16,6 @@
         <p class="text-gray-500">{{ topic.blurb }}</p>
     </div>
 
-    {% if topic.video_label %}
-    <div class="mb-8">
-        {% include "components/video_slot.html" with label=topic.video_label %}
-    </div>
-    {% endif %}
-
     <div class="space-y-6">
         {% block guide %}{% endblock %}
     </div>
@@ -42,6 +36,13 @@
     </div>
     <div id="guide-feedback-sorry" class="hidden mt-10 rounded-xl bg-amber-50 border border-amber-200 p-4">
         <p class="text-sm font-medium text-gray-800">{% icon 'check' class="mr-1.5" %}Thanks for telling us. If you're stuck right now, <a href="{% url 'help_contact' %}" class="text-brand-600 hover:text-brand-800 font-medium">send us a message</a> — a real person will help.</p>
+        <form id="guide-feedback-reason" class="mt-3 flex flex-col sm:flex-row gap-2">
+            <label for="guide-feedback-reason-input" class="sr-only">What were you looking for?</label>
+            <input type="text" id="guide-feedback-reason-input" name="reason" maxlength="300" placeholder="Optional: what were you looking for?"
+                   class="flex-1 rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 focus:outline-none">
+            <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 transition-colors">Send</button>
+        </form>
+        <p id="guide-feedback-reason-thanks" class="hidden mt-3 text-sm text-gray-700">{% icon 'check' class="mr-1.5" %}Got it — that goes straight to the person who writes these.</p>
     </div>
 
     <div class="mt-6 pt-6 border-t border-gray-200 flex items-center justify-between gap-4">
@@ -60,20 +61,39 @@
 (function () {
     var box = document.getElementById('guide-feedback');
     if (!box) return;
-    box.addEventListener('click', function (e) {
-        var btn = e.target.closest('[data-feedback]');
-        if (!btn) return;
-        var answer = btn.getAttribute('data-feedback');
+    function post(fields) {
         var body = new URLSearchParams();
-        body.append('helpful', answer);
-        fetch("{% url 'guide_feedback' slug %}", {
+        Object.keys(fields).forEach(function (k) { body.append(k, fields[k]); });
+        return fetch("{% url 'guide_feedback' slug %}", {
             method: 'POST',
             headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/x-www-form-urlencoded'},
             body: body.toString(),
         }).catch(function () {});
+    }
+    box.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-feedback]');
+        if (!btn) return;
+        var answer = btn.getAttribute('data-feedback');
+        post({helpful: answer});
         box.classList.add('hidden');
         document.getElementById(answer === 'yes' ? 'guide-feedback-thanks' : 'guide-feedback-sorry').classList.remove('hidden');
+        if (answer === 'no') {
+            var input = document.getElementById('guide-feedback-reason-input');
+            if (input) input.focus();
+        }
     });
+    // The thumb already counted; the reason is a second, optional POST.
+    var reasonForm = document.getElementById('guide-feedback-reason');
+    if (reasonForm) {
+        reasonForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var input = document.getElementById('guide-feedback-reason-input');
+            var reason = (input.value || '').trim();
+            if (reason) post({helpful: 'no', reason: reason});
+            reasonForm.classList.add('hidden');
+            document.getElementById('guide-feedback-reason-thanks').classList.remove('hidden');
+        });
+    }
 })();
 </script>
 {% endblock %}

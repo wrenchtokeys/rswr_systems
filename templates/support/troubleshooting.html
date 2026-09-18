@@ -112,6 +112,53 @@
     </div>
 </div>
 
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">?</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">My quote expired — can I reopen it?</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">No, and on purpose: glass prices move, so an old number never comes back to life. Open the quote and hit <strong>Revise</strong> — you get a fresh draft with today's dates that replaces the old one, and the customer sees one current quote. How long quotes stay open is in <strong>Settings → Pricing &amp; Invoicing</strong>.</p>
+            <a href="{% url 'help_topic' 'quotes' %}" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-800 mt-2">How quotes work <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">?</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Why can't I delete this quote?</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Only a draft that was never sent can be deleted. Once a customer has seen a number, the quote is part of the record — use <strong>Mark declined</strong> if the work isn't happening, or <strong>Revise</strong> if the number was wrong.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">?</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">The claim says "short" but "Owed to you" doesn't count it</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">The customer covered it. A claim is short when the insurer paid less than expected; the invoice is owed only if <em>nobody</em> has paid the rest. If the customer picked up the difference, the claim page still shows the shortfall (it's true — the insurer underpaid) but the invoice isn't outstanding, so the card doesn't count it. Close the claim to write it off, or leave it open while you argue with the adjuster.</p>
+            {% if is_owner_or_manager %}
+            <a href="{% url 'help_topic' 'insurance-claims' %}" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-800 mt-2">How claims work <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">?</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">The price filled itself in — where did that number come from?</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Your price book: the last price your shop charged for that glass on that vehicle. It only fills an <em>empty</em> box, and there's an <strong>Undo</strong> right beside it. To change what it suggests, open the price book from <strong>Settings → Pricing &amp; Invoicing</strong> and edit or pin the price — a pinned price never changes on its own.</p>
+            {% if is_owner_or_manager %}
+            <a href="{% url 'help_topic' 'price-book' %}" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-800 mt-2">How the price book works <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
 <div class="rounded-xl bg-brand-50 border border-brand-200 p-4 flex items-start gap-3">
     <i class="fas fa-envelope text-brand-500 mt-0.5"></i>
     <p class="text-sm text-gray-700 leading-relaxed"><strong>Not covered here?</strong> <a href="{% url 'help_contact' %}" class="text-brand-600 hover:text-brand-800 font-medium">Send us a message</a> with what you expected and what happened instead — a real person reads every message.</p>

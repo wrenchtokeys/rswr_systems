@@ -8,7 +8,6 @@ plus GuideFeedback (thumbs) and SupportMessage (/help/contact/).
 import logging
 
 from django.contrib.auth.decorators import login_required
-from django.core.mail import EmailMessage
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from django.conf import settings
@@ -122,11 +121,40 @@ HELP_TOPICS = {
     'paid-on-time': {
         'section': 'money',
         'title': 'Get paid on time',
-        'blurb': 'Overdue reminders, fleet batch invoicing, statements, and who-owes-you at a glance.',
+        'blurb': 'Who owes you at a glance, fleet batch invoicing, and one payment across many invoices.',
         'icon': 'fas fa-hourglass-half',
         'color': 'green',
         'video_label': 'Watch: chasing less, collecting more (2 min)',
-        'keywords': 'overdue late reminder aging owed batch monthly statement collect',
+        'keywords': 'overdue late aging owed batch monthly collect check receive payment',
+        'owner_only': True,
+    },
+    'quotes': {
+        'section': 'money',
+        'title': 'Send a quote before the work',
+        'blurb': 'Price it, the customer accepts online, and the jobs are created at that price.',
+        'icon': 'fas fa-file-signature',
+        'color': 'blue',
+        'video_label': 'Watch: quotes (2 min)',
+        'keywords': 'quote estimate bid price accept decline expire revise link',
+    },
+    'insurance-claims': {
+        'section': 'money',
+        'title': 'Track an insurance claim',
+        'blurb': 'What you billed the insurer, what came in, and what is still short — without a spreadsheet.',
+        'icon': 'fas fa-shield-alt',
+        'color': 'blue',
+        'video_label': 'Watch: insurance claims (2 min)',
+        'keywords': 'insurance insurer claim deductible adjuster eob short paid write off authorization',
+        'owner_only': True,
+    },
+    'price-book': {
+        'section': 'money',
+        'title': 'Your price book',
+        'blurb': 'The prices you actually charge for each glass, learned from finished jobs and filled in for you.',
+        'icon': 'fas fa-book',
+        'color': 'green',
+        'video_label': 'Watch: the price book (90 sec)',
+        'keywords': 'price book book price replacement glass suggest pin pinned rebuild windshield cost filled',
         'owner_only': True,
     },
 
@@ -215,10 +243,82 @@ HELP_TOPICS = {
         'keywords': (
             'faq problem wrong missing didn’t receive spam email invoice tax '
             'replacement price locked paid review points deleted restore undo '
-            'login error help stuck'
+            'login error help stuck quote expired claim short price book filled'
         ),
     },
 }
+
+
+# Settings tabs, for describe_page(). Keep in step with owner_settings.html.
+SETTINGS_TABS = {
+    'general': 'Settings → General',
+    'team': 'Settings → Team',
+    'billing': 'Settings → Pricing & Invoicing',
+    'payments': 'Settings → Card Payments',
+    'reviews': 'Settings → Reviews',
+    'warranty': 'Settings → Warranty',
+    'parts': 'Settings → Parts',
+}
+
+
+def describe_page(url):
+    """A referrer URL → what a person would call that page.
+
+    SupportMessage.page stores document.referrer. In the admin it reads as
+    a URL; this turns /help/sales-tax/ into "Guide: Sales tax" and
+    /owner/settings/?tab=billing into "Settings → Pricing & Invoicing" so
+    "which page were they on" needs no decoding. Unknown paths come back
+    as the path itself; empty stays empty.
+    """
+    from urllib.parse import parse_qs, urlsplit
+
+    if not url:
+        return ''
+    parts = urlsplit(url)
+    path = parts.path or '/'
+    query = parse_qs(parts.query)
+    segments = [seg for seg in path.split('/') if seg]
+    if segments[:1] == ['help']:
+        if len(segments) == 1:
+            return 'Help hub'
+        if segments[1] == 'contact':
+            return 'Contact form'
+        topic = HELP_TOPICS.get(segments[1])
+        return f"Guide: {topic['title']}" if topic else path
+    if segments[:2] == ['owner', 'settings']:
+        tab = (query.get('tab') or ['general'])[0]
+        return SETTINGS_TABS.get(tab, f'Settings → {tab}')
+    return path
+
+
+def _limit_text(value):
+    return 'unlimited' if value is None else f'{value:,}'
+
+
+def trial_facts():
+    """What the trial guide is allowed to say, read from where it is decided.
+
+    The guide used to say "30-day grace period" while settings said 14, and
+    nothing noticed for six weeks. Every number on that page now comes from
+    settings or the trial plan row, and tests/test_help_truth.py asserts the
+    rendered page agrees with both.
+    """
+    from apps.tenants.models import SubscriptionPlan
+
+    trial = SubscriptionPlan.objects.filter(slug='trial').first()
+    starter = SubscriptionPlan.objects.filter(slug='starter').first()
+    facts = {
+        'trial_days': (trial.trial_days if trial and trial.trial_days else 30),
+        'trial_grace_days': getattr(settings, 'TRIAL_GRACE_DAYS', 14),
+        'trial_max_customers': _limit_text(trial.max_customers if trial else None),
+        'trial_max_jobs': _limit_text(trial.max_repairs_per_month if trial else None),
+        'trial_matches_starter': bool(
+            trial and starter
+            and trial.max_customers == starter.max_customers
+            and trial.max_repairs_per_month == starter.max_repairs_per_month
+        ),
+    }
+    return facts
 
 
 def _is_owner_or_manager(request):
@@ -271,11 +371,14 @@ def help_topic(request, slug):
             next_slug = section_slugs[idx + 1]
             next_topic = {'slug': next_slug, **HELP_TOPICS[next_slug]}
 
-    return render(request, f'support/{slug}.html', {
+    context = {
         'topic': topic,
         'slug': slug,
         'next_topic': next_topic,
-    })
+    }
+    if slug == 'trial-ending':
+        context.update(trial_facts())
+    return render(request, f'support/{slug}.html', context)
 
 
 @login_required
@@ -288,8 +391,12 @@ def contact(request):
     lands in the admin (emailed_ok=False) and the sender still sees success.
     The path is subscription-middleware-exempt: a shop whose trial just
     expired is exactly who needs this form to work.
+
+    Under the form: the signed-in user's own past messages, so "did that go
+    through?" answers itself. Not a ticket system — no replies in-app.
     """
     from .models import SupportMessage
+    from .services import submit_support_message
 
     tenant = getattr(request, 'tenant', None)
     default_email = (request.user.email or '').strip()
@@ -302,6 +409,7 @@ def contact(request):
         # Popped so a bookmark of ?sent=1 shows the generic success line, not
         # a stale address; the query string never carries the email itself.
         'sent_to': request.session.pop('support_sent_to', ''),
+        'my_messages': SupportMessage.objects.filter(user=request.user)[:20],
     }
 
     if request.method != 'POST':
@@ -312,8 +420,6 @@ def contact(request):
         return render(request, 'support/contact.html', ctx, status=429)
 
     topic = request.POST.get('topic', 'question')
-    if topic not in dict(SupportMessage.TOPIC_CHOICES):
-        topic = 'question'
     message = request.POST.get('message', '').strip()
     email = request.POST.get('email', '').strip() or default_email
     page = request.POST.get('page', '').strip()[:500]
@@ -328,7 +434,7 @@ def contact(request):
         ctx['error'] = "That email doesn't look right — double-check it so our reply can reach you."
         return render(request, 'support/contact.html', ctx, status=400)
 
-    record = SupportMessage.objects.create(
+    submit_support_message(
         tenant=tenant,
         user=request.user,
         name=request.user.get_full_name() or request.user.username,
@@ -336,34 +442,91 @@ def contact(request):
         topic=topic,
         message=message,
         page=page,
+        source='app',
+        role=get_user_role(request.user, tenant) or '',
     )
-
-    role = get_user_role(request.user, tenant)
-    body = (
-        f"From: {record.name} <{email}>\n"
-        f"Shop: {tenant.name if tenant else '(no tenant)'}\n"
-        f"Role: {role or 'unknown'}\n"
-        f"Topic: {record.get_topic_display()}\n"
-        f"Page: {page or '(not recorded)'}\n\n"
-        f"{message}\n\n"
-        f"—\nReply to this email to answer them directly. "
-        f"Admin: {settings.BASE_URL}/admin/support/supportmessage/{record.pk}/change/"
-    )
-    try:
-        EmailMessage(
-            subject=f"Support: {record.get_topic_display()} — {tenant.name if tenant else record.name}",
-            body=body,
-            to=[addr for _name, addr in settings.ADMINS],
-            reply_to=[email],
-        ).send()
-        record.emailed_ok = True
-        record.save(update_fields=['emailed_ok'])
-    except Exception:
-        # Row is already saved — the admin sweep catches emailed_ok=False.
-        logger.exception('Support notification email failed (message #%s)', record.pk)
 
     request.session['support_sent_to'] = email
     return redirect(f"{reverse('help_contact')}?sent=1")
+
+
+@ratelimit(key='ip', rate='5/h', method='POST', block=False)
+def public_contact(request):
+    """GET/POST /contact/ — the form a stranger can use.
+
+    The landing page used to send prospects to /help/contact/, which is
+    @login_required, so the path a prospect actually takes dead-ended on the
+    sign-in page. This is the same record-first path with no account: name
+    becomes a field, Turnstile (the one third-party script the CSP allows)
+    plus a honeypot stand in for the login, and the rate limit is per IP.
+
+    A signed-in user who lands here is recorded with their tenant and user,
+    so nothing is lost if the two forms are ever confused.
+    """
+    from .models import SupportMessage
+    from .services import submit_support_message
+    from apps.saas.views import _verify_turnstile
+
+    user = request.user if request.user.is_authenticated else None
+    tenant = getattr(request, 'tenant', None) if user else None
+    ctx = {
+        'topics': SupportMessage.TOPIC_CHOICES,
+        'form_name': (user.get_full_name() if user else '') or '',
+        'form_email': (user.email if user else '') or '',
+        'form_topic': 'question',
+        'form_message': '',
+        'sent': request.GET.get('sent') == '1',
+        'sent_to': request.session.pop('support_sent_to', ''),
+    }
+
+    if request.method != 'POST':
+        return render(request, 'support/public_contact.html', ctx)
+
+    if getattr(request, 'limited', False):
+        ctx['error'] = "That's quite a few messages in the last hour — give us a moment to catch up, then try again."
+        return render(request, 'support/public_contact.html', ctx, status=429)
+
+    name = request.POST.get('name', '').strip()
+    topic = request.POST.get('topic', 'question')
+    message = request.POST.get('message', '').strip()
+    email = request.POST.get('email', '').strip()
+    page = request.POST.get('page', '').strip()[:500]
+    ctx.update({'form_name': name, 'form_topic': topic, 'form_message': message, 'form_email': email})
+
+    # Honeypot: a real browser never fills a field it cannot see. A bot that
+    # does gets the success page and nothing else — no row, no email.
+    if request.POST.get('website', '').strip():
+        return redirect(f"{reverse('public_contact')}?sent=1")
+
+    if not name:
+        ctx['error'] = "Tell us your name so the reply isn't addressed to nobody."
+        return render(request, 'support/public_contact.html', ctx, status=400)
+    if not message:
+        ctx['error'] = "Tell us what's going on — the message box is empty."
+        return render(request, 'support/public_contact.html', ctx, status=400)
+    try:
+        validate_email(email)
+    except ValidationError:
+        ctx['error'] = "That email doesn't look right — double-check it so our reply can reach you."
+        return render(request, 'support/public_contact.html', ctx, status=400)
+    if not _verify_turnstile(request):
+        ctx['error'] = "We couldn't confirm you're a person — please try again."
+        return render(request, 'support/public_contact.html', ctx, status=400)
+
+    submit_support_message(
+        tenant=tenant,
+        user=user,
+        name=name,
+        email=email,
+        topic=topic,
+        message=message,
+        page=page,
+        source='public',
+        role=(get_user_role(user, tenant) or '') if user else '',
+    )
+
+    request.session['support_sent_to'] = email
+    return redirect(f"{reverse('public_contact')}?sent=1")
 
 
 @require_POST
@@ -372,7 +535,9 @@ def guide_feedback(request, slug):
     """POST /help/<slug>/feedback/ — thumbs up/down on a guide.
 
     One vote per user per guide; voting again overwrites (people change
-    their minds after re-reading). Answer is 'yes' or 'no'.
+    their minds after re-reading). Answer is 'yes' or 'no'. A 'no' may carry
+    an optional `reason` ("What were you looking for?"); it is sent as a
+    second POST after the thumb, so the thumb alone always counts.
     """
     from .models import GuideFeedback
 
@@ -382,12 +547,38 @@ def guide_feedback(request, slug):
     if answer not in ('yes', 'no'):
         return JsonResponse({'ok': False, 'error': 'helpful must be yes or no'}, status=400)
 
+    helpful = answer == 'yes'
+    defaults = {
+        'helpful': helpful,
+        'tenant': getattr(request, 'tenant', None),
+    }
+    reason = request.POST.get('reason', '').strip()[:300]
+    if helpful:
+        defaults['reason'] = ''          # a flipped vote drops the old complaint
+    elif reason or 'reason' in request.POST:
+        defaults['reason'] = reason      # the bare thumb keeps whatever was said before
     GuideFeedback.objects.update_or_create(
         user=request.user,
         slug=slug,
-        defaults={
-            'helpful': answer == 'yes',
-            'tenant': getattr(request, 'tenant', None),
-        },
+        defaults=defaults,
     )
+    return JsonResponse({'ok': True})
+
+
+@require_POST
+@login_required
+@ratelimit(key='user', rate='30/h', method='POST', block=True)
+def search_miss(request):
+    """POST /help/search-miss/ — a search on the hub that matched nothing.
+
+    The "No guides match" state is the most useful signal the help center
+    has: it is the exact words a shop owner used for something we have no
+    guide for. Logged, not stored — grep the log for `help.search.miss`;
+    promote to a model only if the log proves useful (HELP_CENTER_SESSIONS H6).
+    """
+    query = request.POST.get('q', '').strip()[:120]
+    if query:
+        tenant = getattr(request, 'tenant', None)
+        logger.info('help.search.miss tenant=%s user=%s q=%r',
+                    getattr(tenant, 'id', None), request.user.id, query)
     return JsonResponse({'ok': True})

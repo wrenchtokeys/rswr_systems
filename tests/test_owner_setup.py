@@ -260,8 +260,9 @@ class OwnerSetupSaveBillingTest(TestCase):
 
         config = BillingConfig.get_for_tenant(self.tenant)
         self.assertEqual(config.default_payment_terms, 'NET30')
-        self.assertTrue(config.overdue_reminder_enabled)
-        self.assertEqual(config.overdue_reminder_days, '7,30')
+        # Overdue reminders are DISABLED BY POLICY; the setup API ignores the
+        # fields (HELP_CENTER_SESSIONS H1, 2026-09-17).
+        self.assertFalse(config.overdue_reminder_enabled)
         self.assertEqual(config.batch_invoice_frequency, 'monthly')
 
         self.tenant.refresh_from_db()

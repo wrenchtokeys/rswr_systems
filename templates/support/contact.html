@@ -76,6 +76,26 @@
             </button>
         </div>
     </form>
+
+    {% if my_messages %}
+    <div class="mt-10">
+        <h2 class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Your messages</h2>
+        <div class="card divide-y divide-gray-100">
+            {% for m in my_messages %}
+            <div class="p-4 flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <p class="text-sm font-medium text-gray-900">{{ m.get_topic_display }}</p>
+                    <p class="text-sm text-gray-600 truncate">{{ m.message|truncatechars:120 }}</p>
+                    <p class="text-xs text-gray-400 mt-1">{{ m.created_at|date:"M j, Y" }}</p>
+                </div>
+                <span class="flex-shrink-0 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
+                    {% if m.status == 'replied' %}bg-green-100 text-green-800{% elif m.status == 'closed' %}bg-gray-100 text-gray-600{% else %}bg-brand-50 text-brand-700{% endif %}">{{ m.status_for_sender }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="text-xs text-gray-400 mt-2">Replies come by email, to the address you gave on each message.</p>
+    </div>
+    {% endif %}
     {% endif %}
 </div>
 

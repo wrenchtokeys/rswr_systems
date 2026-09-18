@@ -8,6 +8,7 @@
     <div>
         <h1 class="text-2xl font-bold text-gray-900">Insurance claims</h1>
         <p class="text-sm text-gray-500 mt-1">What you billed each insurer, what came in, and what is still short.</p>
+        <p class="mt-2 text-xs text-gray-400">{% icon 'help-circle' class="mr-1" %}Guides: <a href="{% url 'help_topic' 'insurance-claims' %}" class="text-brand-500 hover:text-brand-700 font-medium">Track an insurance claim</a> · <a href="{% url 'help_topic' 'troubleshooting' %}" class="text-brand-500 hover:text-brand-700 font-medium">Troubleshooting</a></p>
     </div>
     <div class="flex items-center gap-4">
         <a href="{% url 'owner_invoice_list' %}" class="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900">

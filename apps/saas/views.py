@@ -2154,19 +2154,6 @@ def owner_settings_view(request):
                 messages.error(request, 'Could not update tax settings.')
             return redirect('/owner/settings/?tab=billing')
 
-        if form_type == 'toggle_overdue_reminders':
-            # Toggle overdue reminder emails
-            try:
-                config = BillingConfig.get_for_tenant(tenant)
-                config.overdue_reminder_enabled = not config.overdue_reminder_enabled
-                config.save(update_fields=['overdue_reminder_enabled'])
-                status = 'enabled' if config.overdue_reminder_enabled else 'disabled'
-                messages.success(request, f'Overdue reminders {status}.')
-            except Exception as e:
-                logger.error(f"Error toggling overdue reminders: {e}")
-                messages.error(request, 'Could not update reminder settings.')
-            return redirect('/owner/settings/?tab=billing')
-
         if form_type == 'toggle_sms_invoicing':
             # Toggle the "Text the invoice" option on send dialogs
             try:
@@ -2192,19 +2179,6 @@ def owner_settings_view(request):
             except Exception as e:
                 logger.error(f"Error toggling SMS invoicing: {e}")
                 messages.error(request, 'Could not update text settings.')
-            return redirect('/owner/settings/?tab=billing')
-
-        if form_type == 'overdue_reminder_settings':
-            # Update overdue reminder configuration
-            try:
-                config = BillingConfig.get_for_tenant(tenant)
-                config.overdue_reminder_days = request.POST.get('overdue_reminder_days', '7,14,30').strip()
-                config.overdue_reminder_subject = request.POST.get('overdue_reminder_subject', 'Reminder: Invoice #{invoice_number} is overdue').strip()
-                config.save(update_fields=['overdue_reminder_days', 'overdue_reminder_subject'])
-                messages.success(request, 'Overdue reminder settings saved.')
-            except Exception as e:
-                logger.error(f"Error updating overdue reminder settings: {e}")
-                messages.error(request, 'Could not update reminder settings.')
             return redirect('/owner/settings/?tab=billing')
 
         if form_type == 'batch_invoice_settings':
@@ -2496,18 +2470,6 @@ def owner_settings_view(request):
         tenant=tenant, primary_technician__isnull=False
     ).exists()
 
-    # Overdue reminder day choices (checkboxes) and active selections
-    reminder_day_choices = [
-        ('3', '3 days'), ('7', '1 week'), ('14', '2 weeks'),
-        ('21', '3 weeks'), ('30', '1 month'), ('45', '45 days'),
-        ('60', '2 months'), ('90', '3 months'),
-    ]
-    active_reminder_days = []
-    if billing_config and billing_config.overdue_reminder_days:
-        active_reminder_days = [
-            d.strip() for d in billing_config.overdue_reminder_days.split(',') if d.strip()
-        ]
-
     # Batch invoicing: month day choices for dropdown.
     # Use proper ordinal logic: 11/12/13 are always "th" (not "st"/"nd"/"rd"),
     # then cycle by last digit.  The inline ternary chain previously used
@@ -2541,13 +2503,6 @@ def owner_settings_view(request):
             if _should_run_batch_today(billing_config, candidate):
                 batch_next_run = candidate
                 break
-
-    # Reminders toggled on with no day marks selected will never email anyone
-    reminders_misconfigured = bool(
-        billing_config
-        and billing_config.overdue_reminder_enabled
-        and not active_reminder_days
-    )
 
     # Review request settings + recent requests
     from apps.technician_portal.review_models import ReviewConfig, ReviewRequest
@@ -2602,12 +2557,9 @@ def owner_settings_view(request):
         'billing_config': billing_config,
         'active_tab': active_tab,
         'any_customer_has_primary_tech': any_customer_has_primary_tech,
-        'reminder_day_choices': reminder_day_choices,
-        'active_reminder_days': active_reminder_days,
         'batch_month_days': batch_month_days,
         'has_batch_customers': has_batch_customers,
         'batch_next_run': batch_next_run,
-        'reminders_misconfigured': reminders_misconfigured,
         'review_config': review_config,
         'recent_review_requests': recent_review_requests,
         'warranty_policies': warranty_policies,
@@ -5107,13 +5059,10 @@ def owner_setup_save_billing(request):
             )
 
         config.default_payment_terms = raw_terms
-        config.overdue_reminder_enabled = request.POST.get('overdue_reminder_enabled') == '1'
-        config.overdue_reminder_days = request.POST.get('overdue_reminder_days', '7,14,30').strip()
         config.batch_invoice_frequency = raw_freq
         config.batch_invoice_day = batch_day
         config.save(update_fields=[
-            'default_payment_terms', 'overdue_reminder_enabled', 'overdue_reminder_days',
-            'batch_invoice_frequency', 'batch_invoice_day',
+            'default_payment_terms', 'batch_invoice_frequency', 'batch_invoice_day',
         ])
 
         # Auto-email invoices is on the Tenant model

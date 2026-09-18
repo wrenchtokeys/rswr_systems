@@ -27,6 +27,14 @@ class SupportMessage(models.Model):
         ('replied', 'Replied'),
         ('closed', 'Closed'),
     ]
+    # Where the form lived. 'public' is a prospect on the landing page with no
+    # account; 'app' is a signed-in shop user; 'portal' is reserved for a
+    # customer reporting a portal problem (H7) — not "ask about my bill".
+    SOURCE_CHOICES = [
+        ('app', 'Signed-in (/help/contact/)'),
+        ('public', 'Public (/contact/)'),
+        ('portal', 'Customer portal'),
+    ]
 
     # SET_NULL + snapshots: deleting a tenant or user must never delete what
     # they told us — name/email keep the message answerable on their own.
@@ -47,9 +55,18 @@ class SupportMessage(models.Model):
         help_text='Page the sender was on before opening the form',
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default='app', db_index=True)
+    role = models.CharField(
+        max_length=20, blank=True,
+        help_text="The sender's role in their shop at the time (owner/manager/technician), if signed in",
+    )
     emailed_ok = models.BooleanField(
         default=False,
         help_text='Whether the notification email to the admins was sent',
+    )
+    acknowledged = models.BooleanField(
+        default=False,
+        help_text='Whether the sender got the "we got your message" email',
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -59,6 +76,19 @@ class SupportMessage(models.Model):
     def __str__(self):
         who = self.name or self.email
         return f'{who} ({self.get_topic_display()}) — {self.created_at:%Y-%m-%d}'
+
+    @property
+    def first_name(self):
+        return (self.name or '').strip().split(' ')[0]
+
+    @property
+    def status_for_sender(self):
+        """What the sender sees on their own list — plain words, no workflow."""
+        return {
+            'new': 'Received',
+            'replied': 'Answered by email',
+            'closed': 'Closed',
+        }.get(self.status, self.status)
 
 
 class GuideFeedback(models.Model):
@@ -72,6 +102,9 @@ class GuideFeedback(models.Model):
     )
     slug = models.SlugField(max_length=64)
     helpful = models.BooleanField()
+    # Optional, thumbs-down only: "What were you looking for?" — "No" on its
+    # own tells you nothing to fix.
+    reason = models.CharField(max_length=300, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

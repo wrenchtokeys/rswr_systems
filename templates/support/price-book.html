@@ -1,0 +1,50 @@
+{% extends "support/base_topic.html" %}
+{% load ui %}
+
+{% block guide %}
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-green-700">1</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">It learns from work you finish</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Every replacement you complete with a year, make and model teaches the price book what you charge for that glass on that vehicle. There is nothing to fill in up front — the first job starts the book, and it grows as you work. Find it under <strong>Settings → Pricing &amp; Invoicing → Open price book</strong>.</p>
+            <a href="{% url 'price_book_list' %}" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-800 mt-2">Open the price book {% icon 'arrow-right' class="text-xs ml-1.5" %}</a>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-green-700">2</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">It suggests; it never overrides you</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Start a replacement on a vehicle you've done before and an <em>empty</em> price box fills in with a note saying where the number came from, and an <strong>Undo</strong>. If you've already typed a price, the box is left alone and the note just offers <strong>Use $X</strong> beside it. Whatever ends up in the box is what's charged.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-green-700">3</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Pin a price to make it stick</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">A learned price moves with your latest completed job. If you want a number to stay put no matter what, <strong>Add a price</strong> or <strong>Edit</strong> one in the book — a price you set by hand is <strong>pinned</strong> and no job will overwrite it. Leave the year blank to cover every year of that model.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-green-700">4</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Rebuild from history any time</h2>
+            <p class="text-sm text-gray-600 leading-relaxed"><strong>Rebuild from history</strong> re-reads every completed replacement and refreshes the learned prices. Pinned prices are kept. Prices in the book are before any fleet discount — the discount still comes off on the job.</p>
+        </div>
+    </div>
+</div>
+
+<div class="rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
+    {% icon 'lightbulb' class="text-amber-500 mt-0.5" %}
+    <p class="text-sm text-gray-700 leading-relaxed"><strong>Repairs are different:</strong> a repair's price comes from your repair pricing, not the book. See <a href="{% url 'help_topic' 'progressive-pricing' %}" class="text-brand-600 hover:text-brand-800 font-medium">How progressive pricing works</a>.</p>
+</div>
+{% endblock %}

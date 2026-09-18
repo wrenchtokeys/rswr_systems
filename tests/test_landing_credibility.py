@@ -143,7 +143,9 @@ class LandingCredibilityTests(TestCase):
     def test_switching_section_exists(self):
         self.assertIn('id="switching"', self.html)
         self.assertRegex(self.html, r'(?i)spreadsheets?')
-        self.assertIn('/help/contact/', self.html)
+        # The public form — /help/contact/ is @login_required and dead-ended prospects.
+        self.assertIn('href="/contact/"', self.html)
+        self.assertNotIn('/help/contact/', self.html)
 
     # --- 5. structured data agrees with the cards ---------------------------
 

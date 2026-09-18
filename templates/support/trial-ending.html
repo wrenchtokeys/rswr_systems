@@ -5,8 +5,8 @@
     <div class="flex items-start gap-3.5">
         <div class="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-brand-700">1</div>
         <div>
-            <h2 class="text-sm font-semibold text-gray-900 mb-1">Your 30 days, no strings</h2>
-            <p class="text-sm text-gray-600 leading-relaxed">The trial is the full product — every feature, no card required. When the last week starts you'll see a countdown banner, and we email you at 7 days and 1 day out so the end never sneaks up on you.</p>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Your {{ trial_days }} days, no strings</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">The trial is the full product — every feature, no card required. It has room for {{ trial_max_customers }} customers and {{ trial_max_jobs }} jobs a month{% if trial_matches_starter %}, the same limits as the Starter plan{% endif %}. When the last week starts you'll see a countdown banner, and we email you at 7 days and 1 day out so the end never sneaks up on you.</p>
         </div>
     </div>
 </div>
@@ -15,8 +15,8 @@
     <div class="flex items-start gap-3.5">
         <div class="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-brand-700">2</div>
         <div>
-            <h2 class="text-sm font-semibold text-gray-900 mb-1">Then a 30-day soft landing</h2>
-            <p class="text-sm text-gray-600 leading-relaxed">If the trial ends before you've picked a plan, nothing is deleted. You get a 30-day grace period where everything is still there to view — jobs, customers, invoices — you just can't add new work until you subscribe. Think of it as pause, not erase.</p>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Then a {{ trial_grace_days }}-day soft landing</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">If the trial ends before you've picked a plan, nothing is deleted. You get a {{ trial_grace_days }}-day grace period where everything is still there to view — jobs, customers, invoices — you just can't add new work until you subscribe. Think of it as pause, not erase.</p>
         </div>
     </div>
 </div>

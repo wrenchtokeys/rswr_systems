@@ -262,14 +262,13 @@ class HelpPagesTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'Create your first job')
         # Every registered topic renders (registry-driven, so new guides are
-        # covered automatically) and carries its video slot when it has one.
+        # covered automatically). The "video coming soon" slot was retired
+        # 2026-09-17 (HELP_CENTER_SESSIONS H4) — video_label keys stay as the
+        # labels for whenever a recording exists, but nothing renders them.
         for slug, topic in HELP_TOPICS.items():
             r = client.get(f'/help/{slug}/')
             self.assertEqual(r.status_code, 200, f'/help/{slug}/ failed')
-            if topic.get('video_label'):
-                self.assertContains(r, 'Video coming soon')
-            else:
-                self.assertNotContains(r, 'Video coming soon')
+            self.assertNotContains(r, 'coming soon')
         # Every topic's section exists in the section list
         section_keys = {key for key, _ in HELP_SECTIONS}
         for slug, topic in HELP_TOPICS.items():
@@ -378,6 +377,69 @@ class GuideFeedbackTests(TestCase):
         anon = Client()
         r = anon.post('/help/first-job/feedback/', {'helpful': 'yes'})
         self.assertEqual(r.status_code, 302)
+
+    # --- HELP_CENTER_SESSIONS H6: thumbs-down carries a reason ---------------
+
+    def test_reason_stored_on_no_kept_by_bare_thumb_cleared_on_yes(self):
+        from apps.support.models import GuideFeedback
+        # The thumb lands first (no reason), then the optional reason.
+        self.client.post('/help/first-job/feedback/', {'helpful': 'no'})
+        self.client.post('/help/first-job/feedback/', {'helpful': 'no', 'reason': '  How do I add a second car for a walk-in?  '})
+        vote = GuideFeedback.objects.get(user=self.owner, slug='first-job')
+        self.assertFalse(vote.helpful)
+        self.assertEqual(vote.reason, 'How do I add a second car for a walk-in?')
+        # A repeat bare thumb keeps what they said…
+        self.client.post('/help/first-job/feedback/', {'helpful': 'no'})
+        vote.refresh_from_db()
+        self.assertEqual(vote.reason, 'How do I add a second car for a walk-in?')
+        # …a flip to yes drops the old complaint, and a reason on yes is ignored.
+        self.client.post('/help/first-job/feedback/', {'helpful': 'yes', 'reason': 'ignored'})
+        vote.refresh_from_db()
+        self.assertTrue(vote.helpful)
+        self.assertEqual(vote.reason, '')
+        self.assertEqual(GuideFeedback.objects.filter(user=self.owner, slug='first-job').count(), 1)
+
+    def test_reason_is_capped(self):
+        from apps.support.models import GuideFeedback
+        self.client.post('/help/first-job/feedback/', {'helpful': 'no', 'reason': 'x' * 500})
+        self.assertEqual(len(GuideFeedback.objects.get(user=self.owner, slug='first-job').reason), 300)
+
+    def test_guide_page_offers_the_reason_box(self):
+        r = self.client.get('/help/first-job/')
+        self.assertContains(r, 'guide-feedback-reason-input')
+        self.assertContains(r, 'What were you looking for?')
+
+    def test_search_miss_is_logged_not_stored(self):
+        with self.assertLogs('apps.support.views', level='INFO') as logs:
+            r = self.client.post('/help/search-miss/', {'q': 'adas calibration'})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(any("help.search.miss" in line and "'adas calibration'" in line for line in logs.output))
+        # Empty query: no log line, still 200.
+        r = self.client.post('/help/search-miss/', {'q': '   '})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(Client().post('/help/search-miss/', {'q': 'x'}).status_code, 302)
+
+    def test_admin_rollup_puts_the_worst_guide_first(self):
+        from django.urls import reverse
+        from apps.support.models import GuideFeedback
+        other = User.objects.create_user('rollup_other', 'other@test.com', 'testpass123')
+        GuideFeedback.objects.create(user=self.owner, slug='first-job', helpful=True)
+        GuideFeedback.objects.create(user=self.owner, slug='sales-tax', helpful=False, reason='Where is the exempt box?')
+        GuideFeedback.objects.create(user=other, slug='sales-tax', helpful=False)
+        admin_user = User.objects.create_superuser('rollup_admin', 'admin@test.com', 'testpass123')
+        client = Client()
+        client.force_login(admin_user)
+        r = client.get(reverse('admin:support_guidefeedback_changelist'))
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        self.assertIn('Sales tax', html)
+        self.assertIn('Create your first job', html)
+        self.assertLess(html.index('Sales tax'), html.index('Create your first job'))
+        self.assertIn('Where is the exempt box?', html)
+        from apps.support.admin import feedback_rollup
+        rows = feedback_rollup()
+        self.assertEqual([(r['slug'], r['up'], r['down'], r['pct']) for r in rows],
+                         [('sales-tax', 0, 2, 0), ('first-job', 1, 0, 100)])
 
     def test_guide_page_renders_feedback_widget(self):
         r = self.client.get('/help/first-job/')

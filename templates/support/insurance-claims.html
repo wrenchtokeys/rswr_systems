@@ -1,0 +1,50 @@
+{% extends "support/base_topic.html" %}
+{% load ui %}
+
+{% block guide %}
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-brand-700">1</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Flag the job as insurance</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">On the job form, tick <strong>Insurance claim</strong> and fill in whatever you have — insurer, claim number, deductible. When that job is invoiced, the claim is opened for you on the invoice with those details already in it. Forgot to tick it? The invoice page offers to start a claim with one tap.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-brand-700">2</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Expected, received, short — you never type them</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">The claim works out what the insurer should pay (the invoice total minus the deductible, or the amount they authorized if you entered one), adds up what has actually arrived, and shows the difference as <strong>Short</strong>. The customer's deductible is recorded like any other payment — it counts toward the invoice, never toward the insurer.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-brand-700">3</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Record the insurer's check</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">When the EOB and check arrive, open the claim and use <strong>Record insurer payment</strong> — amount, how it arrived, the check or EOB number. The status follows the money on its own: paid in full, or short by exactly the amount they trimmed.</p>
+            <a href="{% url 'claim_list' %}" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-800 mt-2">Open Insurance claims {% icon 'arrow-right' class="text-xs ml-1.5" %}</a>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-brand-700">4</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Close it when you're done arguing</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">If the insurer won't pay the rest, <strong>Close claim</strong> writes off what's still short. It stays on record; it just stops counting as money you're owed. Changed your mind, or another check turns up? <strong>Reopen</strong> and record it.</p>
+        </div>
+    </div>
+</div>
+
+<div class="rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
+    {% icon 'lightbulb' class="text-amber-500 mt-0.5" %}
+    <p class="text-sm text-gray-700 leading-relaxed"><strong>Who sees this:</strong> owners and managers only. Claims never appear in the customer portal — your customer sees their invoice and what they owe, nothing about the insurer.</p>
+</div>
+{% endblock %}
