@@ -2,7 +2,7 @@
 
 **Created:** 2026-09-17
 **Author:** Claude (assessment session with Drake)
-**Status:** H1–H6 BUILT 2026-09-17 on `feat/help-center` → PR #263 OPEN (one commit per session; see §"What shipped" under each). D1–D3 decided by Drake the same day (§0.4). H7 stays BACKLOG behind a second shop.
+**Status:** H1–H6 BUILT 2026-09-17 on `feat/help-center` → **PR #263 OPEN, not merged, not deployed** (one commit per session; see §"What shipped" under each). D1–D3 decided by Drake the same day (§0.4). **Next = H8 (wrap-up: merge, deploy, the two outward checks, one email line)** — it is the only thing between this queue and "done". H7 stays BACKLOG behind a second shop.
 **Companions:** `docs/proposals/launch-readiness-roadmap.md` (Phases 2–3 built what this doc updates; its decisions log is the origin of every "by design" below), `docs/strategy/PRODUCT_DIRECTION.md` (go-to-market step 6 — the help center is what a stranger shop reads instead of calling Drake), `docs/strategy/IMPROVEMENT_SESSIONS.md` (B3/B5/B6 — the spine features H3 documents), `docs/development/ROADMAP.md`.
 
 This file is the **work queue** for the help center and customer-support experience. It exists because the product outran its own help: three guides now promise something the platform deliberately does not do, the landing page's contact link dead-ends on a login wall, and the three newest features (quotes, claims, price book) have no guide at all. Each session is self-contained — a fresh Claude session with no memory should be able to execute exactly one using only §0 and that session's table.
@@ -18,8 +18,9 @@ This file is the **work queue** for the help center and customer-support experie
 | H5 · Close the support loop | S | DONE 2026-09-17 |
 | H6 · Read the feedback you already collect | S | DONE 2026-09-17 |
 | H7 · Polish — guides in global search, freshness, portal-side reporting | M | BACKLOG |
+| H8 · Wrap-up — merge #263, deploy, prove the loop on prod, one email line | XS | NEXT |
 
-**Suggested sequence:** H1 → H2 → H3 → H4 → H5 → H6 → H7.
+**Suggested sequence:** H1 → H2 → H3 → H4 → H5 → H6 → **H8** → H7.
 Rationale: H1 and H2 fix the two things actively misleading people today and are a day's work together; H1 fits the "tell the truth" theme of the open payments-truth PR (#261). H3 is the biggest gap for a new shop and is the reason a stranger shop would otherwise write in. H4 is a one-line delete that removes six weeks of "coming soon" from 17 pages. H5/H6 make the support channel two-way and the feedback readable. H7 is craft and waits for a second shop.
 
 **Decisions recorded 2026-09-17** (§0.4): D1a remove the card, D2a quote numbers read from settings, D3a one inbox through the form. Everything below was built on those answers.
@@ -219,10 +220,30 @@ Sequenced behind a second shop being live. Each is small; none is urgent.
 
 ---
 
+## H8 · Wrap-up — merge #263, deploy, prove the loop on prod, one email line — NEXT
+
+**Goal.** Everything H1–H6 built is on prod and shown to work end to end by one real message; the one untrue sentence found on the way is gone. After this, the queue is closed and H7 waits for a second shop.
+
+**Depends on:** PR #263 merged (Drake's call — it carries two migrations, `support/0003` and `support/0004`; `04_migrate.config` and the postdeploy hook run `migrate --noinput`, nothing manual).
+
+| Step | Detail |
+|------|--------|
+| 1 · One email line | `apps/tenants/management/commands/check_subscription_alerts.py:256` — the `ALERT_TRIAL_EXPIRED` paragraph "Your account is now locked, but your data is safe…" and the comment above it ("no grace period exists for trials") predate `Tenant.effective_grace_period_end`. Say what happens: `"Your shop is read-only for the next {settings.TRIAL_GRACE_DAYS} days — everything is there to view, nothing is deleted. Subscribe any time to pick up where you left off."` Read the number from settings, never type it. Leave the two `ALERT_SUB_EXPIRED` branches alone — their "30 days of read-only access" matches `GRACE_DAYS_AFTER_UNPAID`. Add one assert to `tests/test_help_truth.py` (already the home of "copy agrees with settings"): render that alert with `TRIAL_GRACE_DAYS=9` and check the body says 9 and not "locked". Run `manage.py preview_emails` — "platform — trial ending alert" is the neighbour; eyeball both. Small enough to ride on #263 if it is still open; otherwise its own `fix/` branch. |
+| 2 · Merge + deploy | Merge #263 on GitHub → `git checkout main && git pull` → `eb deploy` from the repo root on `main` (it ships the *current branch's* HEAD — check `git branch --show-current` first) → `curl -I https://rssystems.io/health/`. `eb events | head -20` if anything looks off. Migrations apply in the deploy. |
+| 3 · Prove H2 on prod | Incognito window → `https://rssystems.io/contact/` → send one message with a real reply address you can read. Expect: (a) the success card; (b) a "We got your message" email at that address, From RS Systems, with the message text in it; (c) the admin notification in the `ADMINS` inbox (Drake's Gmail) with **Reply-To = the address you typed** — hit Reply in Gmail and confirm the To line is that address, not notifications@; (d) the row at `/admin/support/supportmessage/` with `source = Public` and "Where they were" readable. Turnstile is live on prod (`TURNSTILE_SITE_KEY` is set for signup), so the widget must render and the submit must pass it — if the form 400s with "couldn't confirm you're a person", the widget did not load: check the CSP report endpoint before touching anything else. |
+| 4 · Prove H5 on prod | Signed in as an owner → `/help/contact/` → the message from step 3 is *not* there (it was public) but any message you now send is, with status "Received". Then `eb ssh rs-systems-production --command "sudo -u webapp /opt/rs-systems/run-cron.sh sweep_support_messages --dry-run"` — expect `0 message(s) never reached the admins, 0 sender(s)…`. A non-zero count means SES rejected something in step 3; read `/var/log/rs-systems/support-sweep.log` after the next 20-minute tick. |
+| 5 · Close the books | Flip the message's Status to Replied in admin (the sender's list should read "Answered by email"). Update this doc's Status line (DEPLOYED + commit hash + UTC time), `ROADMAP.md` line 25, and the CHANGELOG entry (add the deploy line). `test_baseline_main.txt` was already pruned to 89 in #263. Then update the memory note. |
+
+**Done when:** the four outward expectations in step 3 all held on prod, the sweep dry-run reports zeros, the trial-expired email no longer says "locked", and this doc's Status line carries the deploy hash.
+
+**Deliberately not done here:** the staff-SMS card in `team-roles` (H3 left it out; registration v5 was `REVIEWING` on 2026-09-17 — check `docs/operations/SMS_REGISTRATION.md` §3.5 and add the card only when the version reads `COMPLETE`), and anything in H7.
+
+---
+
 ## Notes
 
 - **Why a truth test and not a review checklist.** The launch-readiness charter ("never promise what doesn't exist") held for six weeks and then broke in three places without anyone editing the guides — the *policy* changed under them. Only a test notices that.
 - **Why H2 reuses `SupportMessage`.** A prospect's question and a shop's question go to the same person and get the same reply. Two models would mean two admin pages and two sweeps for the same inbox.
 - **Why not a chat widget.** Decided 2026-08-05, and the CSP argument has only strengthened since: every widget is a third-party script host, and the allowlist is `'self'` + Turnstile on purpose.
-- **Found on the way, not fixed here (2026-09-17):** `check_subscription_alerts` still tells an expired trial "Your account is now locked" (its own comment says no grace exists) while `Tenant.effective_grace_period_end` grants `TRIAL_GRACE_DAYS` of read-only, and the two subscription-ended branches say "30 days of read-only access". Same class of drift as §0.2 item 3, in email rather than a guide. It belongs with the subscription-email copy, not the help center; `preview_emails` shows all three.
+- **Found on the way, fixed in H8 (2026-09-17):** the trial-expired email in `check_subscription_alerts` says "Your account is now locked" while `Tenant.effective_grace_period_end` grants an expired trial `TRIAL_GRACE_DAYS` of read-only. (The paid-lapse emails' "30 days of read-only access" is *true* — `subscription_reconcile.GRACE_DAYS_AFTER_UNPAID` is 30; an earlier draft of this note had that wrong.) Same drift class as §0.2 item 3, in email; §H8 carries the exact line.
 - **Two pre-existing test fixes rode along:** `tests/test_support_contact.py::test_app_is_blocked_but_contact_form_works` was in the red baseline — its fixture expired the trial 40 days back, inside the 14-day read-only window that did not exist when it was written, and it used a dashboard URL that had moved. Now 60 days and `reverse()`. It comes off the baseline.
