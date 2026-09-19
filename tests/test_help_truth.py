@@ -91,6 +91,41 @@ def _make_owner(name, username):
 
 
 @override_settings(**TEST_SETTINGS)
+class TrialExpiredEmailTruthTests(TestCase):
+    """The trial-expired alert says what the middleware does: TRIAL_GRACE_DAYS of
+    read-only. Two earlier drafts were untrue in opposite directions ("30 days of
+    read-only access", then "now locked"); the number is read from settings."""
+
+    def _expire_trial(self):
+        from django.utils import timezone
+        user, tenant, trial = _make_owner('Lapsed Shop', 'lapsed_owner')
+        tenant.trial_started_at = timezone.now() - timezone.timedelta(days=trial.trial_days + 5)
+        tenant.save(update_fields=['trial_started_at'])
+        self.assertTrue(tenant.is_trial_expired)
+        return tenant
+
+    def _trial_expired_mail(self):
+        from django.core import mail
+        from django.core.management import call_command
+        mail.outbox = []
+        call_command('check_subscription_alerts', verbosity=0)
+        hits = [m for m in mail.outbox if 'trial has expired' in m.subject]
+        self.assertEqual(len(hits), 1, [m.subject for m in mail.outbox])
+        return hits[0]
+
+    def test_trial_expired_email_reads_grace_days_from_settings(self):
+        self._expire_trial()
+        with override_settings(TRIAL_GRACE_DAYS=9):
+            msg = self._trial_expired_mail()
+        self.assertIn('read-only for the next 9 days', msg.body)
+        self.assertNotIn('locked', msg.body.lower())
+        self.assertNotIn('30 days', msg.body)
+        for alt in msg.alternatives:
+            self.assertIn('read-only for the next 9 days', alt[0])
+            self.assertNotIn('locked', alt[0].lower())
+
+
+@override_settings(**TEST_SETTINGS)
 class RenderedTruthTests(TestCase):
     """Rendered: the numbers on the page are the numbers in settings and plan rows."""
 

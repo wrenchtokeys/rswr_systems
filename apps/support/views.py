@@ -475,6 +475,8 @@ def public_contact(request):
         'form_email': (user.email if user else '') or '',
         'form_topic': 'question',
         'form_message': '',
+        'form_shop_name': '',
+        'signed_in': user is not None,
         'sent': request.GET.get('sent') == '1',
         'sent_to': request.session.pop('support_sent_to', ''),
     }
@@ -491,7 +493,11 @@ def public_contact(request):
     message = request.POST.get('message', '').strip()
     email = request.POST.get('email', '').strip()
     page = request.POST.get('page', '').strip()[:500]
-    ctx.update({'form_name': name, 'form_topic': topic, 'form_message': message, 'form_email': email})
+    # A visitor's shop is whatever they typed; a signed-in sender's is the
+    # tenant on the request, so their typed one is dropped rather than trusted.
+    shop_name = '' if tenant else request.POST.get('shop_name', '').strip()[:150]
+    ctx.update({'form_name': name, 'form_topic': topic, 'form_message': message,
+                'form_email': email, 'form_shop_name': shop_name})
 
     # Honeypot: a real browser never fills a field it cannot see. A bot that
     # does gets the success page and nothing else — no row, no email.
@@ -523,6 +529,7 @@ def public_contact(request):
         page=page,
         source='public',
         role=(get_user_role(user, tenant) or '') if user else '',
+        shop_name=shop_name,
     )
 
     request.session['support_sent_to'] = email

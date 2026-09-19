@@ -358,12 +358,32 @@ class PublicContactTests(TestCase):
         session = self.client.session
         session['tenant_id'] = tenant.id
         session.save()
-        self._post(email='public_owner@test.com')
+        resp = self.client.get(PUBLIC_URL)
+        self.assertNotContains(resp, 'name="shop_name"')  # the tenant answers that
+        self._post(email='public_owner@test.com', shop_name='Somebody Else Glass')
         record = SupportMessage.objects.get()
         self.assertEqual(record.source, 'public')
         self.assertEqual(record.tenant, tenant)
         self.assertEqual(record.user, user)
         self.assertEqual(record.role, 'owner')
+        self.assertEqual(record.shop_name, '')  # typed, discarded: the tenant is the truth
+        self.assertIn('Shop: Public Shop', _admin_mail()[0].body)
+
+    def test_visitor_shop_name_is_recorded_and_marked_unverified(self):
+        resp = self.client.get(PUBLIC_URL)
+        self.assertContains(resp, 'name="shop_name"')
+        self._post(shop_name='  Pat\'s Auto Glass  ')
+        record = SupportMessage.objects.get()
+        self.assertEqual(record.shop_name, "Pat's Auto Glass")
+        self.assertIsNone(record.tenant)
+        body = _admin_mail()[0].body
+        self.assertIn("Shop: Pat's Auto Glass (visitor, public form)", body)
+
+    def test_visitor_shop_name_is_optional(self):
+        self._post(shop_name='')
+        record = SupportMessage.objects.get()
+        self.assertEqual(record.shop_name, '')
+        self.assertIn('Shop: (no shop — public form)', _admin_mail()[0].body)
 
     def test_public_pages_link_to_the_public_form(self):
         # The landing page used to send prospects to /help/contact/ — a login wall.

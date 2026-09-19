@@ -34,7 +34,14 @@ def admin_notification(record):
     for a row whose first attempt failed.
     """
     tenant = record.tenant
-    shop = tenant.name if tenant else '(no shop — public form)' if record.source == 'public' else '(no tenant)'
+    if tenant:
+        shop = tenant.name
+    elif record.source == 'public':
+        # What the visitor typed, marked as unverified — nobody has checked
+        # that this shop exists, unlike a tenant name.
+        shop = f'{record.shop_name} (visitor, public form)' if record.shop_name else '(no shop — public form)'
+    else:
+        shop = '(no tenant)'
     body = (
         f"From: {record.name} <{record.email}>\n"
         f"Shop: {shop}\n"
@@ -104,7 +111,8 @@ def send_acknowledgement(record):
         return False
 
 
-def submit_support_message(*, tenant, user, name, email, topic, message, page='', source='app', role=''):
+def submit_support_message(*, tenant, user, name, email, topic, message, page='', source='app', role='',
+                           shop_name=''):
     """Save the message, then notify — in that order.
 
     Returns the SupportMessage. Email failures are logged and reflected on
@@ -122,6 +130,8 @@ def submit_support_message(*, tenant, user, name, email, topic, message, page=''
         page=(page or '')[:500],
         source=source,
         role=(role or '')[:20],
+        # Never store a typed shop beside a real tenant: the tenant is the truth.
+        shop_name='' if tenant else (shop_name or '').strip()[:150],
     )
     notify_admins(record)
     send_acknowledgement(record)

@@ -249,11 +249,12 @@ class Command(BaseCommand):
                 paragraphs = [
                     f"Hi {_owner_name(tenant)},",
                     f"Your free trial for {tenant.name} has expired.",
-                    # D4: expired trials are blocked immediately (no grace
-                    # period exists for trials — the trial itself was the
-                    # grace). The old copy promised "30 days of read-only
-                    # access" the middleware never granted.
-                    "Your account is now locked, but your data is safe. Upgrade any time to pick up right where you left off.",
+                    # An expired trial gets TRIAL_GRACE_DAYS of read-only from
+                    # Tenant.effective_grace_period_end. Two earlier drafts of
+                    # this line were untrue in opposite directions ("30 days
+                    # of read-only", then "now locked"); read the number, never
+                    # type it. tests/test_help_truth.py renders this alert.
+                    f"Your shop is read-only for the next {settings.TRIAL_GRACE_DAYS} days — everything is there to view, nothing is deleted. Subscribe any time to pick up where you left off.",
                 ]
             else:
                 alert_key = ALERT_SUB_EXPIRED

@@ -61,6 +61,14 @@
                 <input type="email" name="email" id="contact-email" value="{{ form_email }}" required autocomplete="email"
                        class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 focus:outline-none">
             </div>
+            {% if not signed_in %}
+            <div class="sm:col-span-2">
+                <label for="contact-shop" class="block text-sm font-semibold text-gray-900 mb-2">Your shop <span class="font-normal text-gray-400">(optional)</span></label>
+                <input type="text" name="shop_name" id="contact-shop" value="{{ form_shop_name }}" autocomplete="organization"
+                       placeholder="So we know who we're talking to"
+                       class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 focus:outline-none">
+            </div>
+            {% endif %}
         </div>
 
         <fieldset>
