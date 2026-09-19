@@ -14,6 +14,82 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-09-18 — Stranger-shop readiness: four PRs and a new session
+
+A readiness audit — *"can a shop that isn't family run on this yet?"* — walked all three
+dashboards on `main` @ `16c01e5b` as owner, technician and fleet customer. Every claim it made
+was re-verified against the code. Four defects sat directly on the path a stranger walks.
+
+### Fixed
+- **The customer portal offered a "Pay Now" the next page could not honour.** The invoice list
+  gated the button on "is money owed" alone; the detail page it linked to gated the actual card
+  form on `Tenant.can_accept_payments`. For a shop that hasn't finished Stripe Connect — the
+  day-one state of every shop, and The Glass Guy's state for six weeks — a fleet contact clicked
+  Pay Now and landed on a page whose only control was Download PDF, with nothing said. Both
+  pages now ask one `_can_pay_online()` helper, and the detail page names who to pay and how to
+  reach them. The public emailed invoice had always gated correctly; only the logged-in portal,
+  which is where a fleet account lives, was wrong. (#261)
+- **Nothing ever told an owner they couldn't accept a card.** The setup checklist had eight
+  items and no payments row, so a shop could reach "fully configured", invoice for a month, and
+  never learn the money leg was unconnected — Connect status lived only in Settings → Card
+  Payments, which nothing pushed you toward. Adds "Get Paid by Card", driven by the same tenant
+  property and folded into `configured_count`, so an unconnected shop can no longer show a full
+  score. Hidden when the platform has no `STRIPE_SECRET_KEY`. (#261)
+- **The landing page's only contact link required a login.** "Send it through the contact form"
+  pointed at `/help/contact/`, which was `@login_required` and 302'd a visitor to
+  `/login/?next=/help/contact/` — closed to exactly the interested-but-not-signed-up owner the
+  page was written for. Found here and fixed by the help center's H2 (#263, the entry below);
+  #264 built the same fix in parallel and was closed as superseded. Its one piece #263 lacked —
+  asking a visitor which shop they're with — lands with the help center wrap-up (H8).
+- **Three technician-dashboard numbers contradicted the queue above them.** "Ready to start"
+  counted repairs with a `RepairApproval` row from the last 24 hours, and `RepairApproval` is
+  written only by the customer portal — shop-created jobs auto-approve and never write one, so
+  on a default `AUTO_APPROVE` shop the tile was structurally always zero. Every tile was
+  `len()` of a display list capped at 5. And a half-started batch was filed under "Ready to
+  Start" while the tile beside it called it in progress. The tiles now count the work in one
+  uncapped pass that also decides the cards. Closes `IMPROVEMENT_SESSIONS.md` **A4**. (#265)
+
+### Changed
+- **The trial now matches Starter** — 50 customers, 200 jobs/month, 5 technicians, 500MB, on
+  Drake's call. It permitted 10 customers and 50 jobs as *hard blocks at creation*, beside a
+  landing page inviting a shop to "run both for a month" and send over their customer list; a
+  1–5 tech shop passes both inside week one and hits the wall mid-evaluation. Time is the only
+  limit now. **`seed_plans` never rewrites limits on an existing plan without `--force`**, so
+  `tenants/0028` moves the row — raise-only, no reverse (lowering a live trial would start
+  hard-blocking shops mid-evaluation). (#262)
+- **The technician dashboard's legacy cards keep multi-break batches and nothing else.** They
+  were listing individual jobs Today's Queue already renders — with the address, the Call link
+  and the scheduled time, none of which the cards had — so one job appeared twice under two
+  verbs. A batch is the one thing the queue cannot express. A shop that does no multi-break work
+  sees neither card. The page also gained the `{% block title %}` it never had (it was the bare
+  "RS Systems") and lost three emoji headings. (#265)
+
+### Technical
+- `repairs_active` and `recent_completions` in the technician dashboard are tenant-scoped, like
+  every other query in that view. (#265)
+- New tests: `test_payment_visibility` (11), `test_tech_dashboard_counts` (14), `test_trial_limits` (5).
+
+### Added
+- **`IMPROVEMENT_SESSIONS.md` C3 · Findability** — the fourth defect is a session, not a patch.
+  The marketing site is five indexable URLs; there is **no analytics of any kind** (no GA, no
+  Plausible, no PostHog, no Search Console tag); 18 written plain-language guides sit behind a
+  login and out of the sitemap; there is no `og:image` and `twitter:card` is `summary`;
+  `base_public.html` sets only a `<title>`, so `/pricing/` has no description or canonical; and
+  robots.txt guards `/portal/` and `/customer/` (not served) while allowing the token-bearing
+  `/quote/`, `/invoice/` and `/pay/`. Analytics must stay first-party or self-hosted — the CSP
+  allowlist is the whole point of UI_MAGIC S1/S17 on an app that takes card payments.
+  **Search Console verification is a DNS TXT record and needs no code; do it independently.**
+- **`IMPROVEMENT_SESSIONS.md` Appendix B** gained a one-minute recipe for screenshotting a
+  *logged-in* page (test client → HTML file → `python3 -m http.server` → headless Chrome). The
+  half-started-batch bug above was found that way and by nothing else.
+
+### Changed (docs)
+- **`PRODUCT_DIRECTION.md` step 6 said "go-to-market, which no code moves." That was wrong** —
+  written from the sales motion, not from what a stranger's first hour touches. Split: step 6 is
+  stranger-shop readiness, step 7 is the selling, where the claim holds.
+
+---
+
 ## 2026-09-17 — Help center: truth pass, public contact form, guides for the spine
 
 Queue: `docs/strategy/HELP_CENTER_SESSIONS.md` (H1–H6). One PR, one commit per session.

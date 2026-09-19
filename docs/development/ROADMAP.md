@@ -1,7 +1,7 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: September 17, 2026 (B6 price book #257 and staff SMS #258 deployed 14:20 UTC as `8da23bbe`; B5 #255 rode the same deploy; all three spine features are on prod; `seed_price_book` run — empty, prod has no replacements yet).*
+*Last Updated: September 18, 2026 (stranger-shop readiness: four PRs — #261 payments truth, #262 trial limits, #263 help center incl. the public contact form, #265 technician dashboard counts — merged, not yet deployed — plus new session C3 · Findability. Prod is unchanged at `8da23bbe`).*
 
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
 > snapshot):** production runs `8da23bbe`, deployed **2026-09-17 14:20 UTC** — everything
@@ -10,16 +10,24 @@
 > consent record, `core/0035`), all verified with `showmigrations` on the instance.
 > `seed_price_book` was run on the instance at 14:2x UTC and read 0 jobs — no shop on prod has
 > a replacement record yet, so the book starts from the first completed one. The media bucket's
-> `repair_photos/*` prefix has been private since 2026-09-06 22:04 UTC. Only this docs PR is
-> merged and undeployed (nothing to ship). `eb deploy` ships the current branch's HEAD — on
-> 2026-09-17 that put an unmerged feature branch on prod for 32 minutes; `git checkout main &&
-> git pull` first (or `rs_main_deploy_wt`, the worktree that holds `main`).
+> `repair_photos/*` prefix has been private since 2026-09-06 22:04 UTC.
+>
+> **Open and undeployed (2026-09-18), all from the stranger-shop readiness audit:** #260 (C2
+> pricing labels), **#261** (the portal offered a "Pay Now" the next page could not honour, and
+> no checklist item ever told an owner their Stripe Connect was unfinished), **#262** (trial
+> raised to Starter's limits — carries `tenants/0028`), **#263** (help center H1–H6; public `/contact/` for
+> visitors — carries `support/0003` and `support/0004`; #264 built the same form in parallel and was closed as superseded), **#265** (technician dashboard counts). **Two migrations
+> ride this batch**; check `showmigrations` after the deploy. `eb deploy` ships the current
+> branch's HEAD — on 2026-09-17 that put an unmerged feature branch on prod for 32 minutes;
+> `git checkout main && git pull` first (or `rs_main_deploy_wt`, the worktree that holds
+> `main`).
 
 > **Scope note.** This file is the long-horizon view. The direction — Path A with a
 > B-ready spine — is in `docs/strategy/PRODUCT_DIRECTION.md` (September 2026; signed by
 > Drake 2026-09-08). The near-term work queues live in `docs/strategy/` and are the ones to
 > read before starting a session: `IMPROVEMENT_SESSIONS.md` (now carries a Status line per
-> session; B3/B5/B6 are the spine), `FIELD_OPS_SESSIONS.md` (S11–S14 scheduling UX open),
+> session; B3/B5/B6 are the spine, and **C3 · Findability is the head of the queue**),
+> `FIELD_OPS_SESSIONS.md` (S11–S14 scheduling UX open),
 > `PHOTO_ML_SESSIONS.md` (P8 is its last code), `UI_MAGIC_SESSIONS.md` (arc clear; sweeps
 > parked), `JOB_QUEUE_SESSIONS.md` (Q5/Q6 parked), `TEST_SUITE_SESSIONS.md`,
 > `HELP_CENTER_SESSIONS.md` (H1–H6 built 2026-09-17, PR #263; H7 backlog).
