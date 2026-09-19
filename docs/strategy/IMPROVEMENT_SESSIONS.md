@@ -805,12 +805,14 @@ proposed in `docs/proposals/website-integration-widget.md`).
   `/help/contact/`, which was `@login_required` and 302'd a visitor to
   `/login/?next=/help/contact/`. It is the only non-`mailto:` contact path on the page, and it
   was shut to exactly the person C1 was written for: a shop owner who is interested but has not
-  signed up. Opened by the help center's H2 (PR #263, `docs/strategy/HELP_CENTER_SESSIONS.md`) as a
+  signed up. Opened by the help center's H2 (PR #263; the help center queue closed 2026-09-18, see `CHANGELOG.md`) as a
   separate public `/contact/` (guides stay gated): the anonymous sender is asked their name, and
   the public endpoint carries the three spam defences it needs — a honeypot, Turnstile, and a
   per-IP rate limit, because keying on `user` puts every anonymous sender in one shared bucket.
   #264 built the same fix in parallel and was closed as superseded; its one extra — asking a
-  visitor which shop they are with — lands with H8. **C1's promise now actually works.** C3 below is the
+  visitor which shop they are with — landed with H8 (#267). **C1's promise now actually works,
+  on prod since 2026-09-18** — after #268, without which the form 400'd every visitor (found by
+  the H8 prod check, not by any test). C3 below is the
   rest of the marketing-site scope C1 left out.
 
 
@@ -1092,7 +1094,7 @@ B6~~ → **stranger-shop readiness (#261/#262/#263/#265, merged)** → **C3** �
 | — | **B2, D1, D2** | memos; B2 waits on the toll-free number |
 | ~~—~~ | ~~A1, A5, B1~~ | done |
 
-**Four PRs are merged and not yet deployed** — #261 (the portal offered a Pay Now the next page
+**All four are on prod as of 2026-09-18 (`6cdb7a03`)** — #261 (the portal offered a Pay Now the next page
 could not honour, and no checklist item ever told an owner their Stripe Connect was unfinished),
 #262 (trial limits), #263 (help center, incl. the public contact form; #264 duplicated it and was
 closed), #265 (A4). They were not sessions in this
