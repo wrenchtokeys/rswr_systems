@@ -15,6 +15,7 @@ Tests for the Phase 3 support contact form (launch readiness roadmap):
 - Acknowledgement email to the sender (H5) and the sender's own message list
 """
 
+import os
 from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
@@ -337,6 +338,16 @@ class PublicContactTests(TestCase):
         self.assertRedirects(resp, f'{PUBLIC_URL}?sent=1')
         self.assertEqual(SupportMessage.objects.count(), 0)
         self.assertEqual(len(mail.outbox), 0)
+
+    def test_anonymous_page_renders_the_turnstile_widget_when_keys_are_set(self):
+        # The context processor that carries turnstile_site_key returns {} for an
+        # anonymous request, so the view must pass it itself. Prod had the keys
+        # set, rendered no widget, and 400'd every visitor until this was caught.
+        with patch.dict(os.environ, {'TURNSTILE_SITE_KEY': '1x00000000000000000000AA'}):
+            resp = self.client.get(PUBLIC_URL)
+        self.assertContains(resp, 'cf-turnstile')
+        self.assertContains(resp, 'data-sitekey="1x00000000000000000000AA"')
+        self.assertContains(resp, 'challenges.cloudflare.com/turnstile/v0/api.js')
 
     def test_turnstile_failure_rejected(self):
         with patch('apps.saas.views._verify_turnstile', return_value=False):
