@@ -9,6 +9,7 @@ import logging
 import os
 
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.views import redirect_to_login
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from django.conf import settings
@@ -40,6 +41,15 @@ HELP_SECTIONS = [
 #   owner_only — True hides the card from technicians on the index (guides
 #              whose content lives behind Settings they can't open). Direct
 #              links still work for everyone.
+#   public     — True serves the guide to a signed-out visitor and puts it in
+#              sitemap.xml (C3). Set it only on a guide that answers a question
+#              a glass-shop owner would type into Google without knowing this
+#              product exists. It is orthogonal to owner_only: "Sales tax" is
+#              both, because the settings it describes are the owner's but the
+#              question is everybody's. Guides written for someone who already
+#              has an account ("Trial ending", "Settings explained", "For
+#              technicians") stay signed-in only — publishing those would rank
+#              us for our own product name and nothing else.
 HELP_TOPICS = {
     # --- Getting started ---------------------------------------------------
     'first-job': {
@@ -59,6 +69,7 @@ HELP_TOPICS = {
         'color': 'amber',
         'video_label': 'Watch: multi-break entry (90 sec)',
         'keywords': 'chip chips crack cracks batch several multiple discount',
+        'public': True,
     },
     'settings-explained': {
         'section': 'start',
@@ -109,6 +120,7 @@ HELP_TOPICS = {
         'video_label': 'Watch: setting up sales tax (90 sec)',
         'keywords': 'tax rate exempt no tax percent',
         'owner_only': True,
+        'public': True,
     },
     'progressive-pricing': {
         'section': 'money',
@@ -118,6 +130,7 @@ HELP_TOPICS = {
         'color': 'green',
         'video_label': 'Watch: progressive pricing (90 sec)',
         'keywords': 'price ladder step down discount flat rate per repair cost cheaper custom',
+        'public': True,
     },
     'paid-on-time': {
         'section': 'money',
@@ -128,6 +141,7 @@ HELP_TOPICS = {
         'video_label': 'Watch: chasing less, collecting more (2 min)',
         'keywords': 'overdue late aging owed batch monthly collect check receive payment',
         'owner_only': True,
+        'public': True,
     },
     'quotes': {
         'section': 'money',
@@ -231,6 +245,7 @@ HELP_TOPICS = {
         'video_label': 'Watch: setting your warranty (90 sec)',
         'keywords': 'guarantee policy coverage lifetime promise',
         'owner_only': True,
+        'public': True,
     },
 
     # --- When something looks wrong -------------------------------------------
@@ -327,8 +342,26 @@ def _is_owner_or_manager(request):
     return role in ('superuser', 'owner', 'manager')
 
 
+def public_topics():
+    """Ordered (slug, topic) pairs a signed-out visitor may read — C3.
+
+    The single source of truth for what is published: `help_topic` gates on it
+    and `rs_systems.views.sitemap_xml` lists it. A second hand-maintained list
+    is how a sitemap comes to advertise a URL that 404s, which this one already
+    did once (`/register/`, recorded in launch-readiness-roadmap.md).
+    """
+    return [(slug, topic) for slug, topic in HELP_TOPICS.items()
+            if topic.get('public')]
+
+
 def _visible_topics(request):
-    """Ordered (slug, topic) pairs this user should see on the index."""
+    """Ordered (slug, topic) pairs this reader should see.
+
+    A signed-out visitor sees the published guides and nothing else — which is
+    also what keeps "Next up →" from walking them into a login wall.
+    """
+    if not request.user.is_authenticated:
+        return public_topics()
     show_all = _is_owner_or_manager(request)
     return [
         (slug, topic)
@@ -353,12 +386,20 @@ def help_home(request):
     return render(request, 'support/index.html', {'sections': sections})
 
 
-@login_required
 def help_topic(request, slug):
-    """GET /help/<slug>/ — one plain-language guide."""
+    """GET /help/<slug>/ — one plain-language guide.
+
+    Deliberately not `@login_required` (C3): the five guides flagged `public`
+    are marketing content — they answer questions a shop owner types into
+    Google before they have heard of RS Systems, and they were sitting behind
+    a login. Everything else still requires an account, and asks for one the
+    same way the decorator did, with `?next=` intact.
+    """
     topic = HELP_TOPICS.get(slug)
     if topic is None:
         raise Http404('Unknown help topic')
+    if not request.user.is_authenticated and not topic.get('public'):
+        return redirect_to_login(request.get_full_path())
 
     # "Next up →" — the guide after this one in the same section, respecting
     # the reader's role, so each section reads like a short course.
@@ -372,10 +413,19 @@ def help_topic(request, slug):
             next_slug = section_slugs[idx + 1]
             next_topic = {'slug': next_slug, **HELP_TOPICS[next_slug]}
 
+    # A signed-out reader gets the public marketing shell, not the app chrome:
+    # base_app.html's navbar is a shop's own branded navigation, with a user
+    # menu and links into the app. Both shells define `title`, `content` and
+    # `extra_head`, so base_topic.html fills either one.
     context = {
         'topic': topic,
         'slug': slug,
         'next_topic': next_topic,
+        'shell_template': ('base_app.html' if request.user.is_authenticated
+                           else 'saas/base_public.html'),
+        'other_public_topics': [
+            {'slug': s, **t} for s, t in public_topics() if s != slug
+        ],
     }
     if slug == 'trial-ending':
         context.update(trial_facts())

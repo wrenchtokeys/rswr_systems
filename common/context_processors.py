@@ -153,3 +153,20 @@ def csp_nonce(request):
     reported under report-only, which is the outcome we want to hear about.
     """
     return {'csp_nonce': getattr(request, 'csp_nonce', '')}
+
+
+def analytics(request):
+    """`{{ plausible_domain }}` for `includes/analytics.html` — C3.
+
+    A context processor rather than a settings read in the template, because it
+    has to reach anonymous visitors: `portal_access` above returns `{}` when
+    nobody is signed in, and a marketing page's reader is the whole point.
+
+    Empty string = analytics off, and the include renders nothing. Nothing else
+    from that feature is exposed here — `{% page_meta %}` reads SITE_URL and
+    GOOGLE_SITE_VERIFICATION from settings itself, so there is one place a
+    canonical URL can come from rather than two that can disagree.
+    """
+    from django.conf import settings as django_settings
+
+    return {'plausible_domain': getattr(django_settings, 'PLAUSIBLE_DOMAIN', '')}

@@ -102,6 +102,37 @@ There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are ven
 - **The Tailwind source lives in `assets/css/input.css`, deliberately outside `static/`.** `STATICFILES_DIRS` is `static/`, so anything under it is collected and served — the source used to sit at `static/css/src/input.css` and was public. It also meant a relative `url()` resolved against two directories (`css/` for the build, `css/src/` for the source) and manifest storage hard-failed the deploy, which is why the Inter `@font-face` was inlined in `head_assets.html` for two sessions. With one location, `url()` is relative to the built `static/css/app.css` — so `../fonts/…` is correct and the manifest rewrites it to the hashed name. Don't move the source back under `static/`; `tests/test_css_pipeline.py` guards this.
 - Verify before deploying: run `collectstatic` under `ForgivingManifestStaticFilesStorage`, not just dev storage — see `docs/strategy/UI_MAGIC_SESSIONS.md` for the settings shim.
 
+### Findability (C3, Sep 2026)
+- **Analytics is first-party and stays that way.** `common/analytics.py` proxies
+  Plausible's tracker from our own origin — `/js/p.js` serves their script, `/pa/event`
+  forwards the beacon with the visitor's `X-Forwarded-For` — so the CSP allowlist is
+  still `'self'` plus Turnstile. Adding `plausible.io` (or GA, or a tag manager) to
+  `script-src`/`connect-src` re-opens the S1/S17 argument on an app that takes card
+  payments. Off unless `PLAUSIBLE_DOMAIN` is set: no tag, and both routes 404.
+  `includes/analytics.html` is rendered by the **public** shells only — C3 is about a
+  stranger finding the site; in-app tracking is a separate decision.
+- **Public-page meta is one call**: `{% load seo %}` + `{% page_meta description="…" %}`
+  emits description, canonical, Open Graph and the Twitter card together. Three
+  hand-written copies of one sentence is how the landing page ended up with no
+  `og:image` and the small `summary` card, so every share rendered as a bare text link.
+  `base_public.html` calls it with defaults, so a new public page is generic, never
+  meta-less. The card image is `static/images/og-card.jpg`, **cropped from the real
+  dashboard capture** by `python scripts/og_card.py` — never hand-author one (S14's rule).
+- **Publishing a help guide is one flag.** `'public': True` in `HELP_TOPICS`
+  (`apps/support/views.py`) serves the guide to a signed-out visitor, puts it in
+  `sitemap.xml`, and adds its `Allow:` line to `robots.txt` — all three read
+  `public_topics()`, so it cannot be published in one place and gated in another. Only
+  flag a guide that answers a question a shop owner would type into Google *before*
+  hearing of RS Systems; the ones written for an account holder stay gated. **A
+  published guide must never show a signed-out reader a link they cannot follow** —
+  wrap deep links into the app, the guide hub and gated guides in
+  `{% if request.user.is_authenticated %}`. That is the exact defect C1's switching
+  section shipped with for four months.
+- **`robots.txt` and `sitemap.xml` are generated, never typed** (`rs_systems/views.py`).
+  A hand-written sitemap is how this one came to advertise a 404 `/register/`. Absolute
+  URLs come from `SITE_URL`, so staging cannot advertise production's.
+  `tests/test_findability.py` fetches every URL the sitemap names.
+
 ### Content-Security-Policy
 - **Every inline `<script>` and `<style>` a browser receives must carry
   `nonce="{{ csp_nonce }}"`** — that exact spelling, so there is one thing to grep.
@@ -171,6 +202,8 @@ seed_demo_shop` into a throwaway DB, drives headless Chrome). **Never hand-autho
 of an app screen** — the last one drifted from the dashboard twice with nobody editing
 either file (UI_MAGIC S14). Re-run the script after a visible change to the owner
 dashboard, jobs list, New Job form or customer portal home, and commit the WebPs.
+`python scripts/og_card.py` crops the Open Graph share card out of the same
+dashboard capture — re-run it in the same breath and commit `static/images/og-card.jpg`.
 `tests/test_landing_credibility.py` also rejects filler statistics ("500+ …", "24/7") on
 that page; a claim there must be something a visitor can check.
 
@@ -643,6 +676,15 @@ PHOTO_SUGGEST_ENABLED=true
 # from SECRET_KEY automatically. Generate:
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 FIELD_ENCRYPTION_KEY=...
+
+# Findability (C3). Both optional; both do nothing when unset.
+# PLAUSIBLE_DOMAIN is the site name registered at plausible.io. Setting it turns on
+# the first-party analytics proxy (common/analytics.py) — the tracker is served from
+# rssystems.io, so the CSP allowlist does not move. Unset = no script, routes 404.
+PLAUSIBLE_DOMAIN=rssystems.io
+# Google Search Console's meta-tag token (value only). Leave unset when the property
+# is verified by DNS TXT instead.
+GOOGLE_SITE_VERIFICATION=...
 
 # AWS S3 (photos, invoices)
 AWS_ACCESS_KEY_ID=...
