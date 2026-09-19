@@ -59,8 +59,9 @@ section; every other doc points here rather than restating it.
   indexable URLs, carries no analytics of any kind, hides 18 written guides behind a login,
   and renders no image when anyone shares it. Its one contact link was `@login_required`
   until #263. That is step 6 and session C3; step 7 is the outreach.
-- **Production runs `8da23bbe` (deployed 2026-09-17 14:20 UTC)** — everything through #258;
-  the four readiness PRs (#261, #262, #263, #265) and #260 are merged and not yet deployed. A shop can send a quote today. Customers' damage photos have not been
+- **Production runs `6cdb7a03` (deployed 2026-09-19 01:33 UTC)** — everything through #268:
+  the readiness PRs (#261, #262, #263, #265), #260, the help center wrap-up (#267) and the
+  public form's Turnstile fix (#268). A shop can send a quote today. Customers' damage photos have not been
   world-readable since 2026-09-06 22:04 UTC. `ROADMAP.md` keeps that line current.
 
 ## The June plan, scored
@@ -121,9 +122,9 @@ corrects.
    `@login_required`, so it 302'd exactly the interested-but-not-signed-up owner the page was
    written for — fixed by the help center's H2; #264 built the same fix in parallel and was closed). The fourth is a session: **`IMPROVEMENT_SESSIONS.md` C3 · Findability** — the
    site is five indexable URLs, there is **no analytics of any kind**, 18 written guides sit
-   behind a login, and no share of rssystems.io renders an image. **None of the four is
-   deployed.** #265 (technician dashboard counts, closing A4) rode the same audit but is
-   craft, not a blocker.
+   behind a login, and no share of rssystems.io renders an image. **The three code fixes are
+   on prod as of 2026-09-18 (`6cdb7a03`); C3 is what remains of this step.** #265 (technician
+   dashboard counts, closing A4) rode the same audit but is craft, not a blocker.
 7. **Go-to-market**: three shops that are not family on the product.
    The five dedicated insurance-shop interviews were **dropped as a gate on 2026-09-17** (see
    §The decision); `INSURANCE_SHOP_INTERVIEWS.md` is kept as the discovery-call outline for
@@ -158,6 +159,7 @@ Not features shipped. These are the only numbers that say the direction is worki
 
 | Date | Change |
 |---|---|
+| 2026-09-18 | **Step 6's three code fixes deployed** (`43a57eff` then `6cdb7a03`, evening of the 18th Central) together with the help center queue's last session (H8: the trial-expired email now states the 14-day read-only window instead of "locked"; a visitor can name their shop on `/contact/`). H8's "send one real message on prod" step earned its place: the public form was refusing every anonymous visitor (no Turnstile widget rendered), fixed within the hour as #268. The help center queue is closed and its doc retired — `CHANGELOG.md` holds the record. #264 was closed as a duplicate of #263's H2. Only C3 · Findability is left in step 6. |
 | 2026-09-18 | **Step 6 was wrong, and is now two steps.** "Go-to-market, which no code moves" was written from the sales motion; a readiness audit of all three dashboards found four defects on the path a stranger actually walks, three of them code. New step 6 (stranger-shop readiness) carries them — #261 payments silence, #262 trial limits, #263 public contact form, and `IMPROVEMENT_SESSIONS.md` **C3 · Findability** for the fourth, which is a session and is next. Selling moves to step 7, where the "no code" claim is true. Step 2 updated: the Connect form is still Drake's dad's to fill in, but the product's silence about it was ours. Nothing is deployed. |
 | 2026-06-12 | Initial version — post-stabilization direction for Q3 2026 (90-day plan: growth quick wins → adoption gaps → engagement depth). |
 | 2026-09-17 | **Go-to-market prep, and the interviews dropped as a gate.** C2 (pricing page audit) closed: prod plan data is correct, the label/seed defects fixed. `INSURANCE_SHOP_INTERVIEWS.md` written as a script — then, on Drake's call the same day, **the five dedicated interviews were removed from the success criteria**: they decide Path B, which nothing this quarter depends on, while the product has no non-family customer. The script stays as the trial-shop discovery call; the two insurance questions are asked on every prospect and Path B is revisited when a paying customer asks. Step 6 is now one thing: three non-family shops. |

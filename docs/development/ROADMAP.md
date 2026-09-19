@@ -1,26 +1,22 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: September 18, 2026 (stranger-shop readiness: four PRs — #261 payments truth, #262 trial limits, #263 help center incl. the public contact form, #265 technician dashboard counts — merged, not yet deployed — plus new session C3 · Findability. Prod is unchanged at `8da23bbe`).*
+*Last Updated: September 18, 2026 (everything through #268 deployed as `6cdb7a03`: stranger-shop readiness #261/#262/#265, the help center H1–H8 incl. the public contact form, C2 labels. Help center queue closed; C3 · Findability is next).*
 
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
-> snapshot):** production runs `8da23bbe`, deployed **2026-09-17 14:20 UTC** — everything
-> merged through #258 is live: #255 (B5 insurance claims), #257 (B6 price book:
-> `/owner/price-book/`, the suggestion endpoint, `technician_portal/0063`), #258 (staff SMS
-> consent record, `core/0035`), all verified with `showmigrations` on the instance.
-> `seed_price_book` was run on the instance at 14:2x UTC and read 0 jobs — no shop on prod has
-> a replacement record yet, so the book starts from the first completed one. The media bucket's
-> `repair_photos/*` prefix has been private since 2026-09-06 22:04 UTC.
->
-> **Open and undeployed (2026-09-18), all from the stranger-shop readiness audit:** #260 (C2
-> pricing labels), **#261** (the portal offered a "Pay Now" the next page could not honour, and
-> no checklist item ever told an owner their Stripe Connect was unfinished), **#262** (trial
-> raised to Starter's limits — carries `tenants/0028`), **#263** (help center H1–H6; public `/contact/` for
-> visitors — carries `support/0003` and `support/0004`; #264 built the same form in parallel and was closed as superseded), **#265** (technician dashboard counts). **Two migrations
-> ride this batch**; check `showmigrations` after the deploy. `eb deploy` ships the current
-> branch's HEAD — on 2026-09-17 that put an unmerged feature branch on prod for 32 minutes;
-> `git checkout main && git pull` first (or `rs_main_deploy_wt`, the worktree that holds
-> `main`).
+> snapshot):** nothing. Production runs `6cdb7a03`, deployed **2026-09-19 01:33 UTC**
+> from `rs_main_deploy_wt` (after `43a57eff` at 01:28 UTC) — everything merged through #268 is live: #260 (C2 pricing labels),
+> #261 (portal "Pay Now" honesty + the "Get Paid by Card" checklist row), #262 (trial at
+> Starter's limits, `tenants/0028`), #263 (help center H1–H6, public `/contact/`,
+> `support/0003`–`0004`), #265 (technician dashboard counts), #266 (C3 docs), #267 (help
+> center H8: truthful trial-expired email, visitor shop name, `support/0005`), #268 (the public
+> form's Turnstile widget, which the H8 prod check found missing for anonymous visitors). Four
+> migrations rode it, all confirmed applied with `showmigrations` on the instance. The public
+> contact loop was proven on prod after `6cdb7a03` (`CHANGELOG.md`, 2026-09-18). `seed_price_book` still has nothing to read (no replacement
+> record on prod yet). The media bucket's `repair_photos/*` prefix has been private since
+> 2026-09-06 22:04 UTC. `eb deploy` ships the current branch's HEAD — on 2026-09-17 that put an
+> unmerged feature branch on prod for 32 minutes; deploy from `rs_main_deploy_wt` (the
+> worktree that holds `main`) after `git pull --ff-only`.
 
 > **Scope note.** This file is the long-horizon view. The direction — Path A with a
 > B-ready spine — is in `docs/strategy/PRODUCT_DIRECTION.md` (September 2026; signed by
@@ -30,7 +26,8 @@
 > `FIELD_OPS_SESSIONS.md` (S11–S14 scheduling UX open),
 > `PHOTO_ML_SESSIONS.md` (P8 is its last code), `UI_MAGIC_SESSIONS.md` (arc clear; sweeps
 > parked), `JOB_QUEUE_SESSIONS.md` (Q5/Q6 parked), `TEST_SUITE_SESSIONS.md`,
-> `HELP_CENTER_SESSIONS.md` (H1–H6 built 2026-09-17, PR #263; H7 backlog).
+> The help center queue (H1–H8) closed 2026-09-18 and its doc was retired; the record is in
+> `CHANGELOG.md` (2026-09-17 and 2026-09-18 entries).
 > For dated detail on anything below, `CHANGELOG.md` is canonical.
 
 ---

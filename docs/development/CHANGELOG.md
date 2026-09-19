@@ -14,6 +14,50 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-09-18 — Help center closed out (H8), and everything since `8da23bbe` deployed
+
+**Deployed 2026-09-19 01:28 UTC as `43a57eff`** (`main`; the evening of the 18th, Central): #260 (C2
+pricing labels), #261 (payments truth), #262 (trial limits, `tenants/0028`), #263 (help center
+H1–H6, `support/0003` + `support/0004`), #265 (technician dashboard counts), #266 (C3 docs) and
+#267 (below). **Then `6cdb7a03` at 01:33 UTC** for #268, the bug the prod check found (first
+Fixed bullet). `showmigrations` on the instance: `support/0005` and `tenants/0028` applied.
+Verified on prod after `6cdb7a03`: one message sent anonymously through `/contact/` (name, reply address, shop typed) → the success card; the acknowledgement arrived at the typed address from `notifications@rssystems.io` with the message text; the admin notification arrived in the `ADMINS` inbox with **Reply-To = the typed address** (Gmail shows it); the row reads `source=Public`, `shop_name` set, `emailed_ok` and `acknowledged` true; `sweep_support_messages --dry-run` through `run-cron.sh` reported `0 message(s) never reached the admins, 0 sender(s) never got an acknowledgement`; the row was then set to Replied. **One thing the check surfaced and did not fix:** every platform-voiced email (this acknowledgement, the trial and billing alerts) signs its footer with the `EmailBrandingConfig` singleton's `company_name`, which on prod is "Rockstar Windshield Repair" (logo set, support email and website blank) — a stranger who writes to RS Systems is answered by an email signed by Drake's own shop. `emails/base.html` documents the intent as "company_name is RS Systems"; it is prod data at `/admin/core/emailbrandingconfig/`, not code, and is Drake's call.
+
+### Fixed
+- **The public contact form refused every visitor on prod.** `public_contact.html` guards the
+  Turnstile widget and its script on `turnstile_site_key`, which came from the `portal_access`
+  context processor — and that processor returns `{}` for an anonymous request. With the keys
+  set on prod, the page rendered no widget, the browser posted no token, and `_verify_turnstile`
+  answered "We couldn't confirm you're a person" to the one audience the page exists for. Caught
+  by H8's "send one real message" step, minutes after `43a57eff` went live. The view now passes
+  the key by hand, as signup always has; a test renders the anonymous page with a site key set
+  and asserts the widget. (#268)
+- **The trial-expired email said "Your account is now locked."** `Tenant.effective_grace_period_end`
+  gives an expired trial `TRIAL_GRACE_DAYS` (14) of read-only; the line now reads that number from
+  settings, and `tests/test_help_truth.py` renders the alert with `TRIAL_GRACE_DAYS=9` and asserts 9
+  and no "locked" — the same guard the guides already had. The paid-lapse emails' "30 days of
+  read-only" was true all along (`GRACE_DAYS_AFTER_UNPAID`). (#267)
+
+### Added
+- **The public `/contact/` asks a visitor which shop they're with** (`SupportMessage.shop_name`,
+  `support/0005`) — ported from #264, which built the public form in parallel with H2 and was
+  closed as superseded. A signed-in sender is never asked and a posted `shop_name` from one is
+  discarded; the notification prints it as "(visitor, public form)" so it never reads like a
+  verified tenant; the admin list's Shop column reads the tenant or the typed name. (#267)
+
+### Changed (docs)
+- **`docs/strategy/HELP_CENTER_SESSIONS.md` is removed.** Its queue is closed: H1–H6 shipped in
+  #263, H8 in #267 and this deploy. The `HELP_CENTER_SESSIONS H<n>` labels in code comments and
+  test docstrings refer to the sessions as recorded here and in the 2026-09-17 entry below —
+  H1 truth pass · H2 public contact form · H3 spine guides · H4 no "video coming soon" · H5
+  acknowledgement + sweep · H6 feedback rollup · H8 this wrap-up. **H7 (polish — guides in
+  global search, a "last updated" line, a portal-side "report a problem", keyboard hub,
+  `docs/user-guides/` refresh) was backlog behind a second shop and is not carried anywhere;
+  the staff-SMS card in `team-roles` waits on registration v5 reading `COMPLETE`**
+  (`docs/operations/SMS_REGISTRATION.md` §3.5).
+
+---
+
 ## 2026-09-18 — Stranger-shop readiness: four PRs and a new session
 
 A readiness audit — *"can a shop that isn't family run on this yet?"* — walked all three
@@ -92,7 +136,7 @@ was re-verified against the code. Four defects sat directly on the path a strang
 
 ## 2026-09-17 — Help center: truth pass, public contact form, guides for the spine
 
-Queue: `docs/strategy/HELP_CENTER_SESSIONS.md` (H1–H6). One PR, one commit per session.
+Sessions H1–H6 of the help center queue (the queue doc was retired after H8 — see the entry above). One PR, one commit per session.
 
 ### Fixed
 - **Three guides and a Settings card promised overdue-reminder emails** that the cron has been
