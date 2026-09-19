@@ -260,6 +260,34 @@ class PageMetaTests(TestCase):
         self.assertIn(HELP_TOPICS['warranty']['blurb'], html)
         self.assertIn(f'<link rel="canonical" href="{settings.SITE_URL}/help/warranty/"', html)
 
+    def test_the_rich_snippet_price_range_tracks_the_plan_rows(self):
+        """The JSON-LD AggregateOffer is what Google may print beside the result.
+
+        C1 flagged it as a rich-snippet liability and C2's lesson is that plan
+        data drifts — a $49–$249 snippet under a page selling $79–$299 is a
+        wrong price in a search result, which is the one place nobody looks.
+        """
+        import json
+
+        SubscriptionPlan.objects.all().delete()
+        for slug, price, order in (('starter', '79.00', 1), ('pro', '149.00', 2),
+                                   ('enterprise', '299.00', 3)):
+            SubscriptionPlan.objects.create(
+                slug=slug, name=slug.title(), monthly_price=Decimal(price),
+                display_order=order, is_active=True,
+            )
+        # A trial row is excluded from the cards, so it must not set the floor.
+        SubscriptionPlan.objects.create(slug='trial', name='Trial',
+                                        monthly_price=Decimal('0.00'),
+                                        display_order=0, is_active=True)
+
+        html = self._html('home')
+        block = html.split('application/ld+json">')[1].split('</script>')[0]
+        offers = json.loads(block)['offers']
+        self.assertEqual(offers['lowPrice'], '79')
+        self.assertEqual(offers['highPrice'], '299')
+        self.assertEqual(offers['offerCount'], '3')
+
     def test_search_console_meta_tag_renders_only_when_configured(self):
         self.assertNotIn('google-site-verification', self._html('pricing'))
         with override_settings(GOOGLE_SITE_VERIFICATION='abc123'):
