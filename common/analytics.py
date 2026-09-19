@@ -104,16 +104,24 @@ def plausible_script(request):
 
 
 def _client_ip(request):
-    """The visitor's address, for Plausible's country/unique-visitor counting.
+    """The visitor's address, for Plausible's country and unique-visitor counts.
 
     Plausible derives both from the request IP, and the request it sees is
-    ours. Without forwarding this, every visitor would be one visitor in
-    Virginia. Behind the EB load balancer the left-most XFF entry is the
-    client; falling back to REMOTE_ADDR covers a direct request.
+    ours — without this, every visitor is one visitor in Virginia.
+
+    THE LAST XFF ENTRY, NOT THE FIRST. The EB load balancer *appends* the peer
+    address to any `X-Forwarded-For` the client sent, so the right-most entry is
+    the one the ALB vouched for and everything to its left is whatever the
+    client typed. Reading `[0]` — the usual spelling, and the one
+    `LoginAttempt.get_client_ip` uses — would let any visitor choose the country
+    their pageview is counted in, which defeats the point of having analytics at
+    all. REMOTE_ADDR covers a request that reached us with no proxy in front.
     """
     forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
     if forwarded:
-        return forwarded.split(',')[0].strip()
+        hops = [hop.strip() for hop in forwarded.split(',') if hop.strip()]
+        if hops:
+            return hops[-1]
     return request.META.get('REMOTE_ADDR', '')
 
 

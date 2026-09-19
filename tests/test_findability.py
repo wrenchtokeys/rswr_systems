@@ -18,6 +18,14 @@ The four things guarded here:
 3. **Every public page has a description, a canonical and a large share card.**
 4. **Analytics is first-party.** The CSP allowlist must not grow a host, and
    the tracker must be off when unconfigured.
+
+Every loop here collects its offenders and asserts once at the end rather than
+using `subTest`. That reads better on a failure — you get the whole list, not
+the first one — and it is also the only shape that survives `--parallel`: a
+`subTest` failure inside a `TestCase` that has used `self.client` pickles the
+test case back to the parent process, the client drags the middleware chain
+along, and the run dies with `cannot pickle 'module' object` having reported
+nothing at all.
 """
 
 import os
@@ -72,21 +80,24 @@ class PublishedGuideTests(TestCase):
     def test_every_public_guide_returns_200_to_a_visitor(self):
         published = [slug for slug, _t in public_topics()]
         self.assertTrue(published, 'Nothing is published — C3 published five guides.')
-        for slug in published:
-            with self.subTest(slug=slug):
-                response = self.client.get(reverse('help_topic', args=[slug]))
-                self.assertEqual(response.status_code, 200)
+        bad = {slug: self.client.get(reverse('help_topic', args=[slug])).status_code
+               for slug in published}
+        self.assertEqual({s: c for s, c in bad.items() if c != 200}, {})
 
     def test_gated_guides_still_ask_a_visitor_to_sign_in(self):
         gated = [s for s, t in HELP_TOPICS.items() if not t.get('public')]
         self.assertTrue(gated, 'Everything is published — that was not the decision.')
+        leaked, no_next = [], []
         for slug in gated:
-            with self.subTest(slug=slug):
-                url = reverse('help_topic', args=[slug])
-                response = self.client.get(url)
-                self.assertEqual(response.status_code, 302)
-                # `?next=` intact: the decorator's behaviour, kept by hand.
-                self.assertIn(f'next={url}', response['Location'])
+            url = reverse('help_topic', args=[slug])
+            response = self.client.get(url)
+            if response.status_code != 302:
+                leaked.append(f'{slug} → {response.status_code}')
+            # `?next=` intact: the decorator's behaviour, kept by hand.
+            elif f'next={url}' not in response['Location']:
+                no_next.append(f'{slug} → {response["Location"]}')
+        self.assertEqual(leaked, [], 'gated guides answered a signed-out visitor')
+        self.assertEqual(no_next, [], 'sign-in redirect lost ?next=')
 
     def test_the_guide_hub_is_still_signed_in_only(self):
         # The hub lists every guide including the gated ones; publishing it
@@ -109,11 +120,13 @@ class PublishedGuideTests(TestCase):
             reverse('owner_invoice_list'), reverse('create_multi_break_repair'),
             reverse('help_contact'),
         }
+        offenders = []
         for slug, _topic in public_topics():
             html = self.client.get(reverse('help_topic', args=[slug])).content.decode()
-            for url in forbidden:
-                with self.subTest(slug=slug, url=url):
-                    self.assertNotIn(f'href="{url}"', html)
+            offenders += [f'{slug} links to {url}' for url in sorted(forbidden)
+                          if f'href="{url}"' in html]
+        self.assertEqual(offenders, [],
+                         'a published guide sends a visitor somewhere they cannot go')
 
     def test_a_visitor_gets_the_public_shell_and_a_way_in(self):
         html = self.client.get(reverse('help_topic', args=['sales-tax'])).content.decode()
@@ -138,9 +151,10 @@ class PublishedGuideTests(TestCase):
         self.assertIn(reverse('owner_settings'), html)
 
     def test_every_published_guide_has_its_template(self):
-        for slug, _topic in public_topics():
-            path = os.path.join(REPO, 'templates', 'support', f'{slug}.html')
-            self.assertTrue(os.path.exists(path), f'{slug} is published with no template')
+        missing = [slug for slug, _t in public_topics()
+                   if not os.path.exists(os.path.join(REPO, 'templates', 'support',
+                                                      f'{slug}.html'))]
+        self.assertEqual(missing, [], 'published with no template')
 
 
 @override_settings(**TEST_SETTINGS)
@@ -161,12 +175,13 @@ class SitemapAndRobotsTests(TestCase):
         A hand-written list drifts from the URL conf silently — a crawler is the
         only thing that reads it, and it does not report back.
         """
+        broken = []
         for path in self._sitemap_paths():
-            with self.subTest(path=path):
-                response = self.client.get(path)
-                self.assertNotEqual(response.status_code, 404, f'{path} is in the sitemap and 404s')
-                self.assertNotEqual(response.status_code, 302,
-                                    f'{path} is in the sitemap and redirects a visitor away')
+            code = self.client.get(path).status_code
+            if code in (404, 302):
+                broken.append(f'{path} → {code}')
+        self.assertEqual(broken, [],
+                         'the sitemap advertises URLs a crawler cannot fetch')
 
     def test_published_guides_are_in_the_sitemap(self):
         paths = self._sitemap_paths()
@@ -221,29 +236,36 @@ class PageMetaTests(TestCase):
         return response.content.decode()
 
     def test_every_public_page_has_a_description_and_a_canonical(self):
+        missing = []
         for name in PUBLIC_PAGE_NAMES:
-            with self.subTest(page=name):
-                html = self._html(name)
-                self.assertIn('<meta name="description"', html)
-                self.assertIn(f'<link rel="canonical" href="{settings.SITE_URL}{reverse(name)}"', html)
+            html = self._html(name)
+            if '<meta name="description"' not in html:
+                missing.append(f'{name}: no description')
+            if f'<link rel="canonical" href="{settings.SITE_URL}{reverse(name)}"' not in html:
+                missing.append(f'{name}: no canonical')
+        self.assertEqual(missing, [])
 
     def test_descriptions_are_not_all_the_same_sentence(self):
         """/pricing/ is the second-most-likely page to rank; the site-wide
         fallback there is a wasted snippet."""
         from core.templatetags.seo import DEFAULT_DESCRIPTION
-        for name in ('pricing', 'terms_of_service', 'privacy_policy',
-                     'sms_program', 'public_contact'):
-            with self.subTest(page=name):
-                self.assertNotIn(DEFAULT_DESCRIPTION, self._html(name))
+        generic = [name for name in ('pricing', 'terms_of_service', 'privacy_policy',
+                                     'sms_program', 'public_contact')
+                   if DEFAULT_DESCRIPTION in self._html(name)]
+        self.assertEqual(generic, [], 'these pages fall back to the site-wide sentence')
 
     def test_every_public_page_shares_as_a_large_image_card(self):
+        offenders = []
         for name in PUBLIC_PAGE_NAMES:
-            with self.subTest(page=name):
-                html = self._html(name)
-                self.assertIn('<meta name="twitter:card" content="summary_large_image">', html)
-                self.assertIn('og:image', html)
-                # The small `summary` card is a favicon beside a line of text.
-                self.assertNotIn('content="summary"', html)
+            html = self._html(name)
+            if '<meta name="twitter:card" content="summary_large_image">' not in html:
+                offenders.append(f'{name}: not a large-image card')
+            if 'og:image' not in html:
+                offenders.append(f'{name}: no og:image')
+            # The small `summary` card is a favicon beside a line of text.
+            if 'content="summary"' in html:
+                offenders.append(f'{name}: still the small summary card')
+        self.assertEqual(offenders, [])
 
     def test_the_share_card_image_is_committed_at_open_graph_dimensions(self):
         from core.templatetags.seo import (OG_IMAGE_HEIGHT, OG_IMAGE_PATH,
@@ -312,15 +334,19 @@ class AnalyticsTests(TestCase):
 
     @override_settings(PLAUSIBLE_DOMAIN='rssystems.io')
     def test_the_tracker_is_served_from_our_own_origin(self):
+        offenders = []
         for name in ('home', 'pricing'):
-            with self.subTest(page=name):
-                html = self.client.get(reverse(name)).content.decode()
-                self.assertIn('data-domain="rssystems.io"', html)
-                self.assertIn(f'src="{reverse("plausible_script")}"', html)
-                self.assertIn(f'data-api="{reverse("plausible_event")}"', html)
-                # A third-party host here is the thing this design exists to
-                # avoid; it would need a CSP change to work at all.
-                self.assertNotIn('plausible.io', html)
+            html = self.client.get(reverse(name)).content.decode()
+            for needle in ('data-domain="rssystems.io"',
+                           f'src="{reverse("plausible_script")}"',
+                           f'data-api="{reverse("plausible_event")}"'):
+                if needle not in html:
+                    offenders.append(f'{name}: missing {needle}')
+            # A third-party host here is the thing this design exists to
+            # avoid; it would need a CSP change to work at all.
+            if 'plausible.io' in html:
+                offenders.append(f'{name}: names plausible.io directly')
+        self.assertEqual(offenders, [])
 
     @override_settings(PLAUSIBLE_DOMAIN='rssystems.io')
     def test_a_published_guide_is_tracked_but_the_app_is_not(self):
@@ -371,7 +397,12 @@ class AnalyticsProxyTests(SimpleTestCase):
     @override_settings(PLAUSIBLE_DOMAIN='rssystems.io', **TEST_SETTINGS)
     def test_the_visitors_address_is_forwarded_not_ours(self):
         """Plausible derives country and unique visitors from the request IP,
-        and the request it sees is our server's."""
+        and the request it sees is our server's.
+
+        The address taken is the RIGHT-most hop — the one the load balancer
+        appended. Everything to its left is whatever the client typed, so
+        reading `[0]` would let a visitor pick the country they are counted in.
+        """
         from unittest.mock import MagicMock, patch
 
         upstream = MagicMock(status_code=202, content=b'ok', headers={})
@@ -379,12 +410,24 @@ class AnalyticsProxyTests(SimpleTestCase):
             self.client.post(
                 reverse('plausible_event'),
                 data='{"n":"pageview"}', content_type='application/json',
-                HTTP_X_FORWARDED_FOR='203.0.113.9, 10.0.0.1',
+                HTTP_X_FORWARDED_FOR='198.51.100.7, 203.0.113.9',
                 HTTP_USER_AGENT='Mozilla/5.0 (test)',
             )
         headers = post.call_args.kwargs['headers']
         self.assertEqual(headers['X-Forwarded-For'], '203.0.113.9')
         self.assertEqual(headers['User-Agent'], 'Mozilla/5.0 (test)')
+
+    @override_settings(PLAUSIBLE_DOMAIN='rssystems.io', **TEST_SETTINGS)
+    def test_a_direct_request_falls_back_to_remote_addr(self):
+        from unittest.mock import MagicMock, patch
+
+        upstream = MagicMock(status_code=202, content=b'ok', headers={})
+        with patch('common.analytics.requests.post', return_value=upstream) as post:
+            self.client.post(reverse('plausible_event'), data='{}',
+                             content_type='application/json',
+                             REMOTE_ADDR='192.0.2.44')
+        self.assertEqual(post.call_args.kwargs['headers']['X-Forwarded-For'],
+                         '192.0.2.44')
 
     @override_settings(PLAUSIBLE_DOMAIN='rssystems.io', **TEST_SETTINGS)
     def test_a_failed_forward_is_accepted_quietly(self):
