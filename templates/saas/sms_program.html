@@ -1,6 +1,9 @@
 {% extends "saas/base_public.html" %}
+{% load seo %}
 
 {% block title %}Text Message Program - RS Systems{% endblock %}
+
+{% block meta %}{% page_meta title="RS Systems Text Message Program" description="What RS Systems texts, who gets a text, how to opt in and how to stop. Message and data rates may apply." %}{% endblock %}
 
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">

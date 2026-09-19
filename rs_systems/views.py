@@ -17,6 +17,7 @@ from apps.technician_portal.forms import TechnicianRegistrationForm
 from django.contrib import messages
 from django.http import Http404, HttpResponse, HttpResponseNotFound, JsonResponse
 from django.conf import settings
+from django.urls import reverse
 import logging
 
 logger = logging.getLogger(__name__)
@@ -1042,40 +1043,95 @@ def payment_cancelled(request):
 
 
 
-def robots_txt(request):
-    """robots.txt for search engine crawlers."""
-    content = """User-agent: *
-Allow: /
-Disallow: /admin/
-Disallow: /api/
-Disallow: /clawdbot/
-Disallow: /setup-database/
-Disallow: /portal/
-Disallow: /owner/
-Disallow: /customer/
+# Marketing URLs that are always in the sitemap, as (url name, changefreq,
+# priority). Named routes, not literal paths — a hand-written list is how this
+# file once advertised a /register/ that 404s (launch-readiness-roadmap.md), and
+# reverse() makes that impossible. The published help guides are appended from
+# apps.support.views.public_topics(), so publishing a guide adds it here by
+# itself.
+SITEMAP_ROUTES = [
+    ('home', 'weekly', '1.0'),
+    ('pricing', 'monthly', '0.8'),
+    ('signup', 'monthly', '0.8'),
+    ('public_contact', 'monthly', '0.5'),
+    ('terms_of_service', 'yearly', '0.3'),
+    ('privacy_policy', 'yearly', '0.3'),
+    ('sms_program', 'yearly', '0.3'),
+]
 
-Sitemap: https://rssystems.io/sitemap.xml
-"""
-    return HttpResponse(content.strip(), content_type='text/plain')
+# Trees a crawler has no business in. Nothing here leaks — every one is gated or
+# HMAC-tokened — but a crawler will still work them, and /quote/, /invoice/ and
+# /pay/ carry a customer's own document on a token in the URL. Keeping them out
+# of an index is the difference between "private" and "unlisted".
+ROBOTS_DISALLOW = [
+    '/admin/',
+    '/api/',
+    '/clawdbot/',
+    '/owner/',      # owner dashboard, settings, billing
+    '/app/',        # customer portal
+    '/tech/',       # technician portal
+    '/help/',       # the guide hub and the signed-in guides (see Allow, below)
+    '/quote/',      # tokened: a customer's quote
+    '/invoice/',    # tokened: a customer's invoice
+    '/pay/',        # tokened: a customer's payment page
+    '/reviews/',    # tokened: one customer's review link
+    '/r/',          # the SMS-length alias for the same
+    '/pa/event',    # the analytics beacon
+]
+
+
+def robots_txt(request):
+    """robots.txt for search engine crawlers.
+
+    Generated rather than written down, for the same reason as the sitemap: the
+    Allow lines for the published guides come from the one registry that decides
+    what is published, so a newly published guide cannot end up allowed in one
+    file and disallowed in the other.
+
+    `Disallow: /help/` plus a longer `Allow:` per published guide is the correct
+    shape — Google and Bing both resolve a conflict by the longest matching
+    rule, so the five named paths win and the other thirteen stay out.
+    """
+    from apps.support.views import public_topics
+
+    lines = ['User-agent: *', 'Allow: /']
+    lines += [f'Disallow: {path}' for path in ROBOTS_DISALLOW]
+    lines += [
+        f"Allow: {reverse('help_topic', args=[slug])}"
+        for slug, _topic in public_topics()
+    ]
+    lines += ['', f'Sitemap: {settings.SITE_URL}/sitemap.xml']
+    return HttpResponse('\n'.join(lines), content_type='text/plain')
 
 
 def sitemap_xml(request):
-    """Basic XML sitemap for search engines."""
-    urls = [
-        ('https://rssystems.io/', '1.0', 'weekly'),
-        ('https://rssystems.io/pricing/', '0.8', 'monthly'),
-        ('https://rssystems.io/signup/', '0.8', 'monthly'),
-        ('https://rssystems.io/login/', '0.5', 'monthly'),
-        ('https://rssystems.io/sms/', '0.3', 'monthly'),
+    """XML sitemap, built from the URL conf and the published-guide registry.
+
+    Absolute URLs come from SITE_URL, never a hardcoded rssystems.io: a staging
+    deploy that advertises production's URLs to a crawler is worse than one with
+    no sitemap at all.
+    """
+    from apps.support.views import public_topics
+
+    entries = [
+        (f'{settings.SITE_URL}{reverse(name)}', priority, freq)
+        for name, freq, priority in SITEMAP_ROUTES
     ]
+    # A published guide is a page of the marketing site; it belongs here above
+    # the boilerplate and below the pages that sell.
+    entries += [
+        (f"{settings.SITE_URL}{reverse('help_topic', args=[slug])}", '0.6', 'monthly')
+        for slug, _topic in public_topics()
+    ]
+
     xml_lines = ['<?xml version="1.0" encoding="UTF-8"?>']
     xml_lines.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
-    for loc, priority, freq in urls:
-        xml_lines.append(f'  <url>')
+    for loc, priority, freq in entries:
+        xml_lines.append('  <url>')
         xml_lines.append(f'    <loc>{loc}</loc>')
         xml_lines.append(f'    <changefreq>{freq}</changefreq>')
         xml_lines.append(f'    <priority>{priority}</priority>')
-        xml_lines.append(f'  </url>')
+        xml_lines.append('  </url>')
     xml_lines.append('</urlset>')
     return HttpResponse('\n'.join(xml_lines), content_type='application/xml')
 

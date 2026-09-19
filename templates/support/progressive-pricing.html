@@ -28,7 +28,7 @@
             <h2 class="text-sm font-semibold text-gray-900 mb-1">Make the ladder yours — or turn it off</h2>
             <p class="text-sm text-gray-600 leading-relaxed">In <strong>Settings → Pricing &amp; Invoicing</strong> you can set your own numbers for each rung, or switch progressive pricing off entirely and charge one flat price per repair. Both are honest ways to run a shop; pick the one that matches how you quote.</p>
             {% if is_owner_or_manager %}
-            <a href="{% url 'owner_settings' %}?tab=billing" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-800 mt-2">Open pricing settings <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+            {% if request.user.is_authenticated %}<a href="{% url 'owner_settings' %}?tab=billing" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-800 mt-2">Open pricing settings <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>{% endif %}
             {% endif %}
         </div>
     </div>
