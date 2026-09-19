@@ -32,7 +32,9 @@ Verified on prod after `6cdb7a03`: one message sent anonymously through `/contac
   — name, website and footer fixed in code — so no admin edit can put a shop's name on a
   platform email again; the singleton keeps colours, fonts and the platform logo. Shop-branded
   email is unchanged: a shop's customers and staff still see the shop. The prod row was also
-  corrected (name, website, broken logo cleared). (#270)
+  corrected (name, website, broken logo cleared). Deployed as `7f2c01a6` at 02:39 UTC and proven
+  with a second anonymous contact-form message whose acknowledgement reads "RS Systems" in the
+  header and footer. (#270)
 - **The public contact form refused every visitor on prod.** `public_contact.html` guards the
   Turnstile widget and its script on `turnstile_site_key`, which came from the `portal_access`
   context processor — and that processor returns `{}` for an anonymous request. With the keys

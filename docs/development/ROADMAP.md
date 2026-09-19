@@ -1,16 +1,18 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: September 18, 2026 (everything through #268 deployed as `6cdb7a03`: stranger-shop readiness #261/#262/#265, the help center H1–H8 incl. the public contact form, C2 labels. Help center queue closed; C3 · Findability is next).*
+*Last Updated: September 18, 2026 (everything through #270 deployed as `7f2c01a6`: stranger-shop readiness #261/#262/#265, the help center H1–H8 incl. the public contact form, C2 labels. Help center queue closed; C3 · Findability is next).*
 
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
-> snapshot):** nothing. Production runs `6cdb7a03`, deployed **2026-09-19 01:33 UTC**
-> from `rs_main_deploy_wt` (after `43a57eff` at 01:28 UTC) — everything merged through #268 is live: #260 (C2 pricing labels),
+> snapshot):** nothing. Production runs `7f2c01a6`, deployed **2026-09-19 02:39 UTC**
+> from `rs_main_deploy_wt` (after `43a57eff` at 01:28 and `6cdb7a03` at 01:33 UTC) — everything merged through #270 is live: #260 (C2 pricing labels),
 > #261 (portal "Pay Now" honesty + the "Get Paid by Card" checklist row), #262 (trial at
 > Starter's limits, `tenants/0028`), #263 (help center H1–H6, public `/contact/`,
 > `support/0003`–`0004`), #265 (technician dashboard counts), #266 (C3 docs), #267 (help
 > center H8: truthful trial-expired email, visitor shop name, `support/0005`), #268 (the public
-> form's Turnstile widget, which the H8 prod check found missing for anonymous visitors). Four
+> form's Turnstile widget, which the H8 prod check found missing for anonymous visitors), #270
+> (platform emails signed RS Systems, never the branding singleton's name; the prod row was
+> corrected the same evening and the fix was proven with a second contact-form message). Four
 > migrations rode it, all confirmed applied with `showmigrations` on the instance. The public
 > contact loop was proven on prod after `6cdb7a03` (`CHANGELOG.md`, 2026-09-18). `seed_price_book` still has nothing to read (no replacement
 > record on prod yet). The media bucket's `repair_photos/*` prefix has been private since
