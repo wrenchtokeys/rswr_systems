@@ -18,6 +18,7 @@ Covers:
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core import mail
 from django.test import TestCase, override_settings
@@ -80,10 +81,18 @@ class GetTenantContextTests(TestCase):
         self.tenant.business_address = '123 Main St, Little Rock, AR'
         self.tenant.save()
 
-    def test_no_tenant_returns_singleton_values(self):
+    def test_no_tenant_is_the_platform_not_the_singleton(self):
+        # No tenant = RS Systems talking. The singleton row is admin data and
+        # on prod it carried the platform-owner shop's name (2026-09-18).
         ctx = EmailBrandingConfig.get_tenant_context(None)
-        self.assertEqual(ctx['company_name'], 'Rockstar Windshield Repair')
-        self.assertEqual(ctx['support_email'], 'support@rockstar.example.com')
+        self.assertEqual(ctx['company_name'], 'RS Systems')
+        self.assertEqual(ctx['support_email'], '')
+        self.assertEqual(ctx['website_url'], settings.BASE_URL)
+        self.assertNotIn('rockstar', ctx['footer_text'].lower())
+        # Visual system still comes from the row.
+        singleton_ctx = EmailBrandingConfig.get_instance().to_template_context()
+        self.assertEqual(ctx['primary_color'], singleton_ctx['primary_color'])
+        self.assertEqual(ctx['logo_url'], singleton_ctx['logo_url'])
 
     def test_tenant_identity_overrides_singleton(self):
         ctx = EmailBrandingConfig.get_tenant_context(self.tenant)
@@ -189,3 +198,55 @@ class NotificationBrandingInjectionTests(TestCase):
             scheduled_for=timezone.now() + timedelta(hours=1),
         )
         self.assertEqual(notification.template_context['branding']['company_name'], 'Custom')
+
+
+@override_settings(**TEST_SETTINGS)
+class PlatformEmailIdentityTests(TestCase):
+    """An email RS Systems sends itself is signed RS Systems, whatever the
+    singleton row says — the row is where a shop's name leaked in on prod."""
+
+    def setUp(self):
+        config = EmailBrandingConfig.get_instance()
+        config.company_name = 'Rockstar Windshield Repair'
+        config.support_email = 'support@rockstar.example.com'
+        config.website_url = 'https://rockstar.example.com'
+        config.footer_text = 'Rockstar footer'
+        config.save()
+        self.owner, self.tenant = make_tenant('Duncan Auto Glass', 'platform_owner')
+
+    def _html(self, msg):
+        return next(body for body, mime in msg.alternatives if mime == 'text/html')
+
+    def test_platform_email_to_a_shop_is_signed_rs_systems(self):
+        from core.email_utils import send_branded_email
+        send_branded_email(
+            subject='Your trial ends soon', recipient_list=['owner@example.com'],
+            headline='Your trial ends soon', body_paragraphs=['Three days left.'],
+            tenant=self.tenant, platform=True,
+        )
+        html = self._html(mail.outbox[0])
+        self.assertIn('RS Systems', html)
+        self.assertNotIn('Rockstar', html)
+        self.assertNotIn('rockstar.example.com', html)
+        self.assertIn('https://rssystems.io', html)
+
+    def test_support_acknowledgement_is_signed_rs_systems(self):
+        from apps.support.services import submit_support_message
+        submit_support_message(
+            tenant=None, user=None, name='Pat Prospect', email='pat@example.com',
+            topic='question', message='Does it do X?', source='public',
+        )
+        ack = next(m for m in mail.outbox if m.to == ['pat@example.com'])
+        html = self._html(ack)
+        self.assertIn('RS Systems', html)
+        self.assertNotIn('Rockstar', html)
+
+    def test_shop_email_is_still_signed_by_the_shop(self):
+        from core.email_utils import send_branded_email
+        send_branded_email(
+            subject='Your repair is done', recipient_list=['cust@example.com'],
+            headline='Done', body_paragraphs=['All set.'], tenant=self.tenant,
+        )
+        html = self._html(mail.outbox[0])
+        self.assertIn('Duncan Auto Glass', html)
+        self.assertNotIn('Rockstar', html)

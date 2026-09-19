@@ -24,6 +24,15 @@ Fixed bullet). `showmigrations` on the instance: `support/0005` and `tenants/002
 Verified on prod after `6cdb7a03`: one message sent anonymously through `/contact/` (name, reply address, shop typed) → the success card; the acknowledgement arrived at the typed address from `notifications@rssystems.io` with the message text; the admin notification arrived in the `ADMINS` inbox with **Reply-To = the typed address** (Gmail shows it); the row reads `source=Public`, `shop_name` set, `emailed_ok` and `acknowledged` true; `sweep_support_messages --dry-run` through `run-cron.sh` reported `0 message(s) never reached the admins, 0 sender(s) never got an acknowledgement`; the row was then set to Replied. **One thing the check surfaced and did not fix:** every platform-voiced email (this acknowledgement, the trial and billing alerts) signs its footer with the `EmailBrandingConfig` singleton's `company_name`, which on prod is "Rockstar Windshield Repair" (logo set, support email and website blank) — a stranger who writes to RS Systems is answered by an email signed by Drake's own shop. `emails/base.html` documents the intent as "company_name is RS Systems"; it is prod data at `/admin/core/emailbrandingconfig/`, not code, and is Drake's call.
 
 ### Fixed
+- **Every email RS Systems sent itself was signed "Rockstar Windshield Repair" under a broken
+  logo.** The support acknowledgement and every trial/subscription alert build their branding
+  from the `EmailBrandingConfig` singleton, whose `company_name` on prod was the platform-owner
+  shop and whose logo pointed at a file no longer in the bucket (403 → alt text). Found by
+  reading the H8 acknowledgement. Now `get_tenant_context(None)` applies `platform_identity()`
+  — name, website and footer fixed in code — so no admin edit can put a shop's name on a
+  platform email again; the singleton keeps colours, fonts and the platform logo. Shop-branded
+  email is unchanged: a shop's customers and staff still see the shop. The prod row was also
+  corrected (name, website, broken logo cleared). (#270)
 - **The public contact form refused every visitor on prod.** `public_contact.html` guards the
   Turnstile widget and its script on `turnstile_site_key`, which came from the `portal_access`
   context processor — and that processor returns `{}` for an anonymous request. With the keys

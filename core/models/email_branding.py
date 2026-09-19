@@ -29,6 +29,30 @@ from rs_systems.model_mixins import AutoUpdateTimestampMixin
 logger = logging.getLogger(__name__)
 
 
+# The platform's own identity on the emails it sends itself — subscription,
+# billing, support. Fixed in code on purpose: the EmailBrandingConfig row is
+# admin-editable data, and on 2026-09-18 it carried the platform-owner shop's
+# name and a logo whose file had been deleted, so every RS Systems email to a
+# shop was signed "Rockstar Windshield Repair" under a broken image. The row
+# keeps supplying the visual system (colours, fonts, button radius, logo);
+# who is talking never comes from it. A shop's identity comes from its Tenant.
+PLATFORM_NAME = 'RS Systems'
+
+
+def platform_identity():
+    return {
+        'company_name': PLATFORM_NAME,
+        'company_address': '',
+        'support_email': '',
+        'support_phone': '',
+        'website_url': settings.BASE_URL,
+        'facebook_url': '',
+        'twitter_url': '',
+        'linkedin_url': '',
+        'footer_text': f'You are receiving this email because you are registered with {PLATFORM_NAME}.',
+    }
+
+
 def _absolute_media_url(filefield):
     """
     Absolute URL for an uploaded media file, suitable for email embedding.
@@ -341,12 +365,13 @@ class EmailBrandingConfig(AutoUpdateTimestampMixin, models.Model):
         Email branding context for templates extending emails/base.html.
 
         The platform singleton supplies the visual identity (colors, fonts,
-        button styling). When a tenant is given, the tenant's identity
-        (name, contact info, logo — and brand color, when the shop has set
-        one) overrides the platform-owner values so
-        tenant-scoped customer email is branded as the shop, not the
-        platform. All values are JSON-serializable — NotificationService
-        persists this context and the email retry path re-renders it.
+        button styling). Who the email is *from* never comes from it:
+        with no tenant the email is RS Systems talking and carries
+        `platform_identity()`; with a tenant, the tenant's identity (name,
+        contact info, logo — and brand color, when the shop has set one)
+        replaces it so tenant-scoped customer email is branded as the shop.
+        All values are JSON-serializable — NotificationService persists this
+        context and the email retry path re-renders it.
         """
         try:
             context = cls.get_instance().to_template_context()
@@ -374,8 +399,13 @@ class EmailBrandingConfig(AutoUpdateTimestampMixin, models.Model):
                 'button_border_radius': 4,
                 'footer_text': '',
             }
-        if tenant is not None:
-            context['company_name'] = tenant.name or context.get('company_name') or 'RS Systems'
+        if tenant is None:
+            # No tenant means the platform itself is talking — subscription,
+            # billing, support. The singleton's logo stays (it is the
+            # platform's to set); its name and links do not.
+            context.update(platform_identity())
+        else:
+            context['company_name'] = tenant.name or PLATFORM_NAME
             context['company_address'] = tenant.business_address or ''
             context['support_email'] = tenant.business_email or ''
             context['support_phone'] = tenant.business_phone or ''
