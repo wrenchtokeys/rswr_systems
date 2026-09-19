@@ -1,6 +1,6 @@
 # RS Systems — Product Direction (September 2026)
 
-**Last updated:** 2026-09-17 (all three spine features on prod as of `8da23bbe`; step 5 closed; the five insurance interviews dropped as a gate — step 6 is three non-family shops, and Path B waits for a paying customer to ask)
+**Last updated:** 2026-09-18 (the 2026-09-17/18 readiness audit split step 6: **stranger-shop readiness** — three open PRs plus session **C3 · Findability** — comes before the selling, which is now step 7. The spine is on prod as of `8da23bbe`; the five insurance interviews stay dropped as a gate, and Path B waits for a paying customer to ask.)
 **Status:** Path A with a B-ready spine — **decided. Signed off by Drake 2026-09-08** under
 §The decision. Every session plans against it; changing it means editing that section, not
 arguing with it in a PR.
@@ -54,10 +54,13 @@ section; every other doc points here rather than restating it.
   third-party asset hosts, a 16-minute suite with a committed baseline.
 - **Nothing brings a stranger to the signup page.** The landing page is now honest (C1,
   live since 2026-09-07 00:59 UTC — real captures, founder note, no filler stats) but
-  honest is not the same as found: there is no channel, no widget, no outreach. That is
-  step 6.
-- **Production runs `e47cd18b` (deployed 2026-09-14 15:11 UTC)** — everything through
-  #253, nothing merged and undeployed. A shop can send a quote today. Customers' damage photos have not been
+  honest is not the same as found: there is no channel, no widget, no outreach. **And as of
+  the 2026-09-18 audit, "found" is further off than this line implied** — the site is five
+  indexable URLs, carries no analytics of any kind, hides 18 written guides behind a login,
+  and renders no image when anyone shares it. Its one contact link was `@login_required`
+  until #263. That is step 6 and session C3; step 7 is the outreach.
+- **Production runs `8da23bbe` (deployed 2026-09-17 14:20 UTC)** — everything through #258;
+  the four readiness PRs (#261, #262, #263, #265) and #260 are merged and not yet deployed. A shop can send a quote today. Customers' damage photos have not been
   world-readable since 2026-09-06 22:04 UTC. `ROADMAP.md` keeps that line current.
 
 ## The June plan, scored
@@ -86,6 +89,16 @@ corrects.
 2. ~~**Confirm The Glass Guy can take a payment**~~ — **checked 2026-09-06: he cannot.**
    Onboarding was never completed (§Where things stand). Not a session — a form his dad
    fills in. Drake owns the nudge; nothing below waits on it.
+   **Update 2026-09-18 (PR #261, open):** the *form* is still his dad's to fill in, but the
+   product's silence about it was ours. An unfinished Connect account is the day-one state of
+   every shop, and nothing said so at either end: the customer portal's invoice list offered a
+   "Pay Now" gated only on "is money owed", linking to a detail page that gated the actual
+   card form on `Tenant.can_accept_payments` — so a fleet contact landed on a page whose only
+   control was Download PDF, with no explanation. The owner was told nothing either: the setup
+   checklist had eight items and no payments row, so a shop could reach "fully configured",
+   invoice for a month, and never learn the money leg was unconnected. Both now read the one
+   tenant property, and an unconnected shop can no longer show a full score. **This does not
+   make the payment happen — it makes the product say why it hasn't.**
 3. ~~**P8 — close the world-readable media bucket**~~ — **done 2026-09-06** (#248 deployed
    22:00 UTC, bucket policy narrowed 22:04 UTC; anonymous damage photo → 403). The
    photo-ML arc has no code left.
@@ -98,11 +111,30 @@ corrects.
    B5 (Tier 1 claim tracking, **built 2026-09-16, PR #255**), then B6 (price book, **built 2026-09-16, PR #257**). **All three are on prod as of 2026-09-17 14:20 UTC (`8da23bbe`)**; `seed_price_book` was run and found nothing to read (no replacements on prod yet). **This step is closed.** Nothing else in this list is a session. One owner
    task sits beside it: read the live landing copy once (the switching section promises
    "send your customer list through the contact form" — a manual import by Drake).
-6. **Go-to-market, which no code moves**: three shops that are not family on the product.
+6. **Stranger-shop readiness** — **added 2026-09-18, and it contradicts what step 6 used to
+   claim.** A readiness audit ("can a shop that isn't family run on this yet?") walked all
+   three dashboards on `main` @ `16c01e5b` and found four defects sitting directly on the path
+   a stranger takes. Three are built and open: **#261** (the payments silence, step 2 above),
+   **#262** (the trial permitted 10 customers and 50 jobs a month as hard blocks, beside a
+   landing page inviting a shop to run RS Systems beside their old system for a month — raised
+   to Starter's numbers on Drake's call), **#263** (the landing page's only contact link was
+   `@login_required`, so it 302'd exactly the interested-but-not-signed-up owner the page was
+   written for — fixed by the help center's H2; #264 built the same fix in parallel and was closed). The fourth is a session: **`IMPROVEMENT_SESSIONS.md` C3 · Findability** — the
+   site is five indexable URLs, there is **no analytics of any kind**, 18 written guides sit
+   behind a login, and no share of rssystems.io renders an image. **None of the four is
+   deployed.** #265 (technician dashboard counts, closing A4) rode the same audit but is
+   craft, not a blocker.
+7. **Go-to-market**: three shops that are not family on the product.
    The five dedicated insurance-shop interviews were **dropped as a gate on 2026-09-17** (see
    §The decision); `INSURANCE_SHOP_INTERVIEWS.md` is kept as the discovery-call outline for
    trial shops (its sections 1, 2, 4 and 6) and as the place the two insurance questions'
    answers accrue.
+   **This step used to read "which no code moves." That was wrong** — it was written from the
+   sales motion, not from what a stranger's first hour actually touches. Step 6 is that
+   correction. What remains genuinely code-free here is the selling: the calls, the trials, the
+   two insurance questions. One owner task has no code either and should be done the day this
+   is read: **verify rssystems.io in Google Search Console** (a DNS TXT record, no script, no
+   CSP argument), so query data accrues while C3 is built.
 
 **Parked, on purpose** — no user is waiting on them, and a fresh session must not pick
 them up by default: the Font Awesome → `{% icon %}` sweep (1,217 call sites), enforcing the
@@ -126,6 +158,7 @@ Not features shipped. These are the only numbers that say the direction is worki
 
 | Date | Change |
 |---|---|
+| 2026-09-18 | **Step 6 was wrong, and is now two steps.** "Go-to-market, which no code moves" was written from the sales motion; a readiness audit of all three dashboards found four defects on the path a stranger actually walks, three of them code. New step 6 (stranger-shop readiness) carries them — #261 payments silence, #262 trial limits, #263 public contact form, and `IMPROVEMENT_SESSIONS.md` **C3 · Findability** for the fourth, which is a session and is next. Selling moves to step 7, where the "no code" claim is true. Step 2 updated: the Connect form is still Drake's dad's to fill in, but the product's silence about it was ours. Nothing is deployed. |
 | 2026-06-12 | Initial version — post-stabilization direction for Q3 2026 (90-day plan: growth quick wins → adoption gaps → engagement depth). |
 | 2026-09-17 | **Go-to-market prep, and the interviews dropped as a gate.** C2 (pricing page audit) closed: prod plan data is correct, the label/seed defects fixed. `INSURANCE_SHOP_INTERVIEWS.md` written as a script — then, on Drake's call the same day, **the five dedicated interviews were removed from the success criteria**: they decide Path B, which nothing this quarter depends on, while the product has no non-family customer. The script stays as the trial-shop discovery call; the two insurance questions are asked on every prospect and Path B is revisited when a paying customer asks. Step 6 is now one thing: three non-family shops. |
 | 2026-09-17 | **B5 and B6 on prod.** #258 (staff SMS) merged into `main` first because it was already live from a feature-branch deploy; `main` at `8da23bbe` deployed 14:20 UTC, health green, `technician_portal/0063` + `core/0035` applied, live routes answer. `seed_price_book` run on the instance: 0 rows — prod has no replacement records yet, the book learns from the first one. The spine is done; the head of the queue is step 6 (three non-family shops, five insurance interviews), not a session. |

@@ -274,7 +274,7 @@ on their brand color in the portal header and mobile nav. No `RS` string above t
 
 **Goal:** One job appears once, in one place, with the right next action.
 **Size:** S · **Depends on:** —
-**Status:** TODO (2026-09-02) — **re-verify first**: the technician dashboard changed underneath this session (FIELD_OPS S3 day view, S5 board, JOB_QUEUE Q2 unassigned queue, UI S5–S8). The duplication described below may or may not survive.
+**Status:** **BUILT 2026-09-18** as PR #265 (open, not merged, not deployed). Re-verified first, as the status line asked: the duplication described below had survived every intervening change, and two of its numbers were also wrong. Resolution was (b) genuinely-disjoint, not the recommended (a) merge — see the notes. **One item is deliberately left open: the "Today's Queue" misnomer.** Was: TODO (2026-09-02) — re-verify first.
 
 **Why it matters.** The tech dashboard is the most-used screen in the product and it currently
 shows the same jobs twice with two different verbs. That's confusing on desktop and actively
@@ -309,6 +309,41 @@ wasteful on a phone, where it means scrolling past a list you already saw.
 horizontal overflow.
 
 **Out of scope.** Adding address/phone to the card — that's B1.
+
+**A4 Notes (2026-09-18, PR #265).**
+- **The duplication was real and had survived.** Today's Queue and the `🔧 In Progress` card
+  listed the same IN_PROGRESS jobs under two verbs — *Continue* up top, *Complete* down below —
+  exactly as recorded on 2026-08-07. B1 landing in between made it worse, not better: the queue
+  row gained the address, the Call link and the scheduled time, so the duplicate card was
+  strictly the poorer of the two.
+- **Resolution was (b), not the recommended (a).** Merging would have cost multi-break shops a
+  real capability. Today's Queue lists every break of a batch as its own row, with no grouping,
+  no progress and no *Start All*; a batch is the one thing it genuinely cannot express. So both
+  legacy cards keep batches and give up everything else. A shop that does no multi-break work
+  now sees neither card (and no empty grid where they were), which is (a)'s outcome for almost
+  everyone — without deleting the batch affordance for the shops that use it.
+- **Two numbers were wrong, which this session had not noticed.** *Ready to start* counted
+  repairs with a `RepairApproval` row from the last 24 hours, and `RepairApproval` is written
+  **only** by the customer portal — shop-created jobs auto-approve through
+  `resolve_initial_shop_status` and never write one, so on a default `AUTO_APPROVE` shop the
+  tile was structurally always zero. Separately every tile was `len()` of a list capped at 5
+  (from a slice already capped at 30), so a tech with six jobs in progress read "5". The tiles
+  now count the work in one uncapped pass — the same pass that decides the cards, so the two
+  cannot drift apart again.
+- **A third contradiction was found by RENDERING the page, not by a test.** A batch with one
+  break already started was filed under *Ready to Start* and explicitly excluded from *In
+  Progress*, while the tile beside it counted it as in progress. Worth internalising: the two
+  the audit found were both visible in code, this one only showed up on screen. The one-minute
+  recipe for screenshotting a logged-in page is now in Appendix B.
+- **The emoji went** (`🔧`, `✅`, `🎁`), as this session asked. So did the missing
+  `{% block title %}` — the page was the bare "RS Systems" where owner and portal both render
+  "Dashboard | Shop | RS Systems".
+- **STILL OPEN — the naming.** This session records that *"Today's Queue" is a misnomer*: it is
+  "my open jobs", ordered by service date, not today's work. #265 did not touch the label. B1
+  has since landed, so the dependency this session flagged is now satisfied and a real "Today"
+  is possible — the queue does bucket by `scheduled_for` into Overdue / Today / Later /
+  Unscheduled. The honest options are to rename the panel ("My Jobs" / "Open Work") or to
+  filter it to the Today bucket and give the rest its own door. **Drake's call; not made.**
 
 ---
 
@@ -765,6 +800,20 @@ proposed in `docs/proposals/website-integration-widget.md`).
   the fold ✅ (hero pill + the note under the hero shot) · a section addressing "how do I
   switch" ✅. Guarded by `tests/test_landing_credibility.py`.
 
+- **(2026-09-18) The contact link that section points at was closed.** The switching
+  section's one call to action — "Send it through the contact form" — pointed at
+  `/help/contact/`, which was `@login_required` and 302'd a visitor to
+  `/login/?next=/help/contact/`. It is the only non-`mailto:` contact path on the page, and it
+  was shut to exactly the person C1 was written for: a shop owner who is interested but has not
+  signed up. Opened by the help center's H2 (PR #263, `docs/strategy/HELP_CENTER_SESSIONS.md`) as a
+  separate public `/contact/` (guides stay gated): the anonymous sender is asked their name, and
+  the public endpoint carries the three spam defences it needs — a honeypot, Turnstile, and a
+  per-IP rate limit, because keying on `user` puts every anonymous sender in one shared bucket.
+  #264 built the same fix in parallel and was closed as superseded; its one extra — asking a
+  visitor which shop they are with — lands with H8. **C1's promise now actually works.** C3 below is the
+  rest of the marketing-site scope C1 left out.
+
+
 ---
 
 ### C2 · Pricing page correctness audit
@@ -817,6 +866,99 @@ things on that table are working against the sale.
 reads a key no plan defines. "Jobs" vs "repairs" is consistent between landing and pricing.
 
 **Out of scope.** Changing prices or plan structure.
+
+**C2 Notes (2026-09-18, PR #262).** The trial's *size* was a separate defect this session did
+not look at: 10 customers and 50 jobs a month, both hard blocks at creation, beside a landing
+page inviting a shop to "run both for a month" and send over their customer list. A 1–5 tech
+shop — the stated target — passes both inside week one, so the trial ended mid-evaluation at
+the exact moment the shop had committed effort. Raised to Starter's numbers on Drake's call
+(50 customers, 200 jobs, 5 techs, 500MB); time is the only limit now. Note for anyone changing
+plan data again: **`seed_plans` never rewrites limits on a plan that already exists without
+`--force`**, so the `PLANS` dict alone changes nothing on a deployed database — `tenants/0028`
+moves the row, raise-only, with no reverse.
+
+---
+
+### C3 · Findability — measurement, indexable content, sharing
+
+**Goal:** A shop owner who has never heard of RS Systems can find it, and you can tell whether
+anyone did.
+**Size:** M · **Depends on:** — (C1 is done; this is the half C1 put out of scope)
+**Status:** **NEXT (2026-09-18).** Written up from the 2026-09-17/18 stranger-shop readiness
+audit. No code started.
+
+**Why it matters.** Step 7 of `PRODUCT_DIRECTION.md` is three non-family shops on the product.
+Every route to that runs through a page a stranger lands on, and the marketing site is five
+indexable URLs with no way to tell who arrived. C1 made the landing page honest; it deliberately
+left "SEO content programs" out of scope. This is that scope — not a content programme, but the
+five mechanical gaps that make one impossible to run or measure.
+
+**Verified current state (2026-09-18, `main` @ `16c01e5b`).**
+1. **No analytics of any kind.** No Google Analytics, no Plausible, no PostHog, no Search
+   Console verification tag — a grep across `templates/`, `apps/`, `core/` and `rs_systems/`
+   for `gtag`, `googletagmanager`, `plausible`, `posthog`, `google-site-verification` and
+   `analytics.js` returns nothing. You cannot start spending on acquisition when nothing can
+   say whether anyone arrived, from where, or where they left.
+2. **Eighteen pages of real content are behind a login.** `templates/support/` holds 20 HTML
+   files — 18 topic guides plus the index and contact page — in plain language: sales tax,
+   progressive pricing, multi-break repairs, getting paid on time, card payments, team roles,
+   review requests, warranty. These are exactly the long-tail queries a glass-shop owner types
+   into Google, and they are already written. `support.views.help_home` and
+   `support.views.help_topic` are both `@login_required`, and none of them is in the sitemap.
+   (`support.views.contact` was the third; a public `/contact/` opened in PR #263 — see C1 Notes.)
+3. **No `og:image`, and the Twitter card is the small one.** `templates/landing.html` has
+   title / description / canonical / OG / Twitter and valid `SoftwareApplication` JSON-LD whose
+   $49–$249 range matches the seeded plans — but no image, and `twitter:card` is `summary`, not
+   `summary_large_image`. Every share of rssystems.io — in a Facebook group of glass shops, a
+   LinkedIn post, an iMessage to another owner — renders as a bare text link.
+4. **Only the landing page carries meta at all.** `templates/saas/base_public.html` sets a
+   `<title>` and nothing else, so `/pricing/`, `/terms/`, `/privacy/` and `/sms/` have no
+   description, no canonical, no Open Graph. Google writes its own snippet for the pricing page,
+   which is the second-most-likely page to rank.
+5. **robots.txt guards half the right things.** `rs_systems.views.robots_txt` disallows
+   `/admin/`, `/api/`, `/clawdbot/`, `/setup-database/`, `/owner/` — and `/portal/` and
+   `/customer/`, neither of which the app serves. The authenticated trees `/app/` and `/tech/`
+   are allowed, and so are the token-bearing public routes `/quote/`, `/invoice/` and `/pay/`.
+   Nothing leaks — every one is gated or HMAC-tokened — but crawlers will work them, and a
+   token route is a customer's private document. `rs_systems.views.sitemap_xml` is five
+   hand-written URLs.
+
+**Considerations.**
+- **Analytics has to stay first-party or self-hosted.** The CSP allowlist is `'self'` plus
+  Cloudflare Turnstile, and that is the entire point of UI_MAGIC S1 and S17 on an app that
+  takes card payments. Bolting on Google Tag Manager means editing `common/csp_middleware.py`
+  and re-arguing both. **Search Console verification needs no script at all** — a DNS TXT
+  record or a meta tag — and is worth doing the day this is read, regardless of when the rest
+  lands, so query data accrues while it is built.
+- **Publishing the guides is a judgement call, not a sweep.** Several are written for someone
+  who already has an account ("Trial ending", "Settings explained", "For technicians"). Publish
+  the ones that answer a question a stranger would ask — sales tax, progressive pricing,
+  multi-break, getting paid on time, warranty — and leave the account-holder ones gated. The
+  `owner_only` flag in `HELP_TOPICS` already sorts a related axis; a `public` flag beside it is
+  the obvious shape, and the sitemap should read from it rather than from a second list.
+- **`scripts/landing_shots.py` already writes real captures** of the owner dashboard to
+  `static/images/landing/`. `og:image` wants 1200×630; crop one. For a product whose whole
+  pitch is "look at the real app", showing the real app in every share is free distribution.
+- Keep the JSON-LD price range in sync with `seed_plans` — C1 already flags it as a
+  rich-snippet liability, and C2's lesson is that plan data drifts.
+- The sitemap should be generated from the URL conf plus the published-guide list, not
+  hand-maintained. `launch-readiness-roadmap.md` records that it once advertised a 404
+  `/register/`; a hand-written list is how that happens.
+
+**Decisions needed.**
+1. **Which analytics.** Plausible self-hosted, a first-party proxy, or something else. This
+   decides whether the CSP moves at all.
+2. **Which guides go public.** Recommend the five listed above as a first cut.
+
+**Acceptance criteria.** Search Console verified and receiving data. The published guides return
+200 to an anonymous visitor and appear in `sitemap.xml`. `/pricing/` has a description and a
+canonical. A share of the landing page renders a large image card. robots.txt disallows the
+token routes and stops naming paths the app does not serve. Every number on the site is still
+checkable (`tests/test_landing_credibility.py` stays green).
+
+**Out of scope.** Writing new content, paid acquisition, the embeddable lead widget
+(`docs/proposals/website-integration-widget.md`), and conversion tracking inside the app —
+this session is about a stranger finding the site and you knowing they did.
 
 ---
 
@@ -930,22 +1072,32 @@ build-vs-shop-price-book recommendation with numbers.
 
 ## §2 Suggested sequence
 
-**Revised 2026-09-02** against the recorded fork. The order the action plan actually runs is:
-deploy `main` → confirm The Glass Guy's Stripe Connect → PHOTO_ML P8 → **C1** → **B3 → B5 →
-B6** (one session each, once the fork is signed) → three non-family shops on the product and
-the five insurance interviews. Below that, the 2026-08-07 sequence still holds for the filler
-sessions, with the done ones struck.
+**Revised 2026-09-18.** The spine is built and step 6 (three non-family shops) is the head of
+the queue — but the 2026-09-17/18 readiness audit found that step 6 is not code-free after all.
+Four defects sat directly on the path a stranger walks, and the one remaining piece of that work
+is a session: **C3**. The order now is: ~~deploy `main` → Glass Guy Connect → P8 → C1 → B3 → B5 →
+B6~~ → **stranger-shop readiness (#261/#262/#263/#265, merged)** → **C3** → three non-family shops.
 
-| Order | Session | Status 2026-09-02 |
+| Order | Session | Status 2026-09-18 |
 |---|---|---|
 | ~~1~~ | ~~**C1**~~ | **DONE 2026-09-06**, PR #250 deployed 2026-09-07 00:59 UTC |
 | ~~2~~ | ~~**B3**~~ | **DONE** — PR #253 merged 2026-09-12, deployed 2026-09-14 — spine 1 |
 | ~~3~~ | ~~**B5**~~ | **BUILT 2026-09-16**, PR #255 — spine 2 |
 | ~~4~~ | ~~**B6**~~ | **DEPLOYED 2026-09-17** (PR #257, `8da23bbe`) — spine 3; the spine is complete |
-| — | **C2, A2** | verify on prod, then either nothing or minutes |
-| — | **A3, A4, A6, B4** | filler; A4 needs re-verifying first |
+| ~~5~~ | ~~**C2**~~ | **DONE 2026-09-17** (PR #260, open); trial size raised in #262 — see C2 Notes |
+| ~~6~~ | ~~**A4**~~ | **BUILT 2026-09-18** (PR #265, open); naming question left open — see A4 Notes |
+| **7** | **C3** | **NEXT** — the marketing-site scope C1 left out; nothing started |
+| — | **A2** | verify on prod, then either nothing or minutes |
+| — | **A3, A6, B4** | filler |
 | — | **B2, D1, D2** | memos; B2 waits on the toll-free number |
 | ~~—~~ | ~~A1, A5, B1~~ | done |
+
+**Four PRs are merged and not yet deployed** — #261 (the portal offered a Pay Now the next page
+could not honour, and no checklist item ever told an owner their Stripe Connect was unfinished),
+#262 (trial limits), #263 (help center, incl. the public contact form; #264 duplicated it and was
+closed), #265 (A4). They were not sessions in this
+document; #261 is recorded against `PRODUCT_DIRECTION.md` step 2, the other three against C2, C1
+and A4 respectively.
 
 *The original sequence (2026-08-07), assuming Path A and one developer:*
 
@@ -1032,12 +1184,34 @@ For a customer-portal login, create a `CustomerUser` linked to an existing `Cust
 (note: `CustomerUser` has no `is_active` field). Log in at `/login/` with the **email**, not the
 username — usernames are generated from first names.
 
+**Screenshotting a logged-in page without fighting auth (added 2026-09-18).** The trap above is
+that driving a real browser through login costs more than the look is worth, so pages get
+reviewed in code and not on screen — which is how A4's third contradiction survived two audits.
+This takes about a minute and needs no session cookie:
+
+1. Render the page with the Django **test client** inside a throwaway test database, and write
+   the HTML to the repo root:
+   ```python
+   runner = DiscoverRunner(verbosity=0, interactive=False); old = runner.setup_databases()
+   # ...seed, client.force_login(user), set session['tenant_id']...
+   open('_shot.html', 'w').write(client.get('/tech/').content.decode())
+   ```
+2. Serve the repo so `/static/css/app.css` resolves: `python3 -m http.server 8913`.
+3. `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --disable-gpu \
+   --screenshot=out.png --window-size=1400,2200 --hide-scrollbars \
+   http://127.0.0.1:8913/_shot.html`
+
+Delete `_shot.html` afterwards — it sits in the repo root so the static paths resolve, and it is
+not gitignored. `scripts/landing_shots.py` is the heavyweight version of the same idea (real
+server, real session, CDP) and is the right tool when you need the live JS to have run.
+
 ---
 
 ## Document history
 
 | Date | Change |
 |---|---|
+| 2026-09-18 | **C3 added; A4 closed.** A 2026-09-17/18 readiness audit ("can a stranger's shop run on this yet?") checked every claim against `main` @ `16c01e5b` and found four defects on the path a stranger walks. Three are shipped as PRs and recorded against the sessions they close — #262 against C2 (trial 10 customers/50 jobs vs. a landing page promising a parallel month), #263's H2 against C1 (the switching section's contact link was `@login_required`; #264 duplicated the fix and was closed), #265 closing **A4** (the duplication had survived; two of its tiles were also wrong, and a third contradiction turned up only when the page was rendered). #261 has no session here and is recorded against `PRODUCT_DIRECTION.md` step 2. The fourth defect — the marketing site is five indexable URLs with no analytics, 18 guides behind a login, and no `og:image` — is **new session C3 · Findability**, the scope C1 explicitly deferred. §2 re-sequenced: C3 is the head of the queue, ahead of step 6. |
 | 2026-08-07 | Initial version — from a live four-audience walkthrough of the running app. |
 | 2026-08-11 | Stale-doc sweep: flagged that this file has no status tracking and that B1 is superseded by `FIELD_OPS_SESSIONS.md` S2; corrected the Appendix A anchor citing the deleted `PlanEnforcementMixin`. No session content changed. |
 | 2026-09-07 | C1 deployed 00:59 UTC (`60b4563b`), verified live. |
