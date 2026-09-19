@@ -974,7 +974,10 @@ to keep alive, and the thing being measured is five marketing URLs. The proxy ad
 headers Plausible otherwise cannot see (`X-Forwarded-For`, `User-Agent`); without the first,
 every visitor is one visitor in Virginia. Both failure paths are quiet on purpose — an upstream
 outage serves an empty script with `Cache-Control: no-store`, a failed forward returns 202 — so a
-Plausible incident can never put an error in a prospect's console. Verified end to end against
+Plausible incident can never put an error in a prospect's console. **The tag renders for a
+signed-out reader only** — "public shell" looked like the rule and is not one, since
+`/onboarding/` and a signed-in owner reading a guide both wear it; signup conversion is better
+answered from `OnboardingState` in our own database than from a pageview. Verified end to end against
 the real service: the proxied script is the genuine 2,841-byte tracker, it reads `data-api`, and
 a POST through `/pa/event` returns Plausible's own `202 ok`. The one link that **cannot** be
 verified locally is the browser firing the beacon: the tracker refuses to send from `localhost`

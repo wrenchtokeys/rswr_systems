@@ -349,7 +349,10 @@ class AnalyticsTests(TestCase):
         self.assertEqual(offenders, [])
 
     @override_settings(PLAUSIBLE_DOMAIN='rssystems.io')
-    def test_a_published_guide_is_tracked_but_the_app_is_not(self):
+    def test_a_visitor_is_measured_and_a_signed_in_user_is_not(self):
+        """The rule is "measure signed-out visitors", not "measure the public
+        shell" — /onboarding/ and a signed-in owner reading a guide both wear
+        that shell, and neither is a stranger arriving from somewhere."""
         guide = self.client.get(reverse('help_topic', args=['sales-tax'])).content.decode()
         self.assertIn('data-domain=', guide)
 
@@ -358,8 +361,12 @@ class AnalyticsTests(TestCase):
         session = self.client.session
         session['tenant_id'] = tenant.id
         session.save()
-        app = self.client.get(reverse('owner_dashboard')).content.decode()
-        self.assertNotIn('data-domain=', app)
+        for name in ('owner_dashboard', 'onboarding', 'pricing'):
+            html = self.client.get(reverse(name), follow=True).content.decode()
+            self.assertNotIn('data-domain=', html, f'{name} tracks a signed-in user')
+        signed_in_guide = self.client.get(
+            reverse('help_topic', args=['sales-tax'])).content.decode()
+        self.assertNotIn('data-domain=', signed_in_guide)
 
     @override_settings(PLAUSIBLE_DOMAIN='rssystems.io')
     def test_the_csp_allowlist_does_not_grow_a_host(self):

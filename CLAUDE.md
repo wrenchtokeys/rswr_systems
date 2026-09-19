@@ -109,8 +109,10 @@ There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are ven
   still `'self'` plus Turnstile. Adding `plausible.io` (or GA, or a tag manager) to
   `script-src`/`connect-src` re-opens the S1/S17 argument on an app that takes card
   payments. Off unless `PLAUSIBLE_DOMAIN` is set: no tag, and both routes 404.
-  `includes/analytics.html` is rendered by the **public** shells only — C3 is about a
-  stranger finding the site; in-app tracking is a separate decision.
+  `includes/analytics.html` renders for a **signed-out reader** only — not "the public
+  shell", which `/onboarding/` and a signed-in owner reading a guide also wear. C3 is
+  about a stranger finding the site; in-app tracking is a separate decision with its own
+  privacy answer.
 - **Public-page meta is one call**: `{% load seo %}` + `{% page_meta description="…" %}`
   emits description, canonical, Open Graph and the Twitter card together. Three
   hand-written copies of one sentence is how the landing page ended up with no
