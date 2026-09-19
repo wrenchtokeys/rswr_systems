@@ -17,15 +17,26 @@ from .models import GuideFeedback, SupportMessage
 
 @admin.register(SupportMessage)
 class SupportMessageAdmin(admin.ModelAdmin):
-    list_display = ('created_at', 'name', 'email', 'tenant', 'source', 'topic', 'preview', 'status', 'emailed_ok')
+    # `who` rather than `tenant`: a message from the public form has no
+    # tenant at all, and a blank column would read as a broken row.
+    list_display = ('created_at', 'name', 'email', 'who', 'source', 'topic', 'preview', 'status', 'emailed_ok')
     list_editable = ('status',)
     list_filter = ('status', 'source', 'topic', 'emailed_ok', 'acknowledged', 'tenant')
-    search_fields = ('name', 'email', 'message', 'tenant__name')
+    search_fields = ('name', 'email', 'message', 'tenant__name', 'shop_name')
     date_hierarchy = 'created_at'
     ordering = ('-created_at',)
-    readonly_fields = ('tenant', 'user', 'role', 'source', 'name', 'email', 'topic', 'message',
+    readonly_fields = ('tenant', 'shop_name', 'user', 'role', 'source', 'name', 'email', 'topic', 'message',
                        'page_label', 'page', 'emailed_ok', 'acknowledged', 'created_at')
     fields = ('status',) + readonly_fields
+
+    @admin.display(description='Shop', ordering='tenant__name')
+    def who(self, obj):
+        """The sender's shop, or what a visitor typed into the public form."""
+        if obj.tenant:
+            return obj.tenant.name
+        if obj.shop_name:
+            return f'{obj.shop_name} (visitor)'
+        return '(visitor)'
 
     @admin.display(description='Where they were')
     def page_label(self, obj):

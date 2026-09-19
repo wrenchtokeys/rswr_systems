@@ -47,6 +47,12 @@ class SupportMessage(models.Model):
         related_name='support_messages',
     )
     name = models.CharField(max_length=150, blank=True)
+    # Only the public form asks this — a signed-in sender's tenant is the
+    # authority, so a typed shop name is discarded for them (H8, from #264).
+    shop_name = models.CharField(
+        max_length=150, blank=True,
+        help_text='What a visitor typed as their shop; empty for signed-in senders',
+    )
     email = models.EmailField(help_text='Where the reply goes')
     topic = models.CharField(max_length=20, choices=TOPIC_CHOICES, default='question')
     message = models.TextField()
