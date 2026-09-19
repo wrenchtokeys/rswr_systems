@@ -1131,8 +1131,10 @@ build-vs-shop-price-book recommendation with numbers.
 **Revised 2026-09-18.** The spine is built and step 6 (three non-family shops) is the head of
 the queue — but the 2026-09-17/18 readiness audit found that step 6 is not code-free after all.
 Four defects sat directly on the path a stranger walks, and the one remaining piece of that work
-is a session: **C3**. The order now is: ~~deploy `main` → Glass Guy Connect → P8 → C1 → B3 → B5 →
-B6~~ → **stranger-shop readiness (#261/#262/#263/#265, merged)** → **C3** → three non-family shops.
+was a session: **C3**, built 2026-09-18. The order now is: ~~deploy `main` → Glass Guy Connect →
+P8 → C1 → B3 → B5 → B6~~ → ~~stranger-shop readiness (#261/#262/#263/#265/#267/#268, on prod as
+`6cdb7a03`)~~ → ~~C3~~ → **three non-family shops**. Nothing in this document is queued ahead of
+that.
 
 | Order | Session | Status 2026-09-18 |
 |---|---|---|
