@@ -6,6 +6,7 @@ plus GuideFeedback (thumbs) and SupportMessage (/help/contact/).
 """
 
 import logging
+import os
 
 from django.contrib.auth.decorators import login_required
 from django.core.validators import validate_email
@@ -471,6 +472,12 @@ def public_contact(request):
     tenant = getattr(request, 'tenant', None) if user else None
     ctx = {
         'topics': SupportMessage.TOPIC_CHOICES,
+        # Passed by hand, as signup does: the portal_access context processor
+        # that carries turnstile_site_key returns {} for an anonymous request,
+        # which is the only kind this page exists for. Without it the widget
+        # never rendered, no token was posted, and every visitor on prod got
+        # "We couldn't confirm you're a person" (found on the 2026-09-18 H8 check).
+        'turnstile_site_key': os.environ.get('TURNSTILE_SITE_KEY', ''),
         'form_name': (user.get_full_name() if user else '') or '',
         'form_email': (user.email if user else '') or '',
         'form_topic': 'question',
