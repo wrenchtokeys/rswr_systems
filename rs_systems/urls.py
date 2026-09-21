@@ -29,6 +29,7 @@ from apps.support import views as support_views
 from core.views import preview_email_template, test_notification, check_notification_prefs
 from apps.technician_portal.review_views import review_click, review_opt_out
 from common.csp_views import csp_report
+from common import analytics as analytics_views
 
 # Custom error handlers (BUG-004 — replace bare Django 404/500 with branded templates)
 handler404 = 'rs_systems.views.custom_404'
@@ -43,6 +44,12 @@ urlpatterns = [
     path('csp-report/', csp_report, name='csp_report'),
     path('robots.txt', views.robots_txt, name='robots_txt'),
     path('sitemap.xml', views.sitemap_xml, name='sitemap_xml'),
+
+    # First-party analytics proxy (C3). Both paths are on our own origin on
+    # purpose: it keeps the CSP allowlist at 'self' plus Turnstile. 404s unless
+    # PLAUSIBLE_DOMAIN is set. See common/analytics.py.
+    path('js/p.js', analytics_views.plausible_script, name='plausible_script'),
+    path('pa/event', analytics_views.plausible_event, name='plausible_event'),
 
     # Review request public endpoints (no auth — token-based)
     path('reviews/click/<uuid:token>/', review_click, name='review_click'),

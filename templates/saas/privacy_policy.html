@@ -1,6 +1,9 @@
 {% extends "saas/base_public.html" %}
+{% load seo %}
 
 {% block title %}Privacy Policy - RS Systems{% endblock %}
+
+{% block meta %}{% page_meta title="Privacy Policy — RS Systems" description="What RS Systems collects, why it collects it, and the short list of providers it is shared with. We do not sell your personal information." %}{% endblock %}
 
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">

@@ -80,6 +80,7 @@ TEMPLATES = [
                 'common.context_processors.portal_access',
                 'common.context_processors.customer_loyalty',
                 'common.context_processors.csp_nonce',
+                'common.context_processors.analytics',
             ],
         },
     },
@@ -196,6 +197,25 @@ SERVER_EMAIL = DEFAULT_FROM_EMAIL
 # notification templates) — keep both pointing at the same value.
 BASE_URL = os.environ.get('BASE_URL', 'https://rssystems.io').rstrip('/')
 SITE_URL = BASE_URL
+
+# =========================================
+# FINDABILITY (C3)
+# =========================================
+
+# Plausible site name, exactly as registered at plausible.io (e.g. "rssystems.io").
+# Empty = analytics off: no script tag, and /js/p.js and /pa/event 404. The
+# tracker is served from our own origin so the CSP allowlist does not move —
+# see common/analytics.py for the whole argument.
+PLAUSIBLE_DOMAIN = os.environ.get('PLAUSIBLE_DOMAIN', '').strip()
+
+# Which of Plausible's tracker variants to proxy. The plain one counts
+# pageviews, referrers and UTM tags, which is all C3 asked for.
+PLAUSIBLE_SCRIPT = os.environ.get('PLAUSIBLE_SCRIPT', 'script.js').strip()
+
+# Google Search Console's meta-tag verification token (the value only, not the
+# whole tag). Leave unset when the property is verified by DNS TXT — this exists
+# so verification never has to wait on DNS access.
+GOOGLE_SITE_VERIFICATION = os.environ.get('GOOGLE_SITE_VERIFICATION', '').strip()
 
 # Don't count an invoice "view" within this window after sending — mail
 # security gateways (Microsoft Defender Safe Links etc.) fetch every link

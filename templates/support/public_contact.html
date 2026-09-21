@@ -1,6 +1,9 @@
 {% extends "saas/base_public.html" %}
+{% load seo %}
 
 {% block title %}Contact | RS Systems{% endblock %}
+
+{% block meta %}{% page_meta title="Contact RS Systems" description="Questions about running your glass shop on RS Systems, or moving your customer list over? Write to the person who built it." %}{% endblock %}
 
 {% block extra_head %}
 {% if turnstile_site_key %}

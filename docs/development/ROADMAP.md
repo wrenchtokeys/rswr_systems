@@ -1,10 +1,16 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: September 18, 2026 (everything through #270 deployed as `7f2c01a6`: stranger-shop readiness #261/#262/#265, the help center H1–H8 incl. the public contact form, C2 labels. Help center queue closed; C3 · Findability is next).*
+*Last Updated: September 18, 2026 (everything through #270 deployed as `7f2c01a6`: stranger-shop readiness #261/#262/#265, the help center H1–H8 incl. the public contact form, C2 labels. Help center queue closed. **C3 · Findability is built and open as PR #271** — first-party analytics proxy, five help guides published, generated robots/sitemap, a real share card).*
 
 > **Merged, not deployed (keep this line current — a deploy note without an expiry is a
-> snapshot):** nothing. Production runs `7f2c01a6`, deployed **2026-09-19 02:39 UTC**
+> snapshot):** nothing merged. **C3 · Findability is open as PR #271 and carries no migration** —
+> a first-party Plausible proxy (`/js/p.js`, `/pa/event`), five help guides served to signed-out
+> visitors, generated `robots.txt`/`sitemap.xml`, and per-page meta with a real `og:image`.
+> **It needs two `eb setenv` calls to do anything**: `PLAUSIBLE_DOMAIN=rssystems.io` once the
+> Plausible site exists, and optionally `GOOGLE_SITE_VERIFICATION=<token>` if Search Console is
+> verified by meta tag rather than DNS TXT. Without them the analytics routes 404 by design and
+> the rest of the change still stands on its own. Production runs `7f2c01a6`, deployed **2026-09-19 02:39 UTC**
 > from `rs_main_deploy_wt` (after `43a57eff` at 01:28 and `6cdb7a03` at 01:33 UTC) — everything merged through #270 is live: #260 (C2 pricing labels),
 > #261 (portal "Pay Now" honesty + the "Get Paid by Card" checklist row), #262 (trial at
 > Starter's limits, `tenants/0028`), #263 (help center H1–H6, public `/contact/`,
@@ -24,7 +30,8 @@
 > B-ready spine — is in `docs/strategy/PRODUCT_DIRECTION.md` (September 2026; signed by
 > Drake 2026-09-08). The near-term work queues live in `docs/strategy/` and are the ones to
 > read before starting a session: `IMPROVEMENT_SESSIONS.md` (now carries a Status line per
-> session; B3/B5/B6 are the spine, and **C3 · Findability is the head of the queue**),
+> session; B3/B5/B6 are the spine, C3 · Findability is built, and **nothing there is queued
+> ahead of step 6 — three non-family shops**),
 > `FIELD_OPS_SESSIONS.md` (S11–S14 scheduling UX open),
 > `PHOTO_ML_SESSIONS.md` (P8 is its last code), `UI_MAGIC_SESSIONS.md` (arc clear; sweeps
 > parked), `JOB_QUEUE_SESSIONS.md` (Q5/Q6 parked), `TEST_SUITE_SESSIONS.md`,

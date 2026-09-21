@@ -1,22 +1,16 @@
-{% load static ui %}<!DOCTYPE html>
+{% load static ui seo %}<!DOCTYPE html>
 <html lang="en">
 <head>
     <title>RS Systems - Windshield Repair & Replacement Software</title>
     {% include "includes/head_assets.html" %}
-    <meta name="description" content="Windshield repair management software for glass shops. Track repairs, generate invoices, manage fleet customers. Built by a shop owner for shop owners.">
+    {% comment %}
+    Description, canonical, Open Graph and the Twitter card all come from this
+    one call (C3) — three hand-written copies of the same sentence is how the
+    og:image went missing and the Twitter card stayed on the small `summary`
+    layout, so every share of rssystems.io rendered as a bare text link.
+    {% endcomment %}
+    {% page_meta description="Windshield repair management software for glass shops. Track repairs, generate invoices, manage fleet customers. Built by a shop owner for shop owners." title="RS Systems - Windshield Repair Management Software" %}
     <meta name="keywords" content="windshield repair software, auto glass shop management, repair tracking, fleet invoicing, glass shop CRM, windshield replacement software">
-    <link rel="canonical" href="https://rssystems.io/">
-    <!-- Open Graph -->
-    <meta property="og:title" content="RS Systems - Windshield Repair Management Software">
-    <meta property="og:description" content="Track repairs, generate invoices, manage fleet customers. Built by a shop owner for shop owners.">
-    <meta property="og:url" content="https://rssystems.io/">
-    <meta property="og:type" content="website">
-    <meta property="og:site_name" content="RS Systems">
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="RS Systems - Windshield Repair Management Software">
-    <meta name="twitter:description" content="Track repairs, generate invoices, manage fleet customers. Built by a shop owner for shop owners.">
-    <meta name="twitter:site" content="@wrenchtokeys">
     <!-- Structured Data -->
     <script nonce="{{ csp_nonce }}" type="application/ld+json">
     {
@@ -39,6 +33,7 @@
     <style nonce="{{ csp_nonce }}">
         body { font-family: 'Inter', sans-serif; }
     </style>
+    {% include "includes/analytics.html" %}
 </head>
 <body class="bg-white text-gray-900">
     <!-- Navigation -->

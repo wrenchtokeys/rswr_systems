@@ -1,6 +1,6 @@
 # RS Systems — Product Direction (September 2026)
 
-**Last updated:** 2026-09-18 (the 2026-09-17/18 readiness audit split step 6: **stranger-shop readiness** — three open PRs plus session **C3 · Findability** — comes before the selling, which is now step 7. The spine is on prod as of `8da23bbe`; the five insurance interviews stay dropped as a gate, and Path B waits for a paying customer to ask.)
+**Last updated:** 2026-09-18 (**step 6 is complete in code**: its three fixes are on prod and its one session, **C3 · Findability**, is built and open as PR #271. The prod pointer lives in `ROADMAP.md` — it moved three times the evening this was written, so it is not repeated here. Step 7 — the selling, where the "no code" claim is true — is next. The five insurance interviews stay dropped as a gate, and Path B waits for a paying customer to ask.)
 **Status:** Path A with a B-ready spine — **decided. Signed off by Drake 2026-09-08** under
 §The decision. Every session plans against it; changing it means editing that section, not
 arguing with it in a PR.
@@ -58,7 +58,7 @@ section; every other doc points here rather than restating it.
   the 2026-09-18 audit, "found" is further off than this line implied** — the site is five
   indexable URLs, carries no analytics of any kind, hides 18 written guides behind a login,
   and renders no image when anyone shares it. Its one contact link was `@login_required`
-  until #263. That is step 6 and session C3; step 7 is the outreach.
+  until #263. That was step 6 and session C3, both now built; step 7 is the outreach.
 - **Production runs `6cdb7a03` (deployed 2026-09-19 01:33 UTC)** — everything through #268:
   the readiness PRs (#261, #262, #263, #265), #260, the help center wrap-up (#267) and the
   public form's Turnstile fix (#268). A shop can send a quote today. Customers' damage photos have not been
@@ -123,7 +123,8 @@ corrects.
    written for — fixed by the help center's H2; #264 built the same fix in parallel and was closed). The fourth is a session: **`IMPROVEMENT_SESSIONS.md` C3 · Findability** — the
    site is five indexable URLs, there is **no analytics of any kind**, 18 written guides sit
    behind a login, and no share of rssystems.io renders an image. **The three code fixes are
-   on prod as of 2026-09-18 (`6cdb7a03`); C3 is what remains of this step.** #265 (technician
+   on prod as of 2026-09-18; C3 was what remained of this step and is now built, open as
+   PR #271.** #265 (technician
    dashboard counts, closing A4) rode the same audit but is craft, not a blocker.
 7. **Go-to-market**: three shops that are not family on the product.
    The five dedicated insurance-shop interviews were **dropped as a gate on 2026-09-17** (see
@@ -135,7 +136,8 @@ corrects.
    correction. What remains genuinely code-free here is the selling: the calls, the trials, the
    two insurance questions. One owner task has no code either and should be done the day this
    is read: **verify rssystems.io in Google Search Console** (a DNS TXT record, no script, no
-   CSP argument), so query data accrues while C3 is built.
+   CSP argument), so query data accrues from the day the property exists. C3 shipped the
+   meta-tag path too (`GOOGLE_SITE_VERIFICATION`), so DNS access is not a blocker.
 
 **Parked, on purpose** — no user is waiting on them, and a fresh session must not pick
 them up by default: the Font Awesome → `{% icon %}` sweep (1,217 call sites), enforcing the
@@ -159,6 +161,7 @@ Not features shipped. These are the only numbers that say the direction is worki
 
 | Date | Change |
 |---|---|
+| 2026-09-18 | **Step 6's last piece built: C3 · Findability** (PR #271). Analytics is Plausible Cloud behind a first-party proxy on our own origin, so the CSP allowlist stays `'self'` plus Turnstile — the measurement question is answered without re-opening the argument that made a strict CSP possible. Five help guides now answer to a signed-out visitor (sales tax, progressive pricing, multi-break, getting paid on time, warranty), behind one flag the view, `sitemap.xml` and `robots.txt` all read. The work was not the flag: every guide wore the signed-in app shell and linked into Settings and gated guides, so publishing the URL would have shown a stranger a shop's app chrome and four links back to the sign-in page — the same defect the switching section shipped with. **Step 6 is now complete in code; step 7 is the selling.** Two `eb setenv` calls are Drake's before any of it measures anything. |
 | 2026-09-18 | **Step 6's three code fixes deployed** (`43a57eff` then `6cdb7a03`, evening of the 18th Central) together with the help center queue's last session (H8: the trial-expired email now states the 14-day read-only window instead of "locked"; a visitor can name their shop on `/contact/`). H8's "send one real message on prod" step earned its place: the public form was refusing every anonymous visitor (no Turnstile widget rendered), fixed within the hour as #268. The help center queue is closed and its doc retired — `CHANGELOG.md` holds the record. #264 was closed as a duplicate of #263's H2. Only C3 · Findability is left in step 6. |
 | 2026-09-18 | **Step 6 was wrong, and is now two steps.** "Go-to-market, which no code moves" was written from the sales motion; a readiness audit of all three dashboards found four defects on the path a stranger actually walks, three of them code. New step 6 (stranger-shop readiness) carries them — #261 payments silence, #262 trial limits, #263 public contact form, and `IMPROVEMENT_SESSIONS.md` **C3 · Findability** for the fourth, which is a session and is next. Selling moves to step 7, where the "no code" claim is true. Step 2 updated: the Connect form is still Drake's dad's to fill in, but the product's silence about it was ours. Nothing is deployed. |
 | 2026-06-12 | Initial version — post-stabilization direction for Q3 2026 (90-day plan: growth quick wins → adoption gaps → engagement depth). |

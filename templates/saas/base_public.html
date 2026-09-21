@@ -1,13 +1,23 @@
-{% load static %}
+{% load static seo %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <title>{% block title %}RS Systems{% endblock %}</title>
     {% include "includes/head_assets.html" %}
+    {% comment %}
+    C3: every public page gets a description, a canonical and a share card.
+    Before this, only the landing page carried meta at all — /pricing/, the
+    second-most-likely page to rank, left Google to write its own snippet.
+
+    A page overrides this block with its own one-call {% templatetag openblock %} page_meta … {% templatetag closeblock %};
+    one that does not is generic rather than meta-less, which is the smaller bug.
+    {% endcomment %}
+    {% block meta %}{% page_meta %}{% endblock %}
     {% block extra_head %}{% endblock %}
     <style nonce="{{ csp_nonce }}">
         body { font-family: 'Inter', system-ui, sans-serif; }
     </style>
+    {% include "includes/analytics.html" %}
 </head>
 <body class="bg-gray-50 min-h-screen flex flex-col">
     <!-- Public Navbar -->

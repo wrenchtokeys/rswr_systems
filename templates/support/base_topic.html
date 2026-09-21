@@ -1,14 +1,36 @@
-{% extends "base_app.html" %}
-{% load ui %}
+{% extends shell_template|default:"base_app.html" %}
+{% load ui seo %}
+{% comment %}
+The shell is chosen by the view (C3): signed in, this is a page of the app and
+wears base_app.html; signed out, the five published guides are marketing pages
+and wear the public shell. Both define title / content / extra_head, so nothing
+below cares which one it landed in.
+{% endcomment %}
 
-{% block title %}{{ topic.title }} | Help | RS Systems{% endblock %}
+{% block title %}{{ topic.title }} | RS Systems{% endblock %}
+
+{% comment %}
+base_app.html has no `meta` block, so this renders for the signed-out reader
+only — which is the only one a search engine or a share ever is. The blurb is
+already a one-sentence summary of the page; using it as the description keeps
+the two from drifting.
+{% endcomment %}
+{% block meta %}{% page_meta title=topic.title|add:" — RS Systems" description=topic.blurb og_type="article" %}{% endblock %}
 
 {% block content %}
-<div class="max-w-3xl mx-auto">
+{# The public shell's <main> carries no padding of its own; base_app.html's does. #}
+<div class="max-w-3xl mx-auto{% if not request.user.is_authenticated %} px-4 sm:px-6 py-10{% endif %}">
     <nav class="mb-6 text-sm" aria-label="Breadcrumb">
+        {% if request.user.is_authenticated %}
         <a href="{% url 'help_home' %}" class="text-brand-600 hover:text-brand-800 font-medium">
             {% icon 'arrow-left' class="text-xs mr-1.5" %}All guides
         </a>
+        {% else %}
+        {# The hub is signed-in only. Pointing a visitor at it would be a login wall. #}
+        <a href="/" class="text-brand-600 hover:text-brand-800 font-medium">
+            {% icon 'arrow-left' class="text-xs mr-1.5" %}RS Systems
+        </a>
+        {% endif %}
     </nav>
 
     <div class="mb-8">
@@ -20,6 +42,13 @@
         {% block guide %}{% endblock %}
     </div>
 
+    {% comment %}
+    Signed in, the page ends the way every guide does — was this helpful, and
+    the next guide in this section. Signed out, neither exists: the thumbs POST
+    to a @login_required endpoint and the hub is gated, so a visitor would get
+    two controls that bounce them to the sign-in page.
+    {% endcomment %}
+    {% if request.user.is_authenticated %}
     <div id="guide-feedback" class="mt-10 rounded-xl bg-gray-50 border border-gray-200 p-4 flex items-center justify-between gap-3">
         <p class="text-sm font-medium text-gray-700">Was this helpful?</p>
         <div class="flex items-center gap-2">
@@ -55,8 +84,38 @@
         </a>
         {% endif %}
     </div>
+    {% else %}
+    {% comment %}
+    The signed-out footer (C3). A visitor who read this far has a question about
+    running a glass shop, so the page ends with the other published guides and
+    one honest offer — not a modal, and not a link into a login wall.
+    {% endcomment %}
+    <div class="mt-10 pt-8 border-t border-gray-200">
+        {% if other_public_topics %}
+        <h2 class="text-sm font-semibold text-gray-900 mb-3">More guides</h2>
+        <ul class="space-y-2 mb-8">
+            {% for other in other_public_topics %}
+            <li>
+                <a href="{% url 'help_topic' other.slug %}" class="text-sm font-medium text-blue-600 hover:text-blue-800">{{ other.title }}</a>
+                <span class="text-sm text-gray-500"> — {{ other.blurb }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        <div class="rounded-xl bg-blue-50 border border-blue-200 p-5">
+            <p class="text-base font-semibold text-gray-900 mb-1">This is how RS Systems works.</p>
+            <p class="text-sm text-gray-600 leading-relaxed mb-4">Shop management software for windshield repair and replacement — jobs, invoices, fleet customers and the customer portal. Built by a shop owner. 30-day free trial, no credit card required.</p>
+            <div class="flex flex-wrap items-center gap-3">
+                <a href="{% url 'signup' %}" class="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors">Start a free trial</a>
+                <a href="{% url 'pricing' %}" class="text-sm font-medium text-blue-600 hover:text-blue-800">See pricing</a>
+                <a href="{% url 'public_contact' %}" class="text-sm font-medium text-blue-600 hover:text-blue-800">Ask a question</a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>
 
+{% if request.user.is_authenticated %}
 <script nonce="{{ csp_nonce }}">
 (function () {
     var box = document.getElementById('guide-feedback');
@@ -96,4 +155,5 @@
     }
 })();
 </script>
+{% endif %}
 {% endblock %}

@@ -1,0 +1,21 @@
+{% load static %}{% comment %}
+First-party analytics — C3. Rendered by the PUBLIC shells, and only for a
+SIGNED-OUT reader.
+
+Two conditions, because "public shell" alone is not the rule it looks like:
+saas/base_public.html is also worn by /onboarding/, which is a signed-in owner
+finishing setup, and support/base_topic.html is worn by a signed-in owner
+reading a guide. "Measure signed-out visitors" is one sentence with no
+per-template exceptions, and it is the question C3 asked — did a stranger
+arrive, and from where. Signup conversion is better answered from OnboardingState
+in our own database than from a pageview, so nothing is lost by the cut.
+
+`src` and `data-api` are both on our own origin, so the CSP stays 'self' with no
+new host — see common/analytics.py for why that matters. No nonce: an external
+script element is covered by 'self' and CLAUDE.md forbids one here.
+
+Renders nothing unless PLAUSIBLE_DOMAIN is set, so dev and the test suite make
+no outbound requests.
+{% endcomment %}{% if plausible_domain and not request.user.is_authenticated %}
+<script defer data-domain="{{ plausible_domain }}" data-api="{% url 'plausible_event' %}" src="{% url 'plausible_script' %}"></script>
+{% endif %}

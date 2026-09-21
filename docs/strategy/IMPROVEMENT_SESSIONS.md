@@ -886,8 +886,10 @@ moves the row, raise-only, with no reverse.
 **Goal:** A shop owner who has never heard of RS Systems can find it, and you can tell whether
 anyone did.
 **Size:** M · **Depends on:** — (C1 is done; this is the half C1 put out of scope)
-**Status:** **NEXT (2026-09-18).** Written up from the 2026-09-17/18 stranger-shop readiness
-audit. No code started.
+**Status:** **BUILT 2026-09-18** on `feat/c3-findability`. All five findings closed;
+`tests/test_findability.py` (28 tests) green alongside the guard set. Two things are Drake's,
+not code: create the Plausible site and `eb setenv PLAUSIBLE_DOMAIN=rssystems.io`, and verify
+the Search Console property. See C3 Notes.
 
 **Why it matters.** Step 7 of `PRODUCT_DIRECTION.md` is three non-family shops on the product.
 Every route to that runs through a page a stranger lands on, and the marketing site is five
@@ -961,6 +963,58 @@ checkable (`tests/test_landing_credibility.py` stays green).
 **Out of scope.** Writing new content, paid acquisition, the embeddable lead widget
 (`docs/proposals/website-integration-widget.md`), and conversion tracking inside the app —
 this session is about a stranger finding the site and you knowing they did.
+
+**C3 Notes (2026-09-18).**
+
+*Decision 1 — analytics: Plausible Cloud behind a first-party proxy.* $9/mo, cookieless (so no
+consent banner), and **the CSP does not move**: `common/analytics.py` serves their tracker at
+`/js/p.js` and forwards the beacon at `/pa/event`, both on rssystems.io. Self-hosting was the
+alternative and was rejected on ops — ClickHouse plus Postgres plus upgrades is a second system
+to keep alive, and the thing being measured is five marketing URLs. The proxy adds the two
+headers Plausible otherwise cannot see (`X-Forwarded-For`, `User-Agent`); without the first,
+every visitor is one visitor in Virginia. Both failure paths are quiet on purpose — an upstream
+outage serves an empty script with `Cache-Control: no-store`, a failed forward returns 202 — so a
+Plausible incident can never put an error in a prospect's console. **The tag renders for a
+signed-out reader only** — "public shell" looked like the rule and is not one, since
+`/onboarding/` and a signed-in owner reading a guide both wear it; signup conversion is better
+answered from `OnboardingState` in our own database than from a pageview. Verified end to end against
+the real service: the proxied script is the genuine 2,841-byte tracker, it reads `data-api`, and
+a POST through `/pa/event` returns Plausible's own `202 ok`. The one link that **cannot** be
+verified locally is the browser firing the beacon: the tracker refuses to send from `localhost`
+*and* when `navigator.webdriver` is true, so neither the dev server nor headless Chrome will ever
+produce a pageview. That is the script's own bot filtering working, not a fault — confirm it once
+on prod (load rssystems.io in a normal browser, watch for `POST /pa/event → 202`).
+
+*Decision 2 — five guides published:* sales tax, progressive pricing, multi-break, getting paid
+on time, warranty. `'public': True` in `HELP_TOPICS` is the only switch, and `public_topics()` is
+read by the view, the sitemap and robots.txt, so a guide cannot be published in one place and
+gated in another. The thirteen account-holder guides still 302 to `/login/` with `?next=` intact.
+
+*The part that was not obvious.* Publishing a page is not the same as publishing a URL. Every
+guide extended `base_app.html` — a shop's own branded navbar with a user menu — and every one of
+the five carried a deep link into Settings, the guide hub, or (in "Get paid on time") a gated
+guide. Served as-is, a visitor arriving from Google would have been shown a shop's app chrome and
+four links that bounce them to a sign-in page. The view now picks the shell (`shell_template`),
+the deep links are `{% templatetag openblock %} if request.user.is_authenticated {% templatetag closeblock %}`-wrapped, the thumbs-up widget is
+hidden (it POSTs to a `@login_required` endpoint), and the signed-out footer is the other four
+published guides plus one honest CTA. `tests/test_findability.py` asserts no published guide
+renders an href a visitor cannot follow — the same defect C1's switching section shipped with.
+
+*Everything else.* `{% templatetag openblock %} page_meta {% templatetag closeblock %}` (`core/templatetags/seo.py`) emits description,
+canonical, OG and the Twitter card from one call, so the four public pages that had a `<title>`
+and nothing else now each carry their own sentence; `summary` became `summary_large_image` and
+the card is `static/images/og-card.jpg`, cropped from the real dashboard capture by
+`scripts/og_card.py`. `robots.txt` and `sitemap.xml` are generated from the URL conf plus
+`public_topics()` — robots now keeps crawlers out of `/quote/`, `/invoice/`, `/pay/`, `/app/` and
+`/tech/` (a token route is a customer's own document) and no longer names `/portal/`,
+`/customer/` or `/setup-database/`, none of which the app serves. Canonical URLs come from
+`SITE_URL`, so a staging deploy cannot advertise production's.
+
+*Still Drake's, and worth doing before the rest lands* (query data accrues from the day the
+property exists): create the Plausible site for `rssystems.io`, then
+`eb setenv PLAUSIBLE_DOMAIN=rssystems.io`; and verify Search Console by DNS TXT — or, if DNS is
+inconvenient, `eb setenv GOOGLE_SITE_VERIFICATION=<token>` and use the meta-tag method, which now
+renders on every public page. Submit `https://rssystems.io/sitemap.xml` once verified.
 
 ---
 
@@ -1077,8 +1131,10 @@ build-vs-shop-price-book recommendation with numbers.
 **Revised 2026-09-18.** The spine is built and step 6 (three non-family shops) is the head of
 the queue — but the 2026-09-17/18 readiness audit found that step 6 is not code-free after all.
 Four defects sat directly on the path a stranger walks, and the one remaining piece of that work
-is a session: **C3**. The order now is: ~~deploy `main` → Glass Guy Connect → P8 → C1 → B3 → B5 →
-B6~~ → **stranger-shop readiness (#261/#262/#263/#265, merged)** → **C3** → three non-family shops.
+was a session: **C3**, built 2026-09-18. The order now is: ~~deploy `main` → Glass Guy Connect →
+P8 → C1 → B3 → B5 → B6~~ → ~~stranger-shop readiness (#261/#262/#263/#265/#267/#268, on prod as
+`6cdb7a03`)~~ → ~~C3~~ → **three non-family shops**. Nothing in this document is queued ahead of
+that.
 
 | Order | Session | Status 2026-09-18 |
 |---|---|---|
@@ -1088,7 +1144,8 @@ B6~~ → **stranger-shop readiness (#261/#262/#263/#265, merged)** → **C3** �
 | ~~4~~ | ~~**B6**~~ | **DEPLOYED 2026-09-17** (PR #257, `8da23bbe`) — spine 3; the spine is complete |
 | ~~5~~ | ~~**C2**~~ | **DONE 2026-09-17** (PR #260, open); trial size raised in #262 — see C2 Notes |
 | ~~6~~ | ~~**A4**~~ | **BUILT 2026-09-18** (PR #265, open); naming question left open — see A4 Notes |
-| **7** | **C3** | **NEXT** — the marketing-site scope C1 left out; nothing started |
+| ~~7~~ | ~~**C3**~~ | **BUILT 2026-09-18** — the marketing-site scope C1 left out; PR open |
+| **8** | **step 6** | **NEXT** — three non-family shops (`PRODUCT_DIRECTION.md`) |
 | — | **A2** | verify on prod, then either nothing or minutes |
 | — | **A3, A6, B4** | filler |
 | — | **B2, D1, D2** | memos; B2 waits on the toll-free number |
@@ -1213,6 +1270,7 @@ server, real session, CDP) and is the right tool when you need the live JS to ha
 
 | Date | Change |
 |---|---|
+| 2026-09-18 | **C3 built.** Analytics is Plausible Cloud behind a first-party proxy (`/js/p.js`, `/pa/event`) — chosen so the CSP allowlist stays `'self'` + Turnstile, which self-hosting would also have allowed but at the cost of a second system to keep alive. Five guides published behind one `public` flag that the view, the sitemap and robots.txt all read. The non-obvious half: every guide extended the signed-in app shell and carried deep links into Settings and gated guides, so publishing the URL would have shown a visitor a shop's app chrome and four links back to the login page — the exact defect C1's switching section shipped with. `page_meta` gives the four bare public pages a description and a canonical, the share card is a crop of the real dashboard, and robots.txt now keeps crawlers out of the tokened `/quote/`, `/invoice/` and `/pay/` routes. Left to Drake: the Plausible site + `PLAUSIBLE_DOMAIN`, and Search Console verification. §2: nothing is queued ahead of step 6. |
 | 2026-09-18 | **C3 added; A4 closed.** A 2026-09-17/18 readiness audit ("can a stranger's shop run on this yet?") checked every claim against `main` @ `16c01e5b` and found four defects on the path a stranger walks. Three are shipped as PRs and recorded against the sessions they close — #262 against C2 (trial 10 customers/50 jobs vs. a landing page promising a parallel month), #263's H2 against C1 (the switching section's contact link was `@login_required`; #264 duplicated the fix and was closed), #265 closing **A4** (the duplication had survived; two of its tiles were also wrong, and a third contradiction turned up only when the page was rendered). #261 has no session here and is recorded against `PRODUCT_DIRECTION.md` step 2. The fourth defect — the marketing site is five indexable URLs with no analytics, 18 guides behind a login, and no `og:image` — is **new session C3 · Findability**, the scope C1 explicitly deferred. §2 re-sequenced: C3 is the head of the queue, ahead of step 6. |
 | 2026-08-07 | Initial version — from a live four-audience walkthrough of the running app. |
 | 2026-08-11 | Stale-doc sweep: flagged that this file has no status tracking and that B1 is superseded by `FIELD_OPS_SESSIONS.md` S2; corrected the Appendix A anchor citing the deleted `PlanEnforcementMixin`. No session content changed. |
