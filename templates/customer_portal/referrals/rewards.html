@@ -177,7 +177,7 @@
 
 <!-- Schedule Modal for Physical Rewards -->
 <div id="scheduleModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 motion-fade" onclick="closeScheduleModal()">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md motion-rise" onclick="event.stopPropagation()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto motion-rise" onclick="event.stopPropagation()">
         <form action="{% url 'redeem_reward' %}" method="post" id="scheduleForm">
             {% csrf_token %}
             <input type="hidden" name="option_id" id="scheduleOptionId" value="">
