@@ -14,10 +14,21 @@
         z-index: 1000;
         overflow-y: auto;
     }
+    /* Centred with auto margins, NOT `align-items: center`. A centred flex
+       child taller than its scroll container overflows equally above and
+       below, and the half above the top edge cannot be scrolled to — on a
+       short desktop window the dialog's first fields were unreachable. Auto
+       margins centre when there is room and collapse to 0 when there is not,
+       so the dialog starts at the top and the overlay scrolls. */
     .modal.active {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: center;
+        padding: 2rem 0;
+    }
+    .modal.active .modal-content {
+        margin-top: auto;
+        margin-bottom: auto;
     }
     /* This modal predates the shared skeleton and toggles `.active`, not
        `.hidden`, so the S9 enter/exit primitive cannot key off it. The root
