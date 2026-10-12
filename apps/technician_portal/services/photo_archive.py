@@ -93,21 +93,30 @@ def _job_date(job):
         return ''
 
 
-def entries_for_job(job, invoice_number=''):
+def entries_for_job(job, invoice_number='', customer_facing=False):
     """``[(filename, FieldFile)]`` for one job's photos, in reading order.
 
     The filename answers "what am I looking at" without the folder it landed
     in: `INV-1042_Unit-4521_2026-08-14_Before.jpg`. Any part the job has not
     got is dropped rather than printed empty — an individual contributes no
     unit segment at all.
+
+    ``customer_facing=True`` is every caller that is not the shop itself: a
+    photo a technician tapped is then the close-up, never the original, and
+    a tapped photo with no close-up yet is left out (`customer_file_for`).
+    A download must not hand over what the page refused to show.
     """
+    from apps.technician_portal.services.photo_crops import customer_file_for
     stem_parts = [_slug(invoice_number), _slug(job.get_vehicle_label()),
                   _job_date(job)]
     stem = '_'.join(part for part in stem_parts if part)
 
     entries = []
     for source_field, label in PHOTO_LABELS:
-        field = getattr(job, source_field, None)
+        if customer_facing:
+            field = customer_file_for(job, source_field)
+        else:
+            field = getattr(job, source_field, None)
         if not field:
             continue
         name = f'{stem}_{label}' if stem else label
@@ -115,7 +124,7 @@ def entries_for_job(job, invoice_number=''):
     return entries
 
 
-def entries_for_jobs(jobs, invoice_number=''):
+def entries_for_jobs(jobs, invoice_number='', customer_facing=False):
     """Every job's entries, with collisions broken by a numeric suffix.
 
     Two repairs on one unit on one day — a multi-break session, which is a
@@ -125,7 +134,9 @@ def entries_for_jobs(jobs, invoice_number=''):
     entries = []
     seen = {}
     for job in jobs:
-        for filename, field in entries_for_job(job, invoice_number=invoice_number):
+        for filename, field in entries_for_job(
+                job, invoice_number=invoice_number,
+                customer_facing=customer_facing):
             stem, ext = os.path.splitext(filename)
             count = seen.get(filename, 0) + 1
             seen[filename] = count

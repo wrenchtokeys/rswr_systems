@@ -253,18 +253,7 @@
                 {% if replacement.damage_photo_before %}
                 <div>
                     <p class="text-xs text-gray-500 mb-2">Before</p>
-                    {% if photo_focus.damage_photo_before %}
-                    {% comment %}
-                    A technician tapped the damage: show it as a close-up
-                    (closeup_style scales the image about the tap; the box
-                    clips it). The link still opens the whole photo.
-                    {% endcomment %}
-                    <a href="{% customer_photo_url replacement 'damage_photo_before' %}" target="_blank" rel="noopener" class="block aspect-[4/3] rounded-lg overflow-hidden bg-gray-100">
-                        <img src="{% customer_photo_url replacement 'damage_photo_before' %}" alt="Before" class="w-full h-full object-cover" style="{{ photo_focus.damage_photo_before }}">
-                    </a>
-                    {% else %}
                     <img src="{% customer_photo_url replacement 'damage_photo_before' %}" alt="Before" class="rounded-lg w-full object-cover">
-                    {% endif %}
                 </div>
                 {% endif %}
                 {% if replacement.damage_photo_after %}

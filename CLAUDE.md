@@ -430,6 +430,17 @@ widen the bucket's `PublicReadMediaOnly` statement back to `media/*`; no test ca
 see it. `tests/test_photo_serving.py` fails the build on a photo-field `.url` in a
 template or app module.
 
+**A tapped photo's original never reaches a customer.** The original is a phone photo of
+a whole windshield — the technician's reflection, the cab, the driveway. Once a technician
+taps the break, every customer route (public invoice tile + expanded view, portal photo
+routes, both ZIPs) serves the **close-up file and nothing else**, via
+`photo_crops.customer_file_for(job, field)`; a tapped photo whose close-up has not rendered
+is withheld, not served whole (`retry_photo_crops` finishes it). Reframing or CSS-scaling
+the original is NOT a substitute — the browser still downloads every pixel (that shipped
+for an hour as #274). Any new customer-facing photo surface goes through
+`customer_file_for`; only the shop's own routes read the field directly. An untapped photo
+still goes out whole, so the tap is the control. `TappedPhotoPrivacyTests` guards it.
+
 **Quotes (B3, Sep 2026)**: `Quote`/`QuoteLineItem` live in `apps/billing/quote_models.py`;
 every state change goes through `apps/billing/services/quote_service.py` — `send_quote`,
 `accept_quote`, `decline_quote`, `revise_quote`. **Accepting creates the jobs through
