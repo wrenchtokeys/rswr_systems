@@ -4,7 +4,7 @@
 Anything else that mentions SMS status (`FIELD_OPS_SESSIONS.md` Appendix A, `ROADMAP.md`,
 `PRODUCT_DIRECTION.md`) points here and must not restate a status of its own.
 
-**Last verified against AWS: 2026-09-16** (`aws pinpoint-sms-voice-v2`, us-east-1,
+**Last verified against AWS: 2026-10-11** (`aws pinpoint-sms-voice-v2`, us-east-1,
 account 973196283632, tier PRODUCTION).
 
 > ## Read §3.5 first — the answer depends on WHO is being texted
@@ -14,6 +14,10 @@ account 973196283632, tier PRODUCTION).
 > *shop's customers* as the shop. It is wrong for texting **RS Systems' own users** — the shop
 > owners and technicians with accounts on rssystems.io. For those, RS Systems *is* the brand on
 > the message, and the registration is clean. **That is a version 5, and it should be filed.**
+>
+> **Update 2026-10-11: version 5 was filed and DENIED — but not on scope.** The reason was
+> "Invalid Website URL", a new one, and neither of v4's two mismatch reasons came back. The
+> audience split held; the URLs did not. **Version 6 is prepared — §3.6.**
 
 ---
 
@@ -21,13 +25,13 @@ account 973196283632, tier PRODUCTION).
 
 | Number | Number status | Registration | Usable |
 |---|---|---|---|
-| `+18663115189` (RS Systems) | **PENDING** | `REQUIRES_UPDATES` — **version 4 DENIED 2026-09-02 18:58 UTC** | Not yet — **version 5 (staff scope) is the live plan, §3.5** |
+| `+18663115189` (RS Systems) | **PENDING** | `REQUIRES_UPDATES` — **version 5 DENIED 2026-09-18 19:58 UTC** | Not yet — **version 6 (staff scope, URLs fixed) is prepared, §3.6** |
 | `+18559394817` (Rockstar Windshield Repair) | ACTIVE | COMPLETE (approved 2026-07-30, first try) | Yes — Rockstar only |
 
-Four versions submitted, four denied — **all four scoped as customer-facing texts sent on behalf
-of shops**, which is the thing that cannot be registered here (§3). The number itself is fine and
-should be **kept**: a version 5 scoped to RS Systems texting its own users (§3.5) is an ordinary
-registration. It leases at $2/mo, which was never the cost that mattered; two months of blocked
+Five versions submitted, five denied. **The first four were scoped as customer-facing texts sent
+on behalf of shops**, which is the thing that cannot be registered here (§3). The fifth was scoped
+to RS Systems texting its own users (§3.5) and was denied for an inaccessible URL instead (§3.6) —
+a fixable fault in the filing, not in the scope. The number itself is fine and should be **kept**. It leases at $2/mo, which was never the cost that mattered; two months of blocked
 feature work was.
 
 Prod is inert, not broken: `SMS_ENABLED=true` but `SMS_ORIGINATION_IDENTITY` is unset, and
@@ -36,7 +40,8 @@ Prod is inert, not broken: `SMS_ENABLED=true` but `SMS_ORIGINATION_IDENTITY` is 
 > **`REQUIRES_UPDATES` on the registration means "your move", not "still reviewing."** The denial
 > lives on the **version**. Version 4 sat denied for **14 days** before anyone looked, because
 > the registration-level status reads like an unfinished form. This is the second time that has
-> happened (v3 sat denied for 5 days). **Always check the version.**
+> happened (v3 sat denied for 5 days). **It then happened a third time: v5 sat denied for 23 days**
+(2026-09-18 → 2026-10-11). **Always check the version.**
 
 ```bash
 aws pinpoint-sms-voice-v2 describe-registration-versions --region us-east-1 \
@@ -54,6 +59,7 @@ aws pinpoint-sms-voice-v2 describe-registration-versions --region us-east-1 \
 | 2 | 2026-08-25 | DENIED in 3s | Missing required field — the empty-draft API trap (§6) |
 | 3 | 2026-08-25 | DENIED 08-26 | Unofficial Business Email + Pre-selected Opt-in |
 | 4 | 2026-08-31 | **DENIED 09-02** | **Message Use Case Mismatch + Opt-in Workflow Mismatch** |
+| 5 | 2026-09-17 | **DENIED 09-18** | **Invalid Website URL** — first staff-scope filing; §3.6 |
 
 v4's two reasons, verbatim:
 
@@ -196,6 +202,71 @@ Two caps worth knowing, both found by running it: **`useCaseDetails` is 500 char
 
 ---
 
+## 3.6 Version 5's denial, and version 6
+
+Version 5 was the first staff-scope filing. It cleared automated validation, went to a human, and
+was denied 28 hours later with one reason, verbatim:
+
+> **Invalid Website URL** — *"The provided website URL is either invalid or inaccessible. Ensure
+> the URL is correct, the website is active, and publicly accessible."*
+
+It was **not** the AWS account suspension (2026-10-07, three weeks later). The reviewer does not
+say which URL, so the cause is inferred, not confirmed. Every URL in the payload was probed signed
+out on 2026-10-11:
+
+| URL in the v5 payload | Signed-out result | In v4 too? |
+|---|---|---|
+| `https://rssystems.io/tech/repairs/1042/` (samples 1 **and** 2) | **302 → `/login/`** | **No — new in v5.** v4's sample links were public pay/review URLs |
+| `companyInfo.website` = `rssystems.io` (bare, no scheme) | resolves, 200 | Yes — and v4 was not denied for it |
+| `https://rssystems.io/sms/` (named as the program terms) | 200 — **but described the customer program** | Yes |
+| `https://rssystems.io/privacy/`, `/terms/` | 200 — **neither mentioned text messaging** | Not present in v4 |
+
+The gated sample link is the only URL fault that is new in v5, so it is the best single
+explanation. The other three are fixed anyway, because two of them were real contradictions a
+reviewer could have raised next:
+
+- **`/sms/` contradicted the filing.** v5 told the reviewer "no message goes to a third party's
+  customers" and pointed them at a public page that said "your shop may send you invoice
+  notifications and review requests… messages always identify the shop they are sent on behalf
+  of." That page was written for the v1 customer program and nobody re-read it when the scope
+  changed. It now describes the staff program only.
+- **The privacy policy said nothing about texts.** It now states that mobile numbers and opt-in
+  data are never sold or shared for marketing; the terms carry the program summary.
+
+### What version 6 changes
+
+- `companyInfo.website` → `https://rssystems.io`.
+- Samples 1 and 2 → `Sign in at https://rssystems.io to view.` instead of a deep link.
+- `optInDescription` says outright that the consent page is behind a login and lists the four
+  public pages.
+- Everything else is copied from v5.
+
+**Deploy first, then file.** The script's two new guards fetch the live site:
+`assert_urls_public` (every URL anywhere in the payload answers 200 signed out and does not land
+on `/login/`) and `assert_program_page_is_staff_scope` (live `/sms/` and `/privacy/` are the
+rewritten ones). A dry run before the deploy aborts on the second — by design.
+
+```bash
+python scripts/sms_optin_shot.py                                        # -> sms_optin.png
+python scripts/submit_tollfree_registration.py sms_optin.png            # validate only
+python scripts/submit_tollfree_registration.py sms_optin.png --submit   # file it (Drake)
+```
+
+### Two things v6 does not settle
+
+1. **The texts the app actually sends do not match the samples yet.** A staff notification goes
+   out as the bare `NotificationTemplate.sms_template` — e.g. *"Repair approval needed for unit
+   4821. Cost: $50. Review at …"* — with no `RS Systems:` prefix and no STOP line, and it carries
+   a deep link. The samples (v5's and v6's) describe what should be sent. Nothing sends today, so
+   nothing is wrong today; **it must be true before `SMS_ORIGINATION_IDENTITY` is set** (§8).
+2. **The customer opt-in surfaces still link to `/sms/`** — the public invoice's "Get text
+   updates" card and the "OK to text this customer" box on the customer forms. They collect
+   consent for a program this number cannot run (§3), and their "Program terms" link now lands on
+   a page about a different audience. Hide them until Path A or C exists, or leave them — a
+   product decision, not a registration one.
+
+---
+
 ## 4. The paths for CUSTOMER-facing texts (the staff answer is §3.5)
 
 ### Path A — one number per shop, registered to *that shop* ✅ recommended for shops that qualify
@@ -255,7 +326,7 @@ shop's own mobile number — a number the customer already has in their contacts
 
 ### The decision
 
-**Staff notifications (§3.5): file version 5 on `+18663115189` now.** Keep the number — it has a
+**Staff notifications (§3.5): file version 6 (§3.6) on `+18663115189`.** Keep the number — it has a
 valid registration after all, just not the one that was filed four times. This is the path that
 gives RS Systems texting at all, and it covers the urgent events (`repair_request_submitted`
 above all).
@@ -355,6 +426,9 @@ Paid AWS actions are classifier-blocked for Claude — Drake runs them in his ow
 
 ## 8. Activation checklist — if and when any number clears
 
+0. **Make the sent texts match the registered samples first** (§3.6): every staff text leads
+   with `RS Systems:` and the first one to a number carries `Reply STOP to opt out`. As of
+   2026-10-11 neither is true — the transport sends the bare `sms_template`.
 1. `eb setenv SMS_ORIGINATION_IDENTITY=+18663115189` against `rs-systems-production`
    (expect a deploy cycle — `eb setenv` triggers the collectstatic confighooks).
    Under Path A a per-shop number becomes a per-tenant field, not this env var.
@@ -408,8 +482,9 @@ all stand. Only `SMSService`'s transport call is replaced by a deep link.
 - **`scripts/submit_tollfree_registration.py`** rewritten for the staff scope, with
   `assert_brand_consistency` — the guard that would have caught version 4.
 
-**Still to do:** run the two commands above and file version 5 (Drake — the payload asserts
-business facts, including declared monthly volume, that are his to make), then the §8 checklist.
+**Version 5 was filed 2026-09-17 and denied 2026-09-18 — see §3.6.** Still to do: deploy the
+page rewrites, file version 6 (Drake — the payload asserts business facts that are his to make),
+then the §8 checklist.
 
 **Unrelated fix that rode along:** `tests.test_notification_surfaces` had a test that built rows
 at `now − 1h`/`now − 2h` and asserted a "Today" day-header, so it failed for anyone running the

@@ -8,7 +8,7 @@
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
     <h1 class="text-3xl font-bold text-gray-900 mb-8">Terms of Service</h1>
-    <p class="text-sm text-gray-500 mb-8">Last updated: August 11, 2026</p>
+    <p class="text-sm text-gray-500 mb-8">Last updated: October 11, 2026</p>
 
     <div class="prose prose-gray max-w-none">
         <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">1. Acceptance of Terms</h2>
@@ -21,6 +21,16 @@
         <p class="text-gray-700 mb-4">
             RS Systems is a cloud-based software platform designed for auto glass repair and replacement businesses. 
             The Service includes tools for managing customers, repairs, replacements, invoicing, and billing.
+        </p>
+
+        <h3 class="text-lg font-medium text-gray-900 mt-6 mb-3">Text Messages</h3>
+        <p class="text-gray-700 mb-4">
+            If you opt in at Settings → Notifications, RS Systems will send text messages to the mobile number
+            on your account about activity on that account: new repair requests, job assignments, approvals and
+            denials, and one-time verification codes. Message frequency varies with job activity. Message and
+            data rates may apply. Reply STOP to any message to opt out, or HELP for help. Opting in is not a
+            condition of using the Service, and carriers are not liable for delayed or undelivered messages.
+            The full program terms are at <a href="{% url 'sms_program' %}" class="text-blue-600 hover:underline">rssystems.io/sms</a>.
         </p>
 
         <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">3. Account Registration</h2>

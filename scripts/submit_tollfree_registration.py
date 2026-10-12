@@ -1,4 +1,4 @@
-"""Toll-free registration version 5 for +18663115189 (RS Systems) — STAFF SCOPE.
+"""Toll-free registration version 6 for +18663115189 (RS Systems) — STAFF SCOPE.
 
     python scripts/submit_tollfree_registration.py <screenshot.png>            # validate only
     python scripts/submit_tollfree_registration.py <screenshot.png> --submit   # really file it
@@ -6,8 +6,27 @@
 Generate the screenshot with `python scripts/sms_optin_shot.py` — it renders the
 real Settings -> Notifications page and refuses to save a checked box.
 
-WHY VERSION 5 IS SCOPED DIFFERENTLY
------------------------------------
+WHY VERSION 6 EXISTS
+--------------------
+Version 5 (staff scope, below) was denied 2026-09-18 for "Invalid Website URL -
+the provided website URL is either invalid or inaccessible". The reviewer does not
+say WHICH url, so every one in the payload was probed anonymously:
+
+- both message samples linked to https://rssystems.io/tech/repairs/1042/, which
+  302s a signed-out visitor to /login/ -- new in v5, v4's sample links were public;
+- companyInfo.website was the bare "rssystems.io" (no scheme);
+- https://rssystems.io/sms/, named in the opt-in description as the program terms,
+  still described the CUSTOMER program (shop-branded invoice and review texts),
+  and the privacy policy never mentioned text messaging.
+
+Version 6 changes only those: a full https:// website, samples that carry no
+login-gated link, and a description that lists the public pages. The /sms/,
+/privacy/ and /terms/ rewrites ship in the same PR and MUST BE DEPLOYED FIRST --
+`assert_urls_public` and `assert_program_page_is_staff_scope` fetch the live site
+and refuse to file against the old pages.
+
+WHY VERSIONS 5+ ARE SCOPED DIFFERENTLY
+--------------------------------------
 Versions 1-4 were all denied, and all four described RS Systems texting a SHOP'S
 CUSTOMERS on that shop's behalf. Toll-free verification registers ONE business,
 and carriers require the verification and the opt-in to reflect the END business
@@ -40,28 +59,42 @@ TRAPS THIS SCRIPT DEFUSES (all four were paid for)
    copy-forward would hit trap 1 all over again. They are set explicitly below,
    and the REQUIRED sweep re-reads the live schema rather than a hardcoded list.
 
-THE GUARD THAT WOULD HAVE CAUGHT v4
------------------------------------
+THE GUARDS THAT WOULD HAVE CAUGHT v4 AND v5
+-------------------------------------------
 `assert_brand_consistency` refuses to submit unless every message sample leads
 with the registrant's company name. v4 failed review on precisely this and no
 script checked it.
+
+`assert_urls_public` fetches every URL anywhere in the payload the way a reviewer
+does -- signed out -- and refuses to submit one that errors, or that lands on the
+login page. v5 carried two of those.
 """
 import argparse
+import re
+import ssl
 import sys
+import urllib.error
+import urllib.request
+from urllib.parse import urlparse
 
 import boto3
 
 REG = 'registration-3c4aceac54424845b6d540e818f2bddb'
-BASE_VERSION = 4          # newest; overrides below re-scope it from customer -> staff
+BASE_VERSION = 5          # newest, already staff scope; overrides below fix its URLs
 COMPANY = 'RS Systems'
-WEBSITE = 'rssystems.io'
+WEBSITE = 'https://rssystems.io'
+PROGRAM_TERMS_URL = 'https://rssystems.io/sms/'
 SUPPORT_EMAIL = 'support@rssystems.io'
 
 SAMPLES = [
-    ("RS Systems: New repair request from Penske - Unit 4821, windshield chip. "
-     "View: https://rssystems.io/tech/repairs/1042/ Reply STOP to opt out."),
+    # No deep link. The real texts link into the app, and a signed-out reviewer who
+    # follows /tech/repairs/<id>/ gets bounced to /login/ -- v5 carried two of those.
+    # Name no third party either ("from Penske"): any other brand in a sample invites
+    # the association v4 was denied for.
+    ("RS Systems: New repair request - Unit 4821, windshield chip. "
+     "Sign in at https://rssystems.io to view. Reply STOP to opt out, HELP for help."),
     ("RS Systems: Job #1042 assigned to you - 2019 F-150, chip repair, due today. "
-     "https://rssystems.io/tech/repairs/1042/ Reply STOP to opt out."),
+     "Sign in at https://rssystems.io to view. Reply STOP to opt out."),
     ("RS Systems: Your verification code is 123456. It expires in 10 minutes. "
      "Reply STOP to opt out."),
 ]
@@ -79,8 +112,11 @@ USE_CASE_DETAILS = (
 )
 
 OPT_IN_DESCRIPTION = (
-    "Users opt in inside the RS Systems application, at Settings > Notifications, on a "
-    "page they must log in to reach. The attached screenshot shows that screen.\n\n"
+    "Users opt in inside the RS Systems application, at Settings > Notifications. That "
+    "page is behind a login, so it cannot be browsed to; the attached screenshot shows "
+    "it. Our public pages are https://rssystems.io (company site), "
+    "https://rssystems.io/sms/ (text program terms), https://rssystems.io/privacy/ and "
+    "https://rssystems.io/terms/.\n\n"
     "The consent checkbox, labelled \"Text me urgent job alerts\", is EMPTY AND "
     "UNCHECKED by default and is never pre-selected. The user must click it themselves "
     "and then save. The two checkboxes above it (in-app and email) are on by default, "
@@ -90,8 +126,8 @@ OPT_IN_DESCRIPTION = (
     "and approvals. Message frequency varies with job activity, typically a few "
     "messages per working day. Consent is not a condition of using RS Systems.\"\n\n"
     "Directly below it: \"Msg & data rates may apply. Reply STOP to opt out, HELP for "
-    "help,\" followed by links to our text program terms (https://rssystems.io/sms/), "
-    "our privacy policy and our terms.\n\n"
+    "help,\" followed by links to the text program terms, privacy policy and terms "
+    "listed above.\n\n"
     "Consent is stored with a timestamp against that user's own account record, and no "
     "text is sent until the user has also verified that mobile number with a code. The "
     "screenshot shows a demonstration account rather than a real user's record, so that "
@@ -99,6 +135,7 @@ OPT_IN_DESCRIPTION = (
 )
 
 OVERRIDES = {
+    'companyInfo.website': {'TextValue': WEBSITE},
     'messagingUseCase.useCaseCategory': {'SelectChoices': ['ACCOUNT_NOTIFICATIONS']},
     'messagingUseCase.useCaseDetails': {'TextValue': USE_CASE_DETAILS},
     'messagingUseCase.optInType': {'SelectChoices': ['DIGITAL_FORM']},
@@ -136,10 +173,73 @@ def assert_brand_consistency(fields):
 
 def assert_support_email(fields):
     website = fields.get('companyInfo.website', {}).get('TextValue', '')
+    host = (urlparse(website).hostname or '').lower()
+    if not website.startswith('https://') or not host:
+        sys.exit(f'ABORT - companyInfo.website must be a full https:// URL, got {website!r}')
     email = fields['contactInfo.supportEmail']['TextValue']
-    if website and not email.lower().endswith('@' + website.lower()):
+    if not email.lower().endswith('@' + host):
         sys.exit(f'ABORT - supportEmail {email} does not match website {website}')
-    print(f'support email OK - {email} matches {website}')
+    print(f'support email OK - {email} matches {host}')
+
+
+def _tls_context():
+    # python.org builds on macOS ship no CA bundle, so the default context fails
+    # every https fetch. certifi comes in with requests.
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
+def _fetch(url):
+    """GET as a signed-out visitor; return (status, final_url, body)."""
+    request = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    try:
+        with urllib.request.urlopen(request, timeout=20, context=_tls_context()) as response:
+            return response.status, response.geturl(), response.read().decode('utf-8', 'replace')
+    except urllib.error.HTTPError as exc:
+        return exc.code, url, ''
+    except urllib.error.URLError as exc:
+        sys.exit(f'ABORT - {url} is unreachable: {exc.reason}')
+
+
+def assert_urls_public(fields):
+    """v5's denial, as an assertion: "Invalid or inaccessible website URL".
+
+    Every URL a reviewer can read off the payload -- the website fields AND the ones
+    inside the samples and descriptions -- must load signed out, without ending up
+    on the login page.
+    """
+    urls = set()
+    for value in fields.values():
+        urls.update(u.rstrip('.,)') for u in re.findall(r'https?://[^\s"\']+', value.get('TextValue') or ''))
+    for url in sorted(urls):
+        status, final, _ = _fetch(url)
+        if status != 200:
+            sys.exit(f'ABORT - {url} answers {status} to a signed-out visitor')
+        if urlparse(final).path.startswith('/login'):
+            sys.exit(f'ABORT - {url} bounces a signed-out visitor to {final}. '
+                     f'That is what version 5 was denied with.')
+    print(f'urls OK - {len(urls)} distinct URLs, all 200 signed out, none login-gated')
+
+
+def assert_program_page_is_staff_scope():
+    """The public program terms must describe the program being registered.
+
+    Through v5 this page still described shop-branded texts to a shop's customers.
+    This fails until the rewritten page is DEPLOYED -- which is the point.
+    """
+    _, _, body = _fetch(PROGRAM_TERMS_URL)
+    stale = [phrase for phrase in ('Review requests', 'Invoice notifications',
+                                   'on behalf of') if phrase in body]
+    if stale or 'account holders' not in body:
+        sys.exit(f'ABORT - {PROGRAM_TERMS_URL} still describes the customer program '
+                 f'({stale or "no staff wording"}). Deploy the rewritten page first.')
+    _, _, privacy = _fetch('https://rssystems.io/privacy/')
+    if 'Text Messaging' not in privacy:
+        sys.exit('ABORT - the live privacy policy has no text-messaging section. Deploy first.')
+    print('program terms OK - live /sms/ is staff scope, privacy policy covers texts')
 
 
 def assert_lengths(client, fields):
@@ -175,7 +275,7 @@ def main():
     print(f'copied {len(fields)} fields from version {BASE_VERSION}')
 
     fields.update(OVERRIDES)
-    print(f'applied {len(OVERRIDES)} deliberate overrides (customer scope -> staff scope)')
+    print(f'applied {len(OVERRIDES)} deliberate overrides')
 
     if fields['companyInfo.companyName']['TextValue'] != COMPANY:
         sys.exit(f"ABORT - base companyName is "
@@ -184,6 +284,8 @@ def main():
     assert_brand_consistency(fields)
     assert_support_email(fields)
     assert_lengths(client, fields)
+    assert_urls_public(fields)
+    assert_program_page_is_staff_scope()
 
     required = [d['FieldPath'] for d in client.describe_registration_field_definitions(
                     RegistrationType='US_TOLL_FREE_REGISTRATION')['RegistrationFieldDefinitions']
