@@ -55,7 +55,13 @@
         /* object-fit: cover crops this tile. Without a marked break it crops
            the middle of the frame, which is usually the middle of the glass
            and not the damage; a tap supplies object-position inline. */
-        .photo-grid img { width: 100%; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; }
+        .photo-grid img { display: block; width: 100%; height: 120px; object-fit: cover; }
+        /* The link is the frame, and it clips: a photo a technician tapped
+           is scaled about the break (closeup_style in photo_crops.py), and
+           without overflow: hidden the magnified image spills over the page
+           instead of reading as a close-up. */
+        .photo-grid figure a,
+        .photo-pair-shot a { display: block; overflow: hidden; border-radius: 8px; border: 1px solid #e5e7eb; }
         /* ...and when nobody marked it, aim where techs actually tap: (41%,
            61%), left and low, because a chip is shot from the driver's seat.
            Measured over 73 marks (P6.1); it halves the median framing error
@@ -76,7 +82,7 @@
         .photo-pair { margin: 0 0 16px; }
         .photo-pair-frames { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .photo-pair-shot { position: relative; margin: 0; }
-        .photo-pair-shot img { display: block; width: 100%; height: 150px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; }
+        .photo-pair-shot img { display: block; width: 100%; height: 150px; object-fit: cover; }
         .photo-pair-label { position: absolute; left: 8px; bottom: 8px; padding: 3px 8px; border-radius: 999px; background: rgba(17, 24, 39, 0.78); color: #fff; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
         .photo-pair figcaption { font-size: 12px; color: #6b7280; margin-top: 6px; }
     </style>
@@ -232,7 +238,7 @@
                             {% for photo in pair.photos %}
                             <div class="photo-pair-shot">
                                 <a href="{{ photo.url }}" target="_blank" rel="noopener">
-                                    <img src="{{ photo.url }}" alt="{{ photo.caption }}" loading="lazy"{% if photo.reframe %} class="blind-focus"{% endif %}{% if photo.focus %} style="object-position: {{ photo.focus }}"{% endif %}>
+                                    <img src="{{ photo.url }}" alt="{{ photo.caption }}" loading="lazy"{% if photo.reframe %} class="blind-focus"{% endif %}{% if photo.style %} style="{{ photo.style }}"{% endif %}>
                                 </a>
                                 <span class="photo-pair-label">{{ photo.label }}</span>
                             </div>
@@ -246,7 +252,7 @@
                         {% for photo in photos %}
                         <figure>
                             <a href="{{ photo.url }}" target="_blank" rel="noopener">
-                                <img src="{{ photo.url }}" alt="{{ photo.caption }}" loading="lazy"{% if photo.reframe %} class="blind-focus"{% endif %}{% if photo.focus %} style="object-position: {{ photo.focus }}"{% endif %}>
+                                <img src="{{ photo.url }}" alt="{{ photo.caption }}" loading="lazy"{% if photo.reframe %} class="blind-focus"{% endif %}{% if photo.style %} style="{{ photo.style }}"{% endif %}>
                             </a>
                             <figcaption>{{ photo.caption }}</figcaption>
                         </figure>

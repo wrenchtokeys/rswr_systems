@@ -688,3 +688,98 @@ class InvoiceReplacementPairLanguageTests(PhotoInvoiceTestCase):
         self.assertEqual(captions,
                          {'Unit #A-1 — before and after the repair',
                           'Unit #B-2 — the damage, and the new glass'})
+
+
+class TappedPhotoIsACloseUpTests(PhotoInvoiceTestCase):
+    """A tap must magnify, not merely pan.
+
+    `object-position` only chooses which part of the photo an
+    `object-fit: cover` box crops to — and a 4:3 photo in a 4:3 box is not
+    cropped at all. So a photo a technician tapped reached the customer as
+    the whole windshield, "framed on the break" in a way nobody could see.
+    The pan is now paired with a scale about the same point.
+    """
+
+    ZOOM = ('style="object-position: 30.00% 70.00%; '
+            'transform-origin: 30.00% 70.00%; transform: scale(2.5)"')
+
+    def setUp(self):
+        super().setUp()
+        self.portal_user = User.objects.create_user(
+            'portal_zoom', password='pw', email='portal@zoom.test')
+        CustomerUser.objects.create(
+            user=self.portal_user, customer=self.customer,
+            is_primary_contact=True,
+        )
+
+    def portal_get(self, name, job):
+        self.client.force_login(self.portal_user)
+        session = self.client.session
+        session['tenant_id'] = self.shop.id
+        session.save()
+        return self.client.get(reverse(name, args=[job.id])).content.decode()
+
+    def test_a_tapped_tile_is_magnified_about_the_tap(self):
+        repair = self.make_repair(damage_photo_before=real_jpeg())
+        save_crop_for(repair, 'damage_photo_before', 30.0, 70.0)
+        invoice = self.make_invoice()
+        self.add_line(invoice, repair)
+        self.assertIn(self.ZOOM, self.get_public_invoice(invoice).content.decode())
+
+    def test_a_tapped_before_is_magnified_inside_a_pair(self):
+        repair = self.make_repair(damage_photo_before=real_jpeg(),
+                                  damage_photo_after=real_jpeg())
+        save_crop_for(repair, 'damage_photo_before', 30.0, 70.0)
+        save_crop_for(repair, 'damage_photo_after', 30.0, 70.0)
+        invoice = self.make_invoice()
+        self.add_line(invoice, repair)
+        html = self.get_public_invoice(invoice).content.decode()
+        self.assertIn(self.ZOOM, html)
+        # The after photo is never reframed, tapped or not.
+        self.assertEqual(html.count('transform: scale('), 1)
+        self.assertEqual(self.photo_pairs(invoice)[0]['after']['style'], '')
+
+    def test_the_frame_clips_the_magnified_photo(self):
+        """Without overflow: hidden the scaled image spills over the page."""
+        repair = self.make_repair(damage_photo_before=real_jpeg())
+        invoice = self.make_invoice()
+        self.add_line(invoice, repair)
+        html = self.get_public_invoice(invoice).content.decode()
+        self.assertRegex(
+            html, r'\.photo-pair-shot a \{[^}]*overflow: hidden')
+
+    def test_a_machine_guess_pans_but_does_not_magnify(self):
+        """Magnifying a wrong guess crops the damage out of its own photo."""
+        repair = self.make_repair(damage_photo_before=real_jpeg())
+        save_crop_for(repair, 'damage_photo_before', 30.0, 70.0,
+                      confirmed_by_human=False)
+        invoice = self.make_invoice()
+        self.add_line(invoice, repair)
+        html = self.get_public_invoice(invoice).content.decode()
+        self.assertIn('style="object-position: 30.00% 70.00%"', html)
+        self.assertNotIn('transform: scale(', html)
+
+    def test_a_tap_whose_close_up_file_never_rendered_still_magnifies(self):
+        repair = self.make_repair(damage_photo_before=real_jpeg())
+        crop = save_crop_for(repair, 'damage_photo_before', 30.0, 70.0)
+        crop.cropped_image.delete(save=True)
+        invoice = self.make_invoice()
+        self.add_line(invoice, repair)
+        self.assertIn(self.ZOOM, self.get_public_invoice(invoice).content.decode())
+
+    def test_the_portal_repair_page_magnifies_a_tap(self):
+        repair = self.make_repair(damage_photo_before=real_jpeg())
+        save_crop_for(repair, 'damage_photo_before', 30.0, 70.0)
+        self.assertIn(self.ZOOM, self.portal_get('customer_repair_detail', repair))
+
+    def test_the_portal_replacement_page_magnifies_a_tap(self):
+        replacement = self.make_replacement(damage_photo_before=real_jpeg())
+        save_crop_for(replacement, 'damage_photo_before', 30.0, 70.0)
+        html = self.portal_get('customer_replacement_detail', replacement)
+        self.assertIn(self.ZOOM, html)
+        self.assertIn('overflow-hidden', html)
+
+    def test_an_untapped_replacement_photo_renders_whole(self):
+        replacement = self.make_replacement(damage_photo_before=real_jpeg())
+        html = self.portal_get('customer_replacement_detail', replacement)
+        self.assertNotIn('transform: scale(', html)
