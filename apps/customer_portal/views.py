@@ -42,7 +42,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
 from core.services.sms_service import SMSService
 from core.notification_text import on_vehicle
-from apps.technician_portal.services.photo_crops import focus_positions_for
+from apps.technician_portal.services.photo_crops import closeup_styles_for
 from apps.technician_portal.signals import notify_batch_approved
 
 logger = logging.getLogger(__name__)
@@ -751,9 +751,10 @@ def customer_repair_detail(request, repair_id):
             # The before photo sits in a 4:3 object-cover box, so it is
             # cropped whether we like it or not — this frames that crop on
             # the break the technician marked instead of the middle of the
-            # windshield. Empty for an unmarked photo; the after photo is
+            # windshield, and magnifies a technician's tap into an actual
+            # close-up. Empty for an unmarked photo; the after photo is
             # never reframed (it would magnify the repair's blemish).
-            'photo_focus': focus_positions_for(repair),
+            'photo_focus': closeup_styles_for(repair),
         })
     except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
@@ -1496,6 +1497,9 @@ def customer_replacement_detail(request, replacement_id):
             'customer': customer,
             'available_rewards': available_rewards,
             'is_invoiced': is_invoiced,
+            # Same contract as the repair page: a tapped damage photo is
+            # shown as a close-up of the break, the new glass never is.
+            'photo_focus': closeup_styles_for(replacement),
         })
     except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")

@@ -639,7 +639,8 @@ def _resolve_public_invoice(invoice_id, token, request=None, record_view=True):
 
 
 from apps.technician_portal.services.photo_crops import (
-    SOURCE_FIELDS, UNZOOMED_SOURCE_FIELDS, focus_positions_for,
+    SOURCE_FIELDS, UNZOOMED_SOURCE_FIELDS, closeup_styles_for,
+    focus_positions_for,
 )
 from apps.technician_portal.services.photo_serving import (
     photo_response, public_photo_url,
@@ -720,7 +721,9 @@ def _public_invoice_photos(invoice):
     invoice (the individual-vs-fleet trap in CLAUDE.md). A pair is captioned
     once for the two photos, not once per photo (one row, one mention).
 
-    `focus` reframes a tile on the break a technician marked; it is '' for
+    `focus` reframes a tile on the break a technician marked, and `style`
+    carries that pan plus the magnification that makes a tapped photo an
+    actual close-up (`closeup_style`); both are '' for
     anything unmarked, and `reframe` then lets the stylesheet aim it at the
     measured blind default (P6.1). **The after photo is never reframed** —
     zooming a resin repair shows the customer the scar instead of the fix —
@@ -732,10 +735,12 @@ def _public_invoice_photos(invoice):
     try:
         for kind, job in _public_invoice_jobs(invoice):
             focus_positions = focus_positions_for(job)
+            closeup_styles = closeup_styles_for(job)
             vehicle = job.get_vehicle_label()
 
             def shot(source_field, label, job=job, vehicle=vehicle,
-                     focus_positions=focus_positions):
+                     focus_positions=focus_positions,
+                     closeup_styles=closeup_styles):
                 """One photo dict, or None when the job has not got it."""
                 field = getattr(job, source_field, None)
                 if not field:
@@ -749,6 +754,10 @@ def _public_invoice_photos(invoice):
                     'label': label,
                     'caption': f'{vehicle} — {label}' if vehicle else label,
                     'focus': focus_positions.get(source_field, ''),
+                    # What the tile actually renders with: the pan above
+                    # plus, for a technician's tap, the magnification that
+                    # makes it a close-up rather than the whole windshield.
+                    'style': closeup_styles.get(source_field, ''),
                     # An unmarked photo of the DAMAGE is aimed at (41%, 61%)
                     # by .blind-focus rather than dead centre (P6.1). The
                     # after photo is excluded for the same reason it is never
