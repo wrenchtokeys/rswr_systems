@@ -56,7 +56,7 @@ Condensed, because these closed out items this file used to list as pending:
 - **Billing & subscription hardening** (PRs #166/#171/#172/#173) — EB cron had never executed (four silent bugs), Stripe Basil payload shapes, webhook idempotency + reconcile sweeps, `past_due` read-only at 14 days, platform fee resolution, real plan limits.
 - **Payment reliability** (PRs #148/#149) — webhook 500 hotfix, manual-payment guard, reconcile cron, verified payment-complete landing.
 - **UI "magic" overhaul S1–S10** (PRs #160/#162/#163/#164/#167/#168/#169) — self-hosted assets, design tokens, brand palette, dashboard/jobs/job-form redesigns, motion, view transitions.
-- **SMS** (PRs #156/#158/#159) — AWS End User Messaging transport, invoice texts, review-request texts. **Dark pending registration.** Customer-facing texts (invoice/review, branded as the shop) cannot be registered on RS Systems' number — four denials. **Staff notifications can**; version 5 was the first such filing and was denied 2026-09-18 for an inaccessible URL, not for scope — version 6 is prepared: `docs/operations/SMS_REGISTRATION.md` §3.6.
+- **SMS** (PRs #156/#158/#159) — AWS End User Messaging transport, invoice texts, review-request texts. **Dark pending registration.** Customer-facing texts (invoice/review, branded as the shop) cannot be registered on RS Systems' number — four denials. **Staff notifications can**; version 5 was the first such filing and was denied 2026-09-18 for an inaccessible URL, not for scope — **version 6 was filed 2026-10-12 and is in review** (#276 deployed first: `/sms/`, privacy and terms now describe the staff program): `docs/operations/SMS_REGISTRATION.md` §3.6.
 - **Launch readiness Phases 1–3** (PRs #143/#144/#146) — funnel/plans, first-run experience, support contact form.
 - **Loyalty** (PRs #139/#140/#142) — customer-anchored balances, owner reward management, opt-in auto-apply.
 - **Soft delete + 30-day restore** (PR #130), **tax overhaul + fleet/individual** (PRs #127/#128), **tenant branding** (PRs #116/#165).
@@ -182,7 +182,7 @@ Technician assignment notifications — N1 #179 and N3 #204, deployed 2026-08-24
 ### SMS — remaining coverage
 - *Shipped* on AWS End User Messaging (not Twilio): invoice texts and review-request texts.
 - *Remaining:* repair approval and payment-confirmed texts; tech assignment texts (session N2).
-- *Transport decision, 2026-09-17:* split by audience. **Staff notifications** (repair requests, assignments, approvals) register cleanly as RS Systems → version 5, and the product side shipped 2026-09-17. **Customer-facing** texts take an `sms:` hand-off to the shop's own phone, with per-shop registration as an opt-in upgrade — **`docs/operations/SMS_REGISTRATION.md`**.
+- *Transport decision, 2026-09-17:* split by audience. **Staff notifications** (repair requests, assignments, approvals) register as RS Systems (version 5 denied on a URL, version 6 in review since 2026-10-12), and the product side shipped 2026-09-17. *Before switch-on:* sent staff texts must gain the `RS Systems:` prefix and a STOP line to match the registered samples. **Customer-facing** texts take an `sms:` hand-off to the shop's own phone, with per-shop registration as an opt-in upgrade — **`docs/operations/SMS_REGISTRATION.md`**.
 
 ### CI/CD Pipeline
 - GitHub Actions: run test suite on every PR to `main`

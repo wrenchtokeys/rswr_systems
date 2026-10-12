@@ -555,7 +555,8 @@ sweep (`test_code234` ×2, `test_code132`) are identical on `main`.
 
 > **The registration goal of this session is dead.** Four versions, four denials; the fourth
 > (2026-09-02) was a *structural* mismatch — RS Systems registers as one brand, every message
-> is branded as a client shop — which no wording fixes. **Do not submit a version 5.** The
+> is branded as a client shop — which no wording fixes. **Do not submit a version 5** *(true for
+> customer-facing texts only; staff-scope versions 5 and 6 were filed — see Appendix A)*. The
 > consent product work below shipped, was correct, and is reused by the replacement plan in
 > **`docs/operations/SMS_REGISTRATION.md`**. Everything in this section that describes
 > *submitting a registration* is superseded by that doc.
@@ -1935,6 +1936,12 @@ staff notifications, `ACCOUNT_NOTIFICATIONS`. Keep the number. Customer-facing t
 consent surface, the consent record and `SMSService.send_sms` all landed; what remains is filing
 version 5 and flipping `SMS_ORIGINATION_IDENTITY`. N4 is closed: its opt-in product work was
 correct and is reused, its registration goal was misscoped.
+
+**Update 2026-10-12:** version 5 was filed 2026-09-17 and denied the next day for an
+inaccessible URL — not for scope. **Version 6 was filed 2026-10-12 and is in review.** One piece
+of N2 is still unbuilt: the texts the app sends are the bare `sms_template`, without the
+`RS Systems:` prefix or STOP line the registered samples show. That lands before
+`SMS_ORIGINATION_IDENTITY` is set. Status lives in `docs/operations/SMS_REGISTRATION.md` §3.6.
 
 
 ## Appendix B — Parts sourcing investigation: NAGS lookup + Mygrant quotes/ordering

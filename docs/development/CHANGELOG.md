@@ -14,6 +14,36 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-10-12 — Toll-free registration version 6 filed (PR #276)
+
+**Deployed 2026-10-12 04:15 UTC as `6602c12d`**, no migration. Version 6 submitted 04:18 UTC and
+`REVIEWING`.
+
+### Fixed
+- **The public text-program page described the wrong program.** `/sms/` still promised
+  shop-branded invoice and review texts to a shop's customers, while registration version 5 told
+  the carrier "no message goes to a third party's customers" and named that page as its program
+  terms. It now describes what is being registered: RS Systems texting its own account holders.
+- **The privacy policy and terms never mentioned text messaging.** Both gain a section — mobile
+  numbers and opt-in data are never sold or shared for marketing; STOP/HELP; rates.
+
+### Changed
+- **Version 5 was denied 2026-09-18 for "Invalid Website URL" and sat unread for 23 days** — the
+  third denial to hide behind a registration status of `REQUIRES_UPDATES`. It was not a scope
+  denial. Both message samples linked to a job page that bounces a signed-out reviewer to
+  `/login/`; version 6 drops the deep link and gives the website as a full `https://` URL.
+
+### Technical
+- `scripts/submit_tollfree_registration.py` fetches the live site before it will file: every URL
+  anywhere in the payload must answer 200 signed out without landing on `/login/`, and the live
+  `/sms/` and `/privacy/` must be the staff-scope ones. `tests/test_sms_foundation.py` pins the
+  page's scope.
+- **Not done:** staff texts as sent are still the bare `sms_template` (no `RS Systems:` prefix, no
+  STOP line), and the customer opt-in surfaces still link to `/sms/`. Both are recorded in
+  `docs/operations/SMS_REGISTRATION.md` §3.6; the first blocks switching the number on.
+
+---
+
 ## 2026-09-18 — Help center closed out (H8), and everything since `8da23bbe` deployed
 
 **Deployed 2026-09-19 01:28 UTC as `43a57eff`** (`main`; the evening of the 18th, Central): #260 (C2
