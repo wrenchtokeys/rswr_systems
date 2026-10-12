@@ -4,7 +4,7 @@
 Anything else that mentions SMS status (`FIELD_OPS_SESSIONS.md` Appendix A, `ROADMAP.md`,
 `PRODUCT_DIRECTION.md`) points here and must not restate a status of its own.
 
-**Last verified against AWS: 2026-10-11** (`aws pinpoint-sms-voice-v2`, us-east-1,
+**Last verified against AWS: 2026-10-12** (`aws pinpoint-sms-voice-v2`, us-east-1,
 account 973196283632, tier PRODUCTION).
 
 > ## Read §3.5 first — the answer depends on WHO is being texted
@@ -17,7 +17,8 @@ account 973196283632, tier PRODUCTION).
 >
 > **Update 2026-10-11: version 5 was filed and DENIED — but not on scope.** The reason was
 > "Invalid Website URL", a new one, and neither of v4's two mismatch reasons came back. The
-> audience split held; the URLs did not. **Version 6 is prepared — §3.6.**
+> audience split held; the URLs did not. **Version 6 was filed 2026-10-12 04:18 UTC and is
+> `REVIEWING` — §3.6.**
 
 ---
 
@@ -25,10 +26,10 @@ account 973196283632, tier PRODUCTION).
 
 | Number | Number status | Registration | Usable |
 |---|---|---|---|
-| `+18663115189` (RS Systems) | **PENDING** | `REQUIRES_UPDATES` — **version 5 DENIED 2026-09-18 19:58 UTC** | Not yet — **version 6 (staff scope, URLs fixed) is prepared, §3.6** |
+| `+18663115189` (RS Systems) | **PENDING** | **version 6 `REVIEWING`** since 2026-10-12 04:18 UTC (v5 DENIED 2026-09-18) | Not yet — **waiting on the reviewer, §3.6** |
 | `+18559394817` (Rockstar Windshield Repair) | ACTIVE | COMPLETE (approved 2026-07-30, first try) | Yes — Rockstar only |
 
-Five versions submitted, five denied. **The first four were scoped as customer-facing texts sent
+Six versions submitted; five denied, the sixth in review. **The first four were scoped as customer-facing texts sent
 on behalf of shops**, which is the thing that cannot be registered here (§3). The fifth was scoped
 to RS Systems texting its own users (§3.5) and was denied for an inaccessible URL instead (§3.6) —
 a fixable fault in the filing, not in the scope. The number itself is fine and should be **kept**. It leases at $2/mo, which was never the cost that mattered; two months of blocked
@@ -60,6 +61,7 @@ aws pinpoint-sms-voice-v2 describe-registration-versions --region us-east-1 \
 | 3 | 2026-08-25 | DENIED 08-26 | Unofficial Business Email + Pre-selected Opt-in |
 | 4 | 2026-08-31 | **DENIED 09-02** | **Message Use Case Mismatch + Opt-in Workflow Mismatch** |
 | 5 | 2026-09-17 | **DENIED 09-18** | **Invalid Website URL** — first staff-scope filing; §3.6 |
+| 6 | 2026-10-12 | **REVIEWING** | Staff scope, URLs fixed; §3.6 |
 
 v4's two reasons, verbatim:
 
@@ -241,7 +243,26 @@ reviewer could have raised next:
   public pages.
 - Everything else is copied from v5.
 
-**Deploy first, then file.** The script's two new guards fetch the live site:
+### Filed 2026-10-12
+
+PR #276 merged as `6602c12d` and deployed as `app-6602c` at 04:15 UTC; the dry run then passed
+every guard against the live site and version 6 was submitted at **04:18 UTC**. It reached
+`REVIEWING` three seconds later — past the automated gate that killed v2 — so it is with a human.
+Screenshot `attachment-7b65cf65ec7449bb9a8219524b27370c`; declared volume 100/month, as in v5.
+
+v5 took 28 hours to be denied and Rockstar's approval took days. **Check the version, on a
+schedule** — three denials have now sat unread behind `REQUIRES_UPDATES`:
+
+```bash
+aws pinpoint-sms-voice-v2 describe-registration-versions --region us-east-1 \
+  --registration-id registration-3c4aceac54424845b6d540e818f2bddb \
+  --query 'RegistrationVersions[?VersionNumber==`6`].[RegistrationVersionStatus,DeniedReasons]'
+```
+
+If it is denied again, the reason says whether the gated sample link was the real cause of v5's
+denial — that was inferred, never confirmed.
+
+**Deploy first, then file** is how it was done, and how any later version must be. The script's two new guards fetch the live site:
 `assert_urls_public` (every URL anywhere in the payload answers 200 signed out and does not land
 on `/login/`) and `assert_program_page_is_staff_scope` (live `/sms/` and `/privacy/` are the
 rewritten ones). A dry run before the deploy aborts on the second — by design.
@@ -326,7 +347,7 @@ shop's own mobile number — a number the customer already has in their contacts
 
 ### The decision
 
-**Staff notifications (§3.5): file version 6 (§3.6) on `+18663115189`.** Keep the number — it has a
+**Staff notifications (§3.5): version 6 (§3.6) is filed on `+18663115189` and in review.** Keep the number — it has a
 valid registration after all, just not the one that was filed four times. This is the path that
 gives RS Systems texting at all, and it covers the urgent events (`repair_request_submitted`
 above all).
@@ -482,9 +503,9 @@ all stand. Only `SMSService`'s transport call is replaced by a deep link.
 - **`scripts/submit_tollfree_registration.py`** rewritten for the staff scope, with
   `assert_brand_consistency` — the guard that would have caught version 4.
 
-**Version 5 was filed 2026-09-17 and denied 2026-09-18 — see §3.6.** Still to do: deploy the
-page rewrites, file version 6 (Drake — the payload asserts business facts that are his to make),
-then the §8 checklist.
+**Version 5 was filed 2026-09-17 and denied 2026-09-18 — see §3.6.** **Version 6 was filed
+2026-10-12 and is in review.** Still to do: make the sent texts match the samples (§8 step 0),
+then, if it clears, the rest of the §8 checklist.
 
 **Unrelated fix that rode along:** `tests.test_notification_surfaces` had a test that built rows
 at `now − 1h`/`now − 2h` and asserted a "Today" day-header, so it failed for anyone running the
