@@ -114,6 +114,28 @@ class SmsProgramPageTests(TestCase):
         self.assertIn('HELP', content)
         self.assertIn('Message and data rates may apply', content)
 
+    def test_page_describes_the_staff_program_only(self):
+        """The page is registration evidence and must match the filing's scope.
+
+        Version 5 said "no message goes to a third party's customers" while this
+        page still promised shop-branded invoice and review texts.
+        """
+        content = self.client.get('/sms/').content.decode()
+        self.assertIn('account holders', content)
+        self.assertIn('Settings → Notifications', content)
+        for customer_program in ('Invoice notifications', 'Review requests',
+                                 'on behalf of'):
+            self.assertNotIn(customer_program, content)
+
+    def test_legal_pages_cover_text_messaging(self):
+        """A reviewer opens both; neither mentioned texts until version 6."""
+        privacy = self.client.get('/privacy/').content.decode()
+        self.assertIn('Text Messaging', privacy)
+        self.assertIn('never shared with', privacy)
+        terms = self.client.get('/terms/').content.decode()
+        self.assertIn('Reply STOP', terms)
+        self.assertIn('data rates may apply', terms)
+
     def test_sitemap_lists_sms_page(self):
         response = self.client.get('/sitemap.xml')
         self.assertEqual(response.status_code, 200)

@@ -8,7 +8,7 @@
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
     <h1 class="text-3xl font-bold text-gray-900 mb-8">Privacy Policy</h1>
-    <p class="text-sm text-gray-500 mb-8">Last updated: February 17, 2026</p>
+    <p class="text-sm text-gray-500 mb-8">Last updated: October 11, 2026</p>
 
     <div class="prose prose-gray max-w-none">
         <p class="text-gray-700 mb-6">
@@ -26,6 +26,7 @@
             <li>Name and email address</li>
             <li>Business name and contact information</li>
             <li>Password (stored securely using industry-standard hashing)</li>
+            <li>Mobile phone number, if you add one to your account, and a record of whether and when you agreed to receive text messages</li>
         </ul>
 
         <h3 class="text-lg font-medium text-gray-900 mt-6 mb-3">Business Data</h3>
@@ -68,7 +69,7 @@
             We use trusted third-party services to operate RS Systems:
         </p>
         <ul class="list-disc pl-6 text-gray-700 mb-4">
-            <li><strong>Amazon Web Services (AWS)</strong> — Cloud hosting, file storage (photos, documents), and email delivery via Amazon SES (invoices, notifications, password resets)</li>
+            <li><strong>Amazon Web Services (AWS)</strong> — Cloud hosting, file storage (photos, documents), and email delivery via Amazon SES (invoices, notifications, password resets), and text message delivery to account holders who have opted in</li>
             <li><strong>Stripe</strong> — Payment processing for subscriptions</li>
         </ul>
         <p class="text-gray-700 mb-4">
@@ -86,6 +87,16 @@
             <li><strong>Protection of rights</strong> — To protect our rights, privacy, safety, or property</li>
             <li><strong>Business transfers</strong> — In connection with a merger, acquisition, or sale of assets</li>
         </ul>
+
+        <h3 class="text-lg font-medium text-gray-900 mt-6 mb-3">Text Messaging</h3>
+        <p class="text-gray-700 mb-4">
+            If you opt in to text messages from RS Systems, we use your mobile number only to send the
+            account notifications described in our <a href="{% url 'sms_program' %}" class="text-blue-600 hover:underline">Text Message Program</a>.
+            Mobile numbers and text messaging opt-in data and consent are never sold, and are never shared with
+            third parties or affiliates for marketing or promotional purposes. They are passed only to the
+            messaging provider and carriers that deliver the message. You can opt out at any time by replying
+            STOP to any message or by turning texts off in your notification settings.
+        </p>
 
         <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">5. Data Security</h2>
         <p class="text-gray-700 mb-4">

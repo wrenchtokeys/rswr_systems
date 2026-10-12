@@ -3,50 +3,62 @@
 
 {% block title %}Text Message Program - RS Systems{% endblock %}
 
-{% block meta %}{% page_meta title="RS Systems Text Message Program" description="What RS Systems texts, who gets a text, how to opt in and how to stop. Message and data rates may apply." %}{% endblock %}
+{% block meta %}{% page_meta title="RS Systems Text Message Program" description="What RS Systems texts its account holders, how to opt in and how to stop. Message and data rates may apply." %}{% endblock %}
+
+{% comment %}
+This page is carrier-registration evidence: the toll-free filing names this URL as
+the public program terms, and a reviewer reads it beside the filing. It must
+describe the SAME program the filing does — RS Systems texting its own account
+holders, as RS Systems. Until 2026-10 it still described the customer-facing
+program (shop-branded invoice and review texts), which contradicted version 5.
+tests/test_sms_foundation.py pins the scope; see docs/operations/SMS_REGISTRATION.md
+before editing.
+{% endcomment %}
 
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
     <h1 class="text-3xl font-bold text-gray-900 mb-8">RS Systems Text Message Program</h1>
-    <p class="text-sm text-gray-500 mb-8">Last updated: August 9, 2026</p>
+    <p class="text-sm text-gray-500 mb-8">Last updated: October 11, 2026</p>
 
     <div class="prose prose-gray max-w-none">
         <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">About this program</h2>
         <p class="text-gray-700 mb-4">
-            RS Systems is invoicing and job-management software used by auto glass repair shops.
-            When your shop uses RS Systems, it may send you service-related text messages through
-            our platform. Messages come from our dedicated toll-free number and always identify
-            the shop they are sent on behalf of.
+            RS Systems is job-management and invoicing software for auto glass shops. This
+            program covers text messages RS Systems sends to its own account holders — the
+            shop owners and technicians who sign in to RS Systems — about activity on their
+            own account. Messages come from our dedicated toll-free number and always begin
+            with "RS Systems".
         </p>
 
         <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Messages you may receive</h2>
         <ul class="list-disc pl-6 text-gray-700 mb-4">
-            <li><strong>Invoice notifications</strong> — a link to view and, where available, pay an invoice for work your shop performed for you</li>
-            <li><strong>Review requests</strong> — after a completed job, a one-time invitation to leave the shop a Google review</li>
-            <li><strong>Service updates</strong> — occasional updates about work you requested</li>
+            <li><strong>New repair requests</strong> — a customer has asked your shop for work</li>
+            <li><strong>Job assignments</strong> — a job has been assigned to you, or reassigned</li>
+            <li><strong>Approvals and denials</strong> — a job waiting on approval has been decided</li>
+            <li><strong>Verification codes</strong> — a one-time code to confirm the mobile number on your account</li>
         </ul>
         <p class="text-gray-700 mb-4">
-            Message frequency varies with your service activity — typically one or two messages per
-            completed job. This is not a marketing list; we only text customers about their own
-            service with their own shop.
+            Message frequency varies with job activity — typically a few messages per working
+            day. This is not a marketing list; we only text account holders about their own
+            RS Systems account.
         </p>
 
         <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">How you opt in</h2>
         <p class="text-gray-700 mb-4">
-            You can opt in yourself: your online invoice page includes a
-            <em>"Get text updates"</em> sign-up where you check a box agreeing to receive
-            service texts at your mobile number. Alternatively, you can provide your mobile
-            number to your auto glass shop and agree to receive service-related texts, and
-            your shop records that consent in RS Systems. Either way, consent is recorded
-            with a timestamp before text messaging is enabled for your account, and consent
-            to receive texts is not a condition of purchasing any goods or services.
+            Texts are off until you turn them on. Sign in to RS Systems, open
+            <em>Settings → Notifications</em>, check the box labelled
+            <em>"Text me urgent job alerts"</em> and save. The box is never checked for you,
+            and nobody else can check it on your behalf. Your consent is recorded with a
+            timestamp, and no text is sent until you have also verified your mobile number
+            with a one-time code. Consent to receive texts is not a condition of using
+            RS Systems.
         </p>
 
         <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Opting out and getting help</h2>
         <ul class="list-disc pl-6 text-gray-700 mb-4">
             <li>Reply <strong>STOP</strong> to any message to stop receiving texts. You will receive one final confirmation message.</li>
-            <li>Reply <strong>HELP</strong> for help, or contact your shop directly.</li>
-            <li>You can also ask your shop to turn off text messaging for your account at any time.</li>
+            <li>Reply <strong>HELP</strong> for help, or contact RS Systems support using the link below.</li>
+            <li>You can also uncheck the box at <em>Settings → Notifications</em> at any time.</li>
         </ul>
         <p class="text-gray-700 mb-4">
             Message and data rates may apply. Carriers are not liable for delayed or undelivered
@@ -55,16 +67,16 @@
 
         <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Privacy</h2>
         <p class="text-gray-700 mb-4">
-            Your phone number is used only to deliver the messages described above. It is never
-            sold or shared with third parties for marketing. See our
+            Your mobile number and your consent to receive texts are used only to deliver the
+            messages described above. They are never sold, and never shared with third parties
+            or affiliates for marketing or promotional purposes. See our
             <a href="/privacy/" class="text-blue-600 hover:underline">Privacy Policy</a> and
             <a href="/terms/" class="text-blue-600 hover:underline">Terms of Service</a> for details.
         </p>
 
         <h2 class="text-xl font-semibold text-gray-900 mt-8 mb-4">Contact</h2>
         <p class="text-gray-700 mb-4">
-            Questions about text messages you received? Contact your auto glass shop directly
-            (their name appears in every message), or reach RS Systems support at
+            Questions about a text message you received? Reach RS Systems support at
             <a href="{% url 'public_contact' %}" class="text-blue-600 hover:underline">rssystems.io/contact</a>.
         </p>
     </div>
