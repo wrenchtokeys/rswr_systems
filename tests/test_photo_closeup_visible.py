@@ -177,27 +177,28 @@ class InvoicePhotoFramingTests(PhotoInvoiceTestCase):
 
     def test_a_marked_photo_is_framed_on_the_break(self):
         repair = self.make_repair(damage_photo_before=real_jpeg())
-        save_crop_for(repair, 'damage_photo_before', 72.5, 33.25)
+        save_crop_for(repair, 'damage_photo_before', 72.5, 33.25,
+                      confirmed_by_human=False)
         invoice = self.make_invoice()
         self.add_line(invoice, repair)
 
         html = self.get_public_invoice(invoice).content.decode()
         self.assertIn('style="object-position: 72.50% 33.25%', html)
 
-    def test_the_original_is_what_gets_served(self):
-        """Framing changes the crop origin, not the asset. The customer can
-        still open the whole photo, and no crop file is linked."""
+    def test_a_tapped_photo_is_served_as_its_close_up(self):
+        """Superseded premise: this used to assert the ORIGINAL is served.
+        The original holds whatever else was in frame; see
+        TappedPhotoPrivacyTests at the bottom of this module."""
         repair = self.make_repair(damage_photo_before=real_jpeg())
         crop = save_crop_for(repair, 'damage_photo_before', 40.0, 40.0)
         self.assertTrue(crop.cropped_image)
         invoice = self.make_invoice()
         self.add_line(invoice, repair)
 
-        photos = self.photo_tiles(invoice)
-        self.assertEqual(photos[0]['url'], self.public_url(invoice, repair))
-
-        html = self.get_public_invoice(invoice).content.decode()
-        self.assertNotIn('repair_photos/crops/', html)
+        photo = self.photo_tiles(invoice)[0]
+        self.assertTrue(photo['closeup'])
+        self.assertEqual(photo['focus'], '')
+        self.assertFalse(photo['reframe'])
 
     def test_marking_a_photo_does_not_touch_the_original(self):
         repair = self.make_repair(damage_photo_before=real_jpeg())
@@ -226,7 +227,8 @@ class InvoiceReplacementPhotoTests(PhotoInvoiceTestCase):
         """The customer's own photo on a replacement is the one that answers
         'why couldn't you just repair it?'."""
         replacement = self.make_replacement(customer_submitted_photo=real_jpeg())
-        save_crop_for(replacement, 'customer_submitted_photo', 15.0, 62.0)
+        save_crop_for(replacement, 'customer_submitted_photo', 15.0, 62.0,
+                      confirmed_by_human=False)
         invoice = self.make_invoice()
         self.add_line(invoice, replacement)
 
@@ -369,7 +371,8 @@ class PortalRepairDetailFramingTests(PhotoInvoiceTestCase):
 
     def test_the_portal_frames_a_marked_break(self):
         repair = self.make_repair(damage_photo_before=real_jpeg())
-        save_crop_for(repair, 'damage_photo_before', 25.0, 75.0)
+        save_crop_for(repair, 'damage_photo_before', 25.0, 75.0,
+                      confirmed_by_human=False)
         html = self.portal_get(repair).content.decode()
         self.assertIn('style="object-position: 25.00% 75.00%', html)
 
@@ -491,7 +494,8 @@ class InvoicePairFramingTests(PhotoInvoiceTestCase):
     def test_a_marked_before_frames_on_its_tap_inside_the_pair(self):
         repair = self.make_repair(damage_photo_before=real_jpeg(),
                                   damage_photo_after=real_jpeg())
-        save_crop_for(repair, 'damage_photo_before', 63.0, 22.5)
+        save_crop_for(repair, 'damage_photo_before', 63.0, 22.5,
+                      confirmed_by_human=False)
         invoice = self.make_invoice()
         self.add_line(invoice, repair)
 
@@ -666,7 +670,8 @@ class InvoiceReplacementPairLanguageTests(PhotoInvoiceTestCase):
     def test_a_replacements_damage_photo_still_frames_on_its_tap(self):
         replacement = self.make_replacement(
             damage_photo_before=real_jpeg(), damage_photo_after=real_jpeg())
-        save_crop_for(replacement, 'damage_photo_before', 18.0, 44.0)
+        save_crop_for(replacement, 'damage_photo_before', 18.0, 44.0,
+                      confirmed_by_human=False)
         invoice = self.make_invoice()
         self.add_line(invoice, replacement)
 
@@ -690,96 +695,172 @@ class InvoiceReplacementPairLanguageTests(PhotoInvoiceTestCase):
                           'Unit #B-2 — the damage, and the new glass'})
 
 
-class TappedPhotoIsACloseUpTests(PhotoInvoiceTestCase):
-    """A tap must magnify, not merely pan.
 
-    `object-position` only chooses which part of the photo an
-    `object-fit: cover` box crops to — and a 4:3 photo in a 4:3 box is not
-    cropped at all. So a photo a technician tapped reached the customer as
-    the whole windshield, "framed on the break" in a way nobody could see.
-    The pan is now paired with a scale about the same point.
+class TappedPhotoPrivacyTests(PhotoInvoiceTestCase):
+    """Once a technician taps the break, the customer never gets the original.
+
+    The original is a phone photo of a whole windshield — it carries the
+    technician's reflection, the cab, the driveway. #274 magnified it with CSS
+    and the customer's browser still downloaded every pixel: "expand" showed
+    all of it. The swap has to happen in what the server SENDS, on every
+    route a customer can reach: the tile, the expanded view, and the ZIP.
     """
-
-    ZOOM = ('style="object-position: 30.00% 70.00%; '
-            'transform-origin: 30.00% 70.00%; transform: scale(2.5)"')
 
     def setUp(self):
         super().setUp()
         self.portal_user = User.objects.create_user(
-            'portal_zoom', password='pw', email='portal@zoom.test')
+            'portal_priv', password='pw', email='portal@priv.test')
         CustomerUser.objects.create(
             user=self.portal_user, customer=self.customer,
             is_primary_contact=True,
         )
 
-    def portal_get(self, name, job):
+    def portal_login(self):
         self.client.force_login(self.portal_user)
         session = self.client.session
         session['tenant_id'] = self.shop.id
         session.save()
-        return self.client.get(reverse(name, args=[job.id])).content.decode()
 
-    def test_a_tapped_tile_is_magnified_about_the_tap(self):
+    @staticmethod
+    def body(response):
+        return b''.join(response.streaming_content)
+
+    @staticmethod
+    def stored(field):
+        with field.open('rb') as handle:
+            return handle.read()
+
+    def tapped_repair(self, **photos):
+        photos = photos or {'damage_photo_before': real_jpeg()}
+        repair = self.make_repair(**photos)
+        crops = {name: save_crop_for(repair, name, 30.0, 70.0)
+                 for name in photos}
+        return repair, crops
+
+    def invoice_for(self, job):
+        invoice = self.make_invoice()
+        self.add_line(invoice, job)
+        return invoice
+
+    # -- public invoice ---------------------------------------------------
+
+    def test_the_public_photo_route_sends_the_close_up_not_the_original(self):
+        repair, crops = self.tapped_repair()
+        invoice = self.invoice_for(repair)
+        response = self.client.get(self.public_url(invoice, repair))
+        self.assertEqual(response.status_code, 200)
+        sent = self.body(response)
+        self.assertEqual(
+            sent, self.stored(crops['damage_photo_before'].cropped_image))
+        self.assertNotEqual(sent, self.stored(repair.damage_photo_before))
+
+    def test_no_query_string_gets_the_original_back(self):
+        """The version token is a cache key, not a selector."""
+        repair, _ = self.tapped_repair()
+        invoice = self.invoice_for(repair)
+        bare = self.public_url(invoice, repair).split('?')[0]
+        for url in (bare, bare + '?v=0', bare + '?original=1'):
+            self.assertNotEqual(self.body(self.client.get(url)),
+                                self.stored(repair.damage_photo_before))
+
+    def test_a_tapped_after_photo_is_its_close_up_too(self):
+        repair, crops = self.tapped_repair(
+            damage_photo_before=real_jpeg(), damage_photo_after=real_jpeg())
+        invoice = self.invoice_for(repair)
+        response = self.client.get(
+            self.public_url(invoice, repair, 'damage_photo_after'))
+        self.assertEqual(
+            self.body(response),
+            self.stored(crops['damage_photo_after'].cropped_image))
+
+    def test_an_untapped_photo_is_still_the_original(self):
         repair = self.make_repair(damage_photo_before=real_jpeg())
-        save_crop_for(repair, 'damage_photo_before', 30.0, 70.0)
-        invoice = self.make_invoice()
-        self.add_line(invoice, repair)
-        self.assertIn(self.ZOOM, self.get_public_invoice(invoice).content.decode())
+        invoice = self.invoice_for(repair)
+        response = self.client.get(self.public_url(invoice, repair))
+        self.assertEqual(self.body(response),
+                         self.stored(repair.damage_photo_before))
 
-    def test_a_tapped_before_is_magnified_inside_a_pair(self):
-        repair = self.make_repair(damage_photo_before=real_jpeg(),
-                                  damage_photo_after=real_jpeg())
-        save_crop_for(repair, 'damage_photo_before', 30.0, 70.0)
-        save_crop_for(repair, 'damage_photo_after', 30.0, 70.0)
-        invoice = self.make_invoice()
-        self.add_line(invoice, repair)
-        html = self.get_public_invoice(invoice).content.decode()
-        self.assertIn(self.ZOOM, html)
-        # The after photo is never reframed, tapped or not.
-        self.assertEqual(html.count('transform: scale('), 1)
-        self.assertEqual(self.photo_pairs(invoice)[0]['after']['style'], '')
-
-    def test_the_frame_clips_the_magnified_photo(self):
-        """Without overflow: hidden the scaled image spills over the page."""
-        repair = self.make_repair(damage_photo_before=real_jpeg())
-        invoice = self.make_invoice()
-        self.add_line(invoice, repair)
-        html = self.get_public_invoice(invoice).content.decode()
-        self.assertRegex(
-            html, r'\.photo-pair-shot a \{[^}]*overflow: hidden')
-
-    def test_a_machine_guess_pans_but_does_not_magnify(self):
-        """Magnifying a wrong guess crops the damage out of its own photo."""
+    def test_a_machine_guess_does_not_replace_the_photo(self):
         repair = self.make_repair(damage_photo_before=real_jpeg())
         save_crop_for(repair, 'damage_photo_before', 30.0, 70.0,
                       confirmed_by_human=False)
-        invoice = self.make_invoice()
-        self.add_line(invoice, repair)
-        html = self.get_public_invoice(invoice).content.decode()
-        self.assertIn('style="object-position: 30.00% 70.00%"', html)
-        self.assertNotIn('transform: scale(', html)
+        invoice = self.invoice_for(repair)
+        response = self.client.get(self.public_url(invoice, repair))
+        self.assertEqual(self.body(response),
+                         self.stored(repair.damage_photo_before))
 
-    def test_a_tap_whose_close_up_file_never_rendered_still_magnifies(self):
-        repair = self.make_repair(damage_photo_before=real_jpeg())
-        crop = save_crop_for(repair, 'damage_photo_before', 30.0, 70.0)
-        crop.cropped_image.delete(save=True)
-        invoice = self.make_invoice()
-        self.add_line(invoice, repair)
-        self.assertIn(self.ZOOM, self.get_public_invoice(invoice).content.decode())
+    def test_a_tap_with_no_close_up_is_withheld_not_served_whole(self):
+        repair, crops = self.tapped_repair()
+        crops['damage_photo_before'].cropped_image.delete(save=True)
+        invoice = self.invoice_for(repair)
+        self.assertEqual(self.all_photos(invoice), [])
+        token = generate_payment_token(invoice.id)
+        response = self.client.get(reverse(
+            'public_invoice_photo',
+            args=[invoice.id, token, 'repair', repair.pk,
+                  'damage_photo_before']))
+        self.assertEqual(response.status_code, 404)
 
-    def test_the_portal_repair_page_magnifies_a_tap(self):
+    def test_tapping_changes_the_url_so_a_cached_original_is_not_reused(self):
         repair = self.make_repair(damage_photo_before=real_jpeg())
+        invoice = self.invoice_for(repair)
+        before = self.public_url(invoice, repair)
         save_crop_for(repair, 'damage_photo_before', 30.0, 70.0)
-        self.assertIn(self.ZOOM, self.portal_get('customer_repair_detail', repair))
+        repair = Repair.objects.get(pk=repair.pk)
+        self.assertNotEqual(before, self.public_url(invoice, repair))
 
-    def test_the_portal_replacement_page_magnifies_a_tap(self):
-        replacement = self.make_replacement(damage_photo_before=real_jpeg())
-        save_crop_for(replacement, 'damage_photo_before', 30.0, 70.0)
-        html = self.portal_get('customer_replacement_detail', replacement)
-        self.assertIn(self.ZOOM, html)
-        self.assertIn('overflow-hidden', html)
+    def test_the_invoice_zip_holds_the_close_up_not_the_original(self):
+        import zipfile
+        from io import BytesIO
+        repair, crops = self.tapped_repair()
+        invoice = self.invoice_for(repair)
+        token = generate_payment_token(invoice.id)
+        response = self.client.get(f'/invoice/{invoice.id}/{token}/photos.zip')
+        self.assertEqual(response.status_code, 200)
+        archive = zipfile.ZipFile(BytesIO(response.content))
+        payloads = [archive.read(name) for name in archive.namelist()]
+        self.assertEqual(
+            payloads, [self.stored(crops['damage_photo_before'].cropped_image)])
 
-    def test_an_untapped_replacement_photo_renders_whole(self):
+    # -- customer portal --------------------------------------------------
+
+    def test_the_portal_photo_route_sends_the_close_up(self):
+        repair, crops = self.tapped_repair()
+        self.portal_login()
+        response = self.client.get(
+            customer_photo_url(repair, 'damage_photo_before'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self.body(response),
+            self.stored(crops['damage_photo_before'].cropped_image))
+
+    def test_the_portal_replacement_route_sends_the_close_up(self):
         replacement = self.make_replacement(damage_photo_before=real_jpeg())
-        html = self.portal_get('customer_replacement_detail', replacement)
-        self.assertNotIn('transform: scale(', html)
+        crop = save_crop_for(replacement, 'damage_photo_before', 30.0, 70.0)
+        self.portal_login()
+        response = self.client.get(
+            customer_photo_url(replacement, 'damage_photo_before'))
+        self.assertEqual(self.body(response), self.stored(crop.cropped_image))
+
+    def test_the_portal_zip_holds_the_close_up(self):
+        import zipfile
+        from io import BytesIO
+        repair, crops = self.tapped_repair()
+        self.portal_login()
+        response = self.client.get(
+            reverse('customer_repair_photos_zip', args=[repair.id]))
+        self.assertEqual(response.status_code, 200)
+        archive = zipfile.ZipFile(BytesIO(response.content))
+        self.assertEqual(
+            [archive.read(name) for name in archive.namelist()],
+            [self.stored(crops['damage_photo_before'].cropped_image)])
+
+    # -- the shop keeps its original --------------------------------------
+
+    def test_the_shop_archive_still_holds_the_original(self):
+        from apps.technician_portal.services.photo_archive import (
+            entries_for_job,
+        )
+        repair, _ = self.tapped_repair()
+        (_name, field), = entries_for_job(repair)
+        self.assertEqual(field.name, repair.damage_photo_before.name)

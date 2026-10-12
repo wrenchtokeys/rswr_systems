@@ -56,10 +56,9 @@
            the middle of the frame, which is usually the middle of the glass
            and not the damage; a tap supplies object-position inline. */
         .photo-grid img { display: block; width: 100%; height: 120px; object-fit: cover; }
-        /* The link is the frame, and it clips: a photo a technician tapped
-           is scaled about the break (closeup_style in photo_crops.py), and
-           without overflow: hidden the magnified image spills over the page
-           instead of reading as a close-up. */
+        /* The link is the frame. A photo a technician tapped arrives here
+           already cropped to the break — the server sends the close-up and
+           never the original (customer_file_for in photo_crops.py). */
         .photo-grid figure a,
         .photo-pair-shot a { display: block; overflow: hidden; border-radius: 8px; border: 1px solid #e5e7eb; }
         /* ...and when nobody marked it, aim where techs actually tap: (41%,
@@ -238,7 +237,7 @@
                             {% for photo in pair.photos %}
                             <div class="photo-pair-shot">
                                 <a href="{{ photo.url }}" target="_blank" rel="noopener">
-                                    <img src="{{ photo.url }}" alt="{{ photo.caption }}" loading="lazy"{% if photo.reframe %} class="blind-focus"{% endif %}{% if photo.style %} style="{{ photo.style }}"{% endif %}>
+                                    <img src="{{ photo.url }}" alt="{{ photo.caption }}" loading="lazy"{% if photo.reframe %} class="blind-focus"{% endif %}{% if photo.focus %} style="object-position: {{ photo.focus }}"{% endif %}>
                                 </a>
                                 <span class="photo-pair-label">{{ photo.label }}</span>
                             </div>
@@ -252,7 +251,7 @@
                         {% for photo in photos %}
                         <figure>
                             <a href="{{ photo.url }}" target="_blank" rel="noopener">
-                                <img src="{{ photo.url }}" alt="{{ photo.caption }}" loading="lazy"{% if photo.reframe %} class="blind-focus"{% endif %}{% if photo.style %} style="{{ photo.style }}"{% endif %}>
+                                <img src="{{ photo.url }}" alt="{{ photo.caption }}" loading="lazy"{% if photo.reframe %} class="blind-focus"{% endif %}{% if photo.focus %} style="object-position: {{ photo.focus }}"{% endif %}>
                             </a>
                             <figcaption>{{ photo.caption }}</figcaption>
                         </figure>

@@ -639,8 +639,8 @@ def _resolve_public_invoice(invoice_id, token, request=None, record_view=True):
 
 
 from apps.technician_portal.services.photo_crops import (
-    SOURCE_FIELDS, UNZOOMED_SOURCE_FIELDS, closeup_styles_for,
-    focus_positions_for,
+    SOURCE_FIELDS, UNZOOMED_SOURCE_FIELDS, customer_crop_for,
+    customer_file_for, customer_focus_positions_for,
 )
 from apps.technician_portal.services.photo_serving import (
     photo_response, public_photo_url,
@@ -721,30 +721,33 @@ def _public_invoice_photos(invoice):
     invoice (the individual-vs-fleet trap in CLAUDE.md). A pair is captioned
     once for the two photos, not once per photo (one row, one mention).
 
-    `focus` reframes a tile on the break a technician marked, and `style`
-    carries that pan plus the magnification that makes a tapped photo an
-    actual close-up (`closeup_style`); both are '' for
-    anything unmarked, and `reframe` then lets the stylesheet aim it at the
-    measured blind default (P6.1). **The after photo is never reframed** —
-    zooming a resin repair shows the customer the scar instead of the fix —
-    so it carries neither. The file served is the original in every case.
+    **A photo a technician tapped is served as its close-up, and only as its
+    close-up** (`customer_file_for`) — the tile, the expanded view and the
+    ZIP. The original holds whatever else was in frame (the technician's own
+    reflection, the cab, the driveway) and must not reach the customer once
+    the break has been marked. That goes for a tapped after photo too.
+
+    For everything else the original is served: `focus` pans a machine's
+    unconfirmed guess, and `reframe` lets the stylesheet aim an unmarked
+    damage photo at the measured blind default (P6.1). An untapped after
+    photo is never reframed.
     """
     pairs = []
     tiles = []
     token = generate_payment_token(invoice.id)
     try:
         for kind, job in _public_invoice_jobs(invoice):
-            focus_positions = focus_positions_for(job)
-            closeup_styles = closeup_styles_for(job)
+            focus_positions = customer_focus_positions_for(job)
             vehicle = job.get_vehicle_label()
 
             def shot(source_field, label, job=job, vehicle=vehicle,
-                     focus_positions=focus_positions,
-                     closeup_styles=closeup_styles):
+                     focus_positions=focus_positions):
                 """One photo dict, or None when the job has not got it."""
-                field = getattr(job, source_field, None)
-                if not field:
+                # A tapped photo is served as its close-up and nothing
+                # else; one whose close-up has not rendered is withheld.
+                if not customer_file_for(job, source_field):
                     return None
+                closeup = customer_crop_for(job, source_field) is not None
                 # The app route, not the storage URL: the media bucket's
                 # repair_photos/* prefix is private (P8). Same token as the
                 # page, so the photo is exactly as reachable as the invoice.
@@ -754,15 +757,15 @@ def _public_invoice_photos(invoice):
                     'label': label,
                     'caption': f'{vehicle} — {label}' if vehicle else label,
                     'focus': focus_positions.get(source_field, ''),
-                    # What the tile actually renders with: the pan above
-                    # plus, for a technician's tap, the magnification that
-                    # makes it a close-up rather than the whole windshield.
-                    'style': closeup_styles.get(source_field, ''),
+                    # True when the file served IS the close-up — the
+                    # original never leaves the server for this photo.
+                    'closeup': closeup,
                     # An unmarked photo of the DAMAGE is aimed at (41%, 61%)
                     # by .blind-focus rather than dead centre (P6.1). The
                     # after photo is excluded for the same reason it is never
                     # reframed on a tap.
-                    'reframe': source_field not in UNZOOMED_SOURCE_FIELDS,
+                    'reframe': (not closeup
+                                and source_field not in UNZOOMED_SOURCE_FIELDS),
                 }
 
             before = shot('damage_photo_before', 'Before')
@@ -944,7 +947,7 @@ def public_invoice_photo(request, invoice_id, token, kind, job_id, field):
         raise Http404("No such photo.")
     for job_kind, job in _public_invoice_jobs(invoice):
         if job_kind == kind and job.pk == job_id:
-            return photo_response(getattr(job, field, None))
+            return photo_response(customer_file_for(job, field))
     raise Http404("No such photo on this invoice.")
 
 
@@ -970,7 +973,8 @@ def public_invoice_photos_zip(request, invoice_id, token):
         entries_for_jobs, photo_zip_response, zip_name_for_invoice,
     )
     jobs = [job for _kind, job in _public_invoice_jobs(invoice)]
-    entries = entries_for_jobs(jobs, invoice_number=invoice.invoice_number)
+    entries = entries_for_jobs(jobs, invoice_number=invoice.invoice_number,
+                               customer_facing=True)
     response = photo_zip_response(entries, zip_name_for_invoice(invoice))
     if response is None:
         logger.warning(

@@ -42,7 +42,9 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
 from core.services.sms_service import SMSService
 from core.notification_text import on_vehicle
-from apps.technician_portal.services.photo_crops import closeup_styles_for
+from apps.technician_portal.services.photo_crops import (
+    customer_file_for, customer_focus_positions_for,
+)
 from apps.technician_portal.signals import notify_batch_approved
 
 logger = logging.getLogger(__name__)
@@ -751,10 +753,10 @@ def customer_repair_detail(request, repair_id):
             # The before photo sits in a 4:3 object-cover box, so it is
             # cropped whether we like it or not — this frames that crop on
             # the break the technician marked instead of the middle of the
-            # windshield, and magnifies a technician's tap into an actual
-            # close-up. Empty for an unmarked photo; the after photo is
-            # never reframed (it would magnify the repair's blemish).
-            'photo_focus': closeup_styles_for(repair),
+            # windshield. Only ever a machine's guess: a photo a technician
+            # tapped is SERVED as its close-up (customer_file_for) and needs
+            # no reframing. Empty for an unmarked photo.
+            'photo_focus': customer_focus_positions_for(repair),
         })
     except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
@@ -791,7 +793,8 @@ def _customer_photo_zip(request, model, pk):
     customer = customer_user.customer
     job = get_object_or_404(model, id=pk, customer=customer,
                             tenant=customer.tenant)
-    entries = entries_for_job(job, invoice_number=_job_invoice_number(job))
+    entries = entries_for_job(job, invoice_number=_job_invoice_number(job),
+                              customer_facing=True)
     response = photo_zip_response(entries, zip_name_for_job(job))
     if response is None:
         raise Http404("No photos to download for this job.")
@@ -833,7 +836,9 @@ def _customer_photo(request, model, pk, field):
                             tenant=customer.tenant)
     if field not in SOURCE_FIELDS:
         raise Http404("No such photo.")
-    return photo_response(getattr(job, field, None))
+    # A tapped photo is its close-up and nothing else, on every route a
+    # customer can reach — never the original.
+    return photo_response(customer_file_for(job, field))
 
 
 @customer_required
@@ -1497,9 +1502,6 @@ def customer_replacement_detail(request, replacement_id):
             'customer': customer,
             'available_rewards': available_rewards,
             'is_invoiced': is_invoiced,
-            # Same contract as the repair page: a tapped damage photo is
-            # shown as a close-up of the break, the new glass never is.
-            'photo_focus': closeup_styles_for(replacement),
         })
     except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")

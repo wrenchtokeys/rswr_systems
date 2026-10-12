@@ -44,7 +44,9 @@ import os
 from django.http import FileResponse, Http404
 from django.urls import reverse
 
-from apps.technician_portal.services.photo_crops import SOURCE_FIELDS
+from apps.technician_portal.services.photo_crops import (
+    SOURCE_FIELDS, customer_crop_for, customer_file_for,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,13 +101,34 @@ def shop_crop_url(crop):
     return f'{url}?v={stamp}'
 
 
+def _customer_versioned(url, job, field_name):
+    """Version a customer route by the file it will actually serve.
+
+    A tap swaps the served file from the original to the close-up without
+    renaming either, so the crop row's `updated_at` is part of the token — a
+    browser that cached the original yesterday must not keep showing it.
+    """
+    served = customer_file_for(job, field_name)
+    if not served:
+        return ''
+    crop = customer_crop_for(job, field_name)
+    stamp = int(crop.updated_at.timestamp()) if crop and crop.updated_at else 0
+    token = hashlib.sha1(
+        f'{served.name}:{stamp}'.encode('utf-8')).hexdigest()[:8]
+    return f'{url}?v={token}'
+
+
 def customer_photo_url(job, field_name):
-    """The customer-portal route for one of a job's photos, or ''."""
+    """The customer-portal route for one of a job's photos, or ''.
+
+    '' also when the photo is tapped but its close-up has not rendered: the
+    route would 404 (see `customer_file_for`).
+    """
     field = getattr(job, field_name, None)
     if not field or field_name not in SOURCE_FIELDS or not getattr(job, 'pk', None):
         return ''
     url = reverse(f'customer_{kind_of(job)}_photo', args=[job.pk, field_name])
-    return _versioned(url, field)
+    return _customer_versioned(url, job, field_name)
 
 
 def public_photo_url(invoice_id, token, job, field_name):
@@ -115,7 +138,7 @@ def public_photo_url(invoice_id, token, job, field_name):
         return ''
     url = reverse('public_invoice_photo',
                   args=[invoice_id, token, kind_of(job), job.pk, field_name])
-    return _versioned(url, field)
+    return _customer_versioned(url, job, field_name)
 
 
 def photo_response(field):

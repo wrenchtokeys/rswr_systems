@@ -133,55 +133,71 @@ def focus_positions_for(job):
     return positions
 
 
-# How far a tapped photo is magnified on a customer surface. `object-position`
-# alone only PANS: a 4:3 photo in a 4:3 `object-fit: cover` box is not cropped
-# at all, so a marked photo rendered as the whole windshield with the mark
-# invisibly "in frame" — a close-up in name only. Scaling the image about the
-# tap is what makes it one. 2.5 shows 40% of the frame's short side, a touch
-# looser than the stored training crop (CROP_FRACTION, 35%) so a slightly-off
-# tap still has the break in view.
-CLOSEUP_SCALE = 2.5
+# ---------------------------------------------------------------------------
+# What a customer is allowed to receive
+# ---------------------------------------------------------------------------
+# A tap is also a privacy boundary. The original is a phone photo of a whole
+# windshield: it holds the technician's reflection, the cab, the driveway.
+# Once a technician has marked the break, the close-up is the ONLY version of
+# that photo a customer surface may serve — the tile, the expanded view and
+# the ZIP alike. Panning or CSS-scaling the original is not enough: the
+# browser still downloads every pixel, and "open image" shows all of it.
+#
+# These helpers decide that in one place. The shop's own routes do not use
+# them and keep the original.
 
+def customer_crop_for(job, source_field):
+    """The technician's tap on this photo, or None.
 
-def closeup_style(crop):
-    """Inline CSS that shows a marked photo as a close-up of its break.
-
-    '' when nothing is marked. A technician's tap gets the pan AND the
-    magnification; a machine's unconfirmed guess (`confirmed_by_human=False`)
-    gets the pan only — magnifying a wrong guess would crop the damage out of
-    its own photo, where a wrong pan merely frames it badly.
-
-    `object-position: X% Y%` puts the tap at the (X%, Y%) point of the box, so
-    the same pair as `transform-origin` scales about the break and the scaled
-    image always still covers the box. The box must clip (`overflow: hidden`).
-    Coordinates only: the file served is the untouched original, and a tap
-    whose derived close-up never rendered still zooms.
+    A machine's unconfirmed guess is not a tap: nobody has looked at it, and
+    a wrong guess would crop the damage out of its own photo. Uses the job's
+    prefetched `photo_crops`.
     """
-    position = focus_position(crop)
-    if not position:
-        return ''
-    style = f'object-position: {position}'
-    if crop.confirmed_by_human:
-        style += (f'; transform-origin: {position}'
-                  f'; transform: scale({CLOSEUP_SCALE})')
-    return style
-
-
-def closeup_styles_for(job):
-    """{source_field: inline CSS} for one job's marked photos.
-
-    The customer-surface companion of `focus_positions_for`, with the same
-    contract: unmarked fields are absent, the after photo is never included,
-    and the job's prefetched `photo_crops` is used.
-    """
-    styles = {}
     for crop in job.photo_crops.all():
-        if crop.source_field in UNZOOMED_SOURCE_FIELDS:
-            continue
-        style = closeup_style(crop)
-        if style:
-            styles[crop.source_field] = style
-    return styles
+        if crop.source_field == source_field and crop.confirmed_by_human:
+            return crop
+    return None
+
+
+def customer_file_for(job, source_field):
+    """The file a CUSTOMER surface may serve for one of a job's photos.
+
+    * no photo                      -> None
+    * photo nobody tapped           -> the original
+    * photo a technician tapped     -> the close-up, and only the close-up
+
+    A tapped photo whose close-up never rendered is **withheld** (None), not
+    served whole — the tap says the rest of the frame is not for the
+    customer. `manage.py retry_photo_crops` finishes those.
+    """
+    field = getattr(job, source_field, None)
+    if not field:
+        return None
+    crop = customer_crop_for(job, source_field)
+    if crop is None:
+        return field
+    if crop.cropped_image:
+        return crop.cropped_image
+    logger.warning(
+        "Withholding %s of %s %s from the customer: tapped, but the "
+        "close-up has not rendered (run retry_photo_crops)",
+        source_field, job_kind(job), job.pk,
+    )
+    return None
+
+
+def customer_focus_positions_for(job):
+    """`focus_positions_for`, minus the photos served as their own close-up.
+
+    A tapped photo reaches the customer already cropped to the break, so
+    reframing it again would aim at the wrong part of a different image. What
+    is left is a machine's guess on an original, which still only pans.
+    """
+    return {
+        source_field: position
+        for source_field, position in focus_positions_for(job).items()
+        if customer_crop_for(job, source_field) is None
+    }
 
 
 def process_tap_coordinates(job, post_data, technician=None,
