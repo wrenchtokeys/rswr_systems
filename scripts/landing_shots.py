@@ -217,6 +217,11 @@ async def capture_all(cookies, out_dir):
     await cdp.send('Page.enable')
     await cdp.send('Network.enable')
     await cdp.send('Emulation.setFocusEmulationEnabled', enabled=True)
+    # The one-time "Get the RS Systems app" card (static/js/install-hint.js) is
+    # an offer to a first-time device, not part of the screen being sold. Mark
+    # it dismissed before any page script runs, as a returning user would have.
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', source=(
+        "try { localStorage.setItem('rs:install-hint-done', '1'); } catch (e) {}"))
 
     for name, persona, path, (width, height, mobile) in SHOTS:
         log(f'{name}: {persona} @ {path} ({width}x{height})')

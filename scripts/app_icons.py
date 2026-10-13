@@ -7,12 +7,12 @@ Writes `static/images/app/*.png`. Commit the output.
 
 WHY A SCRIPT AND NOT AN EXPORTED IMAGE
 --------------------------------------
-The RS mark exists only as an inline SVG in the shells (`base_app.html`,
-`saas/login.html`, `landing.html`) — there is no logo file. The one image in
+The RS mark exists only as an inline SVG (`templates/includes/rs_mark.html`)
+— there is no logo file. The one image in
 `static/images/` that looks like one, `rs_logo.jpg`, is Rockstar Windshield
 Repair's logo: a shop's, not the platform's. Putting it on every owner's home
 screen would be the same leak as the 2026-09-18 email signature. So the icon is
-drawn here from the same geometry the shells use, in the same Inter the app
+drawn here as the same letters at the same weight, in the same Inter the app
 ships, and can be redrawn when the mark changes.
 
 WHAT EACH FILE IS FOR
@@ -38,14 +38,11 @@ DEST = ROOT / 'static' / 'images' / 'app'
 TILE = (37, 99, 235)
 WHITE = (255, 255, 255)
 
-# The shells draw the mark in a 40-unit viewBox at 60% of its tile, which reads
-# fine beside a wordmark and too small alone on a home screen. 80% keeps the
-# far corner of the sparkle 0.37 of the width from centre — inside the 0.4
-# maskable safe zone.
-MARK_SHARE = 0.8
-# Centre of the drawn mark in viewBox units (the letters plus the sparkle sit
-# up and to the right of the viewBox's own centre).
-MARK_CENTRE = (22, 15.5)
+# The mark is Inter Black "RS" and nothing else (templates/includes/rs_mark.html).
+WEIGHT = 900
+# Letter height as a share of the tile. At 0.51 the letters span 68% of the
+# width, so their corners sit 0.38 from centre — inside the 0.4 maskable zone.
+FONT_SHARE = 0.51
 SUPERSAMPLE = 4
 
 
@@ -58,27 +55,13 @@ def draw_icon(size, rounded):
     else:
         d.rectangle([0, 0, s, s], fill=TILE)
 
-    u = s * MARK_SHARE / 40          # one viewBox unit, in pixels
-    ox = s / 2 - MARK_CENTRE[0] * u
-    oy = s / 2 - MARK_CENTRE[1] * u
-
-    def pt(x, y):
-        return (ox + x * u, oy + y * u)
-
-    font = ImageFont.truetype(str(FONT), int(16 * u))
-    font.set_variation_by_axes([800])
-    d.text(pt(20, 26), 'RS', font=font, fill=WHITE, anchor='ms')
-
-    # The sparkle: a dot and four ticks, as in the shells' SVG.
-    cx, cy = pt(32, 10)
-    r = 2 * u
-    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=WHITE)
-    w = max(1, round(1.5 * u))
-    for x1, y1, x2, y2 in ((32, 5, 32, 7), (32, 13, 32, 15), (27, 10, 29, 10), (35, 10, 37, 10)):
-        a, b = pt(x1, y1), pt(x2, y2)
-        d.line([a, b], fill=WHITE, width=w)
-        for px, py in (a, b):       # round caps
-            d.ellipse([px - w / 2, py - w / 2, px + w / 2, py + w / 2], fill=WHITE)
+    font = ImageFont.truetype(str(FONT), int(s * FONT_SHARE))
+    font.set_variation_by_axes([WEIGHT])
+    # Centre the ink, not the line box: 'mm' centres on ascender-to-descender,
+    # which sits capitals visibly high.
+    left, top, right, bottom = d.textbbox((0, 0), 'RS', font=font, anchor='ls')
+    d.text(((s - (right + left)) / 2, (s - (bottom + top)) / 2), 'RS',
+           font=font, fill=WHITE, anchor='ls')
 
     return img.resize((size, size), Image.LANCZOS)
 

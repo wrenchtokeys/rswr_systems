@@ -33,6 +33,11 @@ Not deployed at the time of writing. No migrations.
   session, for a shared shop computer. A new owner confirming their email, and a technician
   accepting an invite, get the same 90 days instead of 24 hours.
 
+- **The RS mark is a bold monogram.** The small "RS" with a crosshair sparkle is replaced by
+  Inter Black "RS" filling its tile — in the navbar, login, signup, landing, pricing, error
+  pages and the app icon. The fifteen pasted copies are now one include
+  (`includes/rs_mark.html`). Landing captures and the share card re-shot to match.
+
 ### Technical
 - `common/sessions.py` (`keep_signed_in`, `SlidingSessionMiddleware` — one session write a
   day per signed-in device), `scripts/app_icons.py`, `tests/test_installable_app.py`.

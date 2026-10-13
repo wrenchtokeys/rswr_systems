@@ -169,6 +169,11 @@ There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are ven
 - **Icons are drawn, not exported**: `python scripts/app_icons.py` → `static/images/app/`
   (commit the PNGs). There is no RS logo file — `static/images/rs_logo.jpg` is *Rockstar
   Windshield Repair's* logo and must never stand in for the platform's.
+- **The RS mark is one file**: `{% include "includes/rs_mark.html" with size="w-6 h-6" %}`
+  (white Inter Black "RS"; the caller supplies the filled tile). It used to be pasted into
+  fifteen places — don't paste a sixteenth. `app_icons.py` draws the same letters; change
+  both together, then re-run `landing_shots.py` + `og_card.py`, since the navbar is in the
+  captures.
 - **"Keep me signed in" is 90 days from the last visit** (`REMEMBER_ME_SESSION_AGE`,
   ticked by default). `common/sessions.SlidingSessionMiddleware` re-stamps the session
   once a day; do not swap it for `SESSION_SAVE_EVERY_REQUEST` (a DB write per request).
