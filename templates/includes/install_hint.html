@@ -1,0 +1,23 @@
+{% load static ui %}
+{% comment %}
+One-time "put this on your home screen" card for the staff shell.
+
+Ships hidden and is revealed by static/js/install-hint.js only when there is
+something the reader can actually do: iOS (which never prompts on its own, and
+hides the option in the Share sheet) or a browser that has fired
+`beforeinstallprompt`. Never inside the installed app, never again once
+dismissed or installed. Without script it stays hidden, which is correct —
+it is an offer, not content.
+{% endcomment %}
+<div id="install-hint" class="hidden max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+    <div class="flex items-start gap-3 p-3 sm:p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+        <img src="{% static 'images/app/icon-192.png' %}" alt="" width="44" height="44" class="w-11 h-11 shrink-0">
+        <div class="min-w-0 flex-1">
+            <p class="text-sm font-semibold text-gray-900">Get the RS Systems app</p>
+            <p data-install-ios class="hidden text-sm text-gray-600">Tap the Share button, then <span class="font-medium text-gray-900">Add to Home Screen</span>. It opens straight to your shop.</p>
+            <p data-install-prompt class="hidden text-sm text-gray-600">Opens straight to your shop. No browser to dig through.</p>
+            <button type="button" data-install-accept class="hidden btn-primary mt-2">Install</button>
+        </div>
+        <button type="button" data-install-dismiss aria-label="Dismiss" class="shrink-0 inline-flex items-center justify-center w-11 h-11 -my-1 -mr-1 text-lg text-gray-400 hover:text-gray-600 rounded-lg">{% icon 'x' %}</button>
+    </div>
+</div>

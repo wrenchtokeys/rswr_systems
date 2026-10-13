@@ -1,0 +1,14 @@
+{% comment %}
+The RS Systems mark: a bold monogram, nothing else. Drawn white, so it goes on
+a filled tile — the caller supplies the tile and passes the SVG's size:
+
+    {% include "includes/rs_mark.html" with size="w-6 h-6" %}
+
+One file because the mark used to be pasted into fifteen places, which is
+fifteen places to forget when it changes. The home-screen icons are the same
+letters at the same weight, drawn by scripts/app_icons.py — change both.
+
+The numbers: Inter Black "RS" is 1.334em wide with its ink centred 0.364em
+above the baseline, so 28 units fills the 40-unit box edge to edge (37.4) and
+a baseline at 30.2 centres it.
+{% endcomment %}<svg viewBox="0 0 40 40" class="{{ size }}" aria-hidden="true"><text x="20" y="30.2" text-anchor="middle" fill="white" font-size="28" font-weight="900" font-family="Inter, sans-serif">RS</text></svg>

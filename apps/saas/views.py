@@ -5152,6 +5152,8 @@ def owner_confirm_email(request, uidb64, token):
 
         # Log the user in (bypass password check — token is the credential here)
         login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+        from common.sessions import keep_signed_in
+        keep_signed_in(request)
 
         # Find their tenant to set the session
         from apps.tenants.models import TenantMembership
