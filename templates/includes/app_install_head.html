@@ -1,0 +1,24 @@
+{% load static %}
+{% comment %}
+What makes "Add to Home Screen" install RS Systems as an app instead of
+bookmarking a tab. Included by the STAFF shells only (base_app.html and
+base_auth.html, which wraps the login page the icon opens).
+
+Not in head_assets.html, which the customer portal and the public pages also
+wear: the portal is the shop's brand, and an RS Systems icon on a fleet
+manager's phone is the platform leaking onto a shop's customer. A shop-branded
+install for customers is a separate decision.
+
+No `apple-mobile-web-app-status-bar-style`: the default keeps the page below
+the status bar. `black-translucent` slides it underneath, and the sticky navbar
+has no top safe-area padding to survive that.
+
+Icons are drawn by `python scripts/app_icons.py`.
+{% endcomment %}
+<link rel="manifest" href="{% url 'web_manifest' %}">
+<link rel="icon" type="image/png" sizes="32x32" href="{% static 'images/app/favicon-32.png' %}">
+<link rel="apple-touch-icon" href="{% static 'images/app/apple-touch-icon.png' %}">
+<meta name="theme-color" content="#ffffff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="RS Systems">

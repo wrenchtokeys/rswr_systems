@@ -43,6 +43,7 @@ urlpatterns = [
     # and portal middlewares so a locked-out shop's browser can still report.
     path('csp-report/', csp_report, name='csp_report'),
     path('robots.txt', views.robots_txt, name='robots_txt'),
+    path('manifest.webmanifest', views.web_manifest, name='web_manifest'),
     path('sitemap.xml', views.sitemap_xml, name='sitemap_xml'),
 
     # First-party analytics proxy (C3). Both paths are on our own origin on

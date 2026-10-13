@@ -157,6 +157,27 @@ There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are ven
   a style attribute cannot execute code and 226 of them exist, many dynamic. Inline
   `on*` handlers and `href="javascript:…"` are **not**; don't add new ones.
 
+### Installed app + staying signed in (Oct 2026)
+- **RS Systems installs to a home screen** from a manifest generated at
+  `/manifest.webmanifest` (`rs_systems.views.web_manifest`) — a view, because manifest
+  storage does not rewrite icon paths inside JSON. `start_url` is `/login/` on purpose:
+  `login_router` routes whoever is signed in, so one icon is right for every role.
+- **Staff shells only.** `includes/app_install_head.html` is included by `base_app.html`
+  and `base_auth.html`, deliberately NOT by `head_assets.html`: the customer portal is the
+  shop's brand, and an RS Systems icon on a fleet manager's phone is the platform leaking
+  onto a shop's customer.
+- **Icons are drawn, not exported**: `python scripts/app_icons.py` → `static/images/app/`
+  (commit the PNGs). There is no RS logo file — `static/images/rs_logo.jpg` is *Rockstar
+  Windshield Repair's* logo and must never stand in for the platform's.
+- **"Keep me signed in" is 90 days from the last visit** (`REMEMBER_ME_SESSION_AGE`,
+  ticked by default). `common/sessions.SlidingSessionMiddleware` re-stamps the session
+  once a day; do not swap it for `SESSION_SAVE_EVERY_REQUEST` (a DB write per request).
+  An unticked box is a browser-length session and is never slid. Use
+  `keep_signed_in(request)` rather than a hand-typed `set_expiry`.
+- No service worker, by choice: Chrome no longer needs one to install, and offline caching
+  of an app whose every screen is live money and job state is a separate decision.
+  `tests/test_installable_app.py` guards the lot.
+
 ### View Transitions
 - **`@view-transition { navigation: auto; }` must stay inline** in the `<style>` block of `templates/includes/head_assets.html`. Chrome ignores the opt-in from an external stylesheet, so moving it into `assets/css/input.css` silently turns every page transition back into a hard swap with nothing in the console. `tests/test_view_transitions.py` guards it.
 - List rows opt into the row→title morph with `data-vt-key="<detail url>"` + a `data-vt-hero` inside; the detail page's `<h1>` carries `.vt-hero`. Only pair them where the two texts are the same thing. `static/js/view-transitions.js` (loaded from `<head>`, not deferred — its `pagereveal` listener must exist before first render) does the naming.

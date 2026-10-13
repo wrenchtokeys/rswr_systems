@@ -43,6 +43,7 @@ EXEMPT_PREFIXES = (
     '/subscription-blocked/',  # The blocked page itself
     '/sms/',              # Public SMS program disclosure (carrier registration evidence)
     '/csp-report/',       # Browser-posted CSP violation reports (UI_MAGIC S18)
+    '/manifest.webmanifest',  # Installed-app manifest — fetched by the browser, not a page
     '/js/p.js',           # First-party analytics proxy (C3) — a script, not a page
     '/pa/event',          # ditto: the pageview beacon it posts to
 )

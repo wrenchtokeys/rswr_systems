@@ -54,6 +54,8 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    # After auth: it only slides the expiry of a signed-in session.
+    'common.sessions.SlidingSessionMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'apps.tenants.middleware.TenantMiddleware',
     'apps.tenants.subscription_middleware.SubscriptionEnforcementMiddleware',
@@ -100,6 +102,13 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LOGIN_URL = '/login/'
+
+# How long "Keep me signed in" lasts, counted from the last visit rather than
+# the login (common/sessions.py slides it). 90 days is long enough that someone
+# using the app weekly never sees the login page, and short enough that a phone
+# lost in a drawer signs itself out. This app holds customer records and takes
+# payments — "forever" is not on the table.
+REMEMBER_ME_SESSION_AGE = 60 * 60 * 24 * 90
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/login/'
 

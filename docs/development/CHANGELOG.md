@@ -14,6 +14,31 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-10-12 — RS Systems installs as an app, and stops logging you out
+
+Not deployed at the time of writing. No migrations.
+
+### Added
+- **Add to Home Screen now installs an app.** A web app manifest, a proper RS icon set and
+  the iOS meta tags: the home-screen icon is the RS mark and opens full-screen with no
+  browser bar, straight to the dashboard (owners) or jobs (technicians). Android and desktop
+  Chrome offer Install. Staff shells only — the customer portal is the shop's brand.
+- **A one-time "Get the RS Systems app" card** in the staff shell. On iOS it says where the
+  option is (Share → Add to Home Screen), on Chrome it carries a real Install button, and
+  elsewhere it never appears. Not shown inside the installed app or after a dismissal.
+
+### Changed
+- **"Keep me signed in" is ticked by default and lasts 90 days from your last visit**, up
+  from an unticked box and a fixed 30 days from login. Unticked is still a browser-length
+  session, for a shared shop computer. A new owner confirming their email, and a technician
+  accepting an invite, get the same 90 days instead of 24 hours.
+
+### Technical
+- `common/sessions.py` (`keep_signed_in`, `SlidingSessionMiddleware` — one session write a
+  day per signed-in device), `scripts/app_icons.py`, `tests/test_installable_app.py`.
+
+---
+
 ## 2026-09-18 — Help center closed out (H8), and everything since `8da23bbe` deployed
 
 **Deployed 2026-09-19 01:28 UTC as `43a57eff`** (`main`; the evening of the 18th, Central): #260 (C2

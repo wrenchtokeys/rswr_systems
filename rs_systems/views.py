@@ -18,6 +18,7 @@ from django.contrib import messages
 from django.http import Http404, HttpResponse, HttpResponseNotFound, JsonResponse
 from django.conf import settings
 from django.urls import reverse
+from common.sessions import keep_signed_in
 import logging
 
 logger = logging.getLogger(__name__)
@@ -246,9 +247,11 @@ def login_router(request):
         login(request, user)
 
         # Session lifetime: expires at browser close unless "remember me"
-        # was checked (shop computers are often shared).
+        # was checked (shop computers are often shared). The box is ticked by
+        # default — on a phone "browser close" is whenever the OS evicts the
+        # tab, which felt like being logged out at random.
         if request.POST.get('remember_me'):
-            request.session.set_expiry(60 * 60 * 24 * 30)  # 30 days
+            keep_signed_in(request)
         else:
             request.session.set_expiry(0)  # browser session
 
@@ -391,6 +394,9 @@ def accept_invite(request, token):
         auth_user = authenticate(request, username=user.username, password=password)
         if auth_user:
             login(request, auth_user)
+            # They just set this password on this device; don't send them
+            # back to the login page tomorrow to type it again.
+            keep_signed_in(request)
             request.session['tenant_id'] = invite.tenant.id
 
         messages.success(request, f'Welcome to {invite.tenant.name}! Your account is ready.')
@@ -1091,6 +1097,50 @@ ROBOTS_DISALLOW = [
     '/r/',          # the SMS-length alias for the same
     '/pa/event',    # the analytics beacon
 ]
+
+
+def web_manifest(request):
+    """The web app manifest — what makes "Add to Home Screen" install an app.
+
+    With it, the home-screen icon is the RS mark and opens full-screen with no
+    browser bar; without it, it is a screenshot thumbnail that opens a tab.
+
+    A view rather than a static file because the icon URLs must be the hashed
+    names manifest storage serves, and it does not rewrite paths inside JSON.
+
+    `start_url` is the login page on purpose: `login_router` sends a signed-in
+    owner to the dashboard and a technician to their jobs, and shows the form
+    to anyone whose session has lapsed — so one icon is right for every role.
+
+    Platform identity only. The icon lives on the device's home screen beside
+    every other app; it names RS Systems, never the shop.
+    """
+    from django.templatetags.static import static
+
+    def icon(name, size, purpose):
+        return {
+            'src': static(f'images/app/{name}'),
+            'sizes': f'{size}x{size}',
+            'type': 'image/png',
+            'purpose': purpose,
+        }
+
+    return JsonResponse({
+        'name': 'RS Systems',
+        'short_name': 'RS Systems',
+        'description': 'Windshield repair and replacement shop management.',
+        'id': '/',
+        'start_url': reverse('login'),
+        'scope': '/',
+        'display': 'standalone',
+        'background_color': '#f9fafb',
+        'theme_color': '#ffffff',
+        'icons': [
+            icon('icon-192.png', 192, 'any'),
+            icon('icon-512.png', 512, 'any'),
+            icon('icon-maskable-512.png', 512, 'maskable'),
+        ],
+    }, content_type='application/manifest+json')
 
 
 def robots_txt(request):
