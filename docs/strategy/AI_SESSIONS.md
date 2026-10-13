@@ -5,7 +5,9 @@
 **Status:** living document — the queue is written and ranked; nothing in it is built.
 Update the Status column and each session's Notes as work lands. The doc is closed, not
 deleted, when every row is DONE, DROPPED or PARKED with a named reason.
-**Companions:** `PRODUCT_DIRECTION.md` (the direction every session here serves — step 7,
+**Companions:** `AI_CORE_PLAN.md` (2026-10-13 — **the cut: which of these rows get built,
+which wait, which are dropped, and the trims inside each kept row.** That page decides scope;
+this one stays the spec), `PRODUCT_DIRECTION.md` (the direction every session here serves — step 7,
 go-to-market, is the current step and **this queue sits behind it unless Drake promotes
 AI1–AI3 as the demo**; see §The ranking rule), `IMPROVEMENT_SESSIONS.md` (B2/B4/D1/D2 are
 referenced below), `PHOTO_ML_SESSIONS.md` (P5/P4b stay parked there — **this document never
@@ -698,6 +700,12 @@ is not family asks for it**, or when B2 is built and inbound exists for one chan
 `handle_batch_repair_request`'s path with `queue_status='REQUESTED'`, and notify the owner
 through the existing request notification. The parse is the easy part.
 
+**2026-10-13 — reframed to SMS.** `AI_CORE_PLAN.md` carries the current shape: the owner or
+tech texts the job to the RS Systems number and it lands on the day sheet scheduled. Staff
+texting in is registrable under SMS v6 (`SMS_REGISTRATION.md` §3.5); a customer texting in
+waits on B2 because the reply to them is the unregisterable half. The email transport above
+is cut unless a non-family fleet asks for it by name.
+
 ---
 
 ## AI10 · Fleet health — PARKED
@@ -749,4 +757,5 @@ writes the sentence — AI5's brief is the natural surface, not a new page.
 
 | Date | Change |
 |---|---|
+| 2026-10-13 | `AI_CORE_PLAN.md` written: four rows build (AI0, AI1, AI2, AI4), five defer with a reopen condition (AI3, AI6, AI7, AI5, AI9 reframed to SMS), two cut (AI8, AI10). This doc stays the spec; that one owns scope. |
 | 2026-10-12 | Created. Three decisions taken with Drake (text-only boundary, queue everything ranked, bundled cost). Ten sessions written, AI0 as the spine, AI9/AI10 parked with the condition that unparks each. Amelia's two proposals dispositioned (Appendix A). Nothing built. |
