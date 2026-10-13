@@ -2,7 +2,10 @@
 
 **Author:** Amelia  
 **Date:** 2026-03-21  
-**Status:** Draft — awaiting Drake's review
+**Status:** Draft — awaiting Drake's review. **Scored 2026-10-12 in
+`docs/strategy/AI_SESSIONS.md` Appendix A: not an AI session** — Phase 1 is rule-based with no
+model in it and belongs with the trial-expiry email work; Phase 2's one sentence is noted
+against AI5 (the morning brief), not built.
 
 ---
 

@@ -7,7 +7,8 @@ arguing with it in a PR.
 **Companions:** `IMPROVEMENT_SESSIONS.md` (the session backlog; its §1 is the fork this page
 decides), `docs/development/ROADMAP.md` (long-horizon list), `docs/development/CHANGELOG.md`
 (what actually shipped, dated). The June 2026 version of this document is summarised in
-§The June plan, scored; nothing else from it survives.
+§The June plan, scored; nothing else from it survives. `AI_SESSIONS.md` (2026-10-12) is the
+AI queue; it is ranked by this page's step 7 and sits behind it — see §Parked.
 
 ---
 
@@ -144,6 +145,14 @@ them up by default: the Font Awesome → `{% icon %}` sweep (1,217 call sites), 
 CSP (S18b), and the repairable-or-not classifier (P5/P4b — negative class at zero, accruing
 at zero; held open by Drake, ask before touching).
 
+**Queued behind step 7, not parked — `AI_SESSIONS.md` (2026-10-12).** Ten sessions, ranked
+by whether they help a stranger shop sign up, switch and pay; AI0 is the spine every other
+row needs. Three decisions are recorded there (text may go to the Claude API, photos never
+leave; everything queued; RS Systems pays, bundled). The one open call is Drake's: whether
+AI1–AI3 (say it / paste it / describe it — the demo, the switch and the lead channel) are
+*part of* the selling in step 7 and get promoted ahead of it. Until that line is edited, a
+fresh session does not start them.
+
 ## Success criteria
 
 Not features shipped. These are the only numbers that say the direction is working:
@@ -161,6 +170,7 @@ Not features shipped. These are the only numbers that say the direction is worki
 
 | Date | Change |
 |---|---|
+| 2026-10-12 | **The AI queue written** (`AI_SESSIONS.md`): ten sessions ranked by step 7's question, AI0 as the spine, AI9/AI10 parked with named unpark conditions, Amelia's two AI proposals dispositioned. Three decisions recorded with Drake: text may go to the Claude API and photos never leave (P3 stands); everything queued; RS Systems pays, bundled. Nothing built. The queue sits behind step 7; promoting AI1–AI3 as the demo is Drake's call, recorded under §Parked. |
 | 2026-09-18 | **Step 6's last piece built: C3 · Findability** (PR #271). Analytics is Plausible Cloud behind a first-party proxy on our own origin, so the CSP allowlist stays `'self'` plus Turnstile — the measurement question is answered without re-opening the argument that made a strict CSP possible. Five help guides now answer to a signed-out visitor (sales tax, progressive pricing, multi-break, getting paid on time, warranty), behind one flag the view, `sitemap.xml` and `robots.txt` all read. The work was not the flag: every guide wore the signed-in app shell and linked into Settings and gated guides, so publishing the URL would have shown a stranger a shop's app chrome and four links back to the sign-in page — the same defect the switching section shipped with. **Step 6 is now complete in code; step 7 is the selling.** Two `eb setenv` calls are Drake's before any of it measures anything. |
 | 2026-09-18 | **Step 6's three code fixes deployed** (`43a57eff` then `6cdb7a03`, evening of the 18th Central) together with the help center queue's last session (H8: the trial-expired email now states the 14-day read-only window instead of "locked"; a visitor can name their shop on `/contact/`). H8's "send one real message on prod" step earned its place: the public form was refusing every anonymous visitor (no Turnstile widget rendered), fixed within the hour as #268. The help center queue is closed and its doc retired — `CHANGELOG.md` holds the record. #264 was closed as a duplicate of #263's H2. Only C3 · Findability is left in step 6. |
 | 2026-09-18 | **Step 6 was wrong, and is now two steps.** "Go-to-market, which no code moves" was written from the sales motion; a readiness audit of all three dashboards found four defects on the path a stranger actually walks, three of them code. New step 6 (stranger-shop readiness) carries them — #261 payments silence, #262 trial limits, #263 public contact form, and `IMPROVEMENT_SESSIONS.md` **C3 · Findability** for the fourth, which is a session and is next. Selling moves to step 7, where the "no code" claim is true. Step 2 updated: the Connect form is still Drake's dad's to fill in, but the product's silence about it was ours. Nothing is deployed. |

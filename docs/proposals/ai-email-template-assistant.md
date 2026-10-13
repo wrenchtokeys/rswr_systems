@@ -2,7 +2,9 @@
 
 **Author:** Amelia  
 **Date:** 2026-03-21  
-**Status:** Draft  
+**Status:** Absorbed 2026-10-12 as **AI6b** in `docs/strategy/AI_SESSIONS.md` — Phase 1+2 as
+written; Phase 3 dropped; the "paid tiers only" upsell overruled (AI is bundled). Kept for the
+prompt and the UI sketch.  
 **Depends on:** CODE-114 (customizable email templates)
 
 ## Problem
