@@ -5590,6 +5590,23 @@ def owner_invoice_delete(request, invoice_id):
     })
 
 
+def _post_next_url(request):
+    """A same-site ``next`` from a POST, or '' — the Jobs list passes its own
+    URL so writing a ticket per job keeps the owner on the list, where the
+    row drops out of "Not invoiced" instead of bouncing through each invoice."""
+    next_url = request.POST.get('next', '')
+    if next_url.startswith('/') and not next_url.startswith('//'):
+        return next_url
+    return ''
+
+
+def _ticket_created_message(invoice, job):
+    vehicle = job.get_vehicle_label()
+    where = f' for {job.customer.name}' + (f' ({vehicle})' if vehicle else '')
+    return (f'Invoice {invoice.invoice_number} created{where}. '
+            f'Send it from Invoices → Not sent.')
+
+
 @owner_or_manager_required
 def owner_generate_invoice_from_repair(request, repair_id):
     """
@@ -5765,6 +5782,10 @@ def owner_generate_invoice_from_repair(request, repair_id):
             payment_terms=req_payment_terms,
         )
         repair_count = len(batch_repairs)
+        next_url = _post_next_url(request)
+        if next_url:
+            messages.success(request, _ticket_created_message(invoice, repair))
+            return redirect(next_url)
         if repair_count > 1:
             messages.success(request, f'Invoice {invoice.invoice_number} created for {repair_count} repairs (multi-break batch). Review and send below.')
         else:
@@ -5831,6 +5852,10 @@ def owner_generate_invoice_from_replacement(request, replacement_id):
             services=[replacement],
             payment_terms=req_payment_terms,
         )
+        next_url = _post_next_url(request)
+        if next_url:
+            messages.success(request, _ticket_created_message(invoice, replacement))
+            return redirect(next_url)
         messages.success(request, f'Invoice {invoice.invoice_number} created as draft. Review and send below.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
     except ValueError as e:
