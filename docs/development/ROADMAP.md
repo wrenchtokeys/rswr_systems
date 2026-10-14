@@ -35,6 +35,9 @@
 > `FIELD_OPS_SESSIONS.md` (S11–S14 scheduling UX open),
 > `PHOTO_ML_SESSIONS.md` (P8 is its last code), `UI_MAGIC_SESSIONS.md` (arc clear; sweeps
 > parked), `JOB_QUEUE_SESSIONS.md` (Q5/Q6 parked), `TEST_SUITE_SESSIONS.md`,
+> `AI_SESSIONS.md` (written 2026-10-12: ten sessions, AI0 the spine, nothing built; sits
+> **behind** step 7 unless Drake promotes AI1–AI3 as the demo — text-only boundary, photos
+> never leave),
 > The help center queue (H1–H8) closed 2026-09-18 and its doc was retired; the record is in
 > `CHANGELOG.md` (2026-09-17 and 2026-09-18 entries).
 > For dated detail on anything below, `CHANGELOG.md` is canonical.
