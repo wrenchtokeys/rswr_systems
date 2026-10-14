@@ -568,14 +568,20 @@
             <!-- Photo Documentation Section -->
             {% if repair.customer_submitted_photo or repair.damage_photo_before or repair.damage_photo_after %}
             <div class="bg-gray-50 rounded-lg p-4 border border-gray-200 mb-6">
-                <div class="flex items-center justify-between mb-4">
-                    <h4 class="text-lg font-semibold text-gray-900 flex items-center">
+                {% comment %}
+                This row must be allowed to wrap. Title + count + "Download all" +
+                "Hide Photos" is wider than a phone, and a flex row that cannot wrap
+                does not shrink — it pushes the whole page sideways and every card
+                above it runs off the right edge (field report, Oct 2026).
+                {% endcomment %}
+                <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-4">
+                    <h4 class="text-lg font-semibold text-gray-900 flex items-center flex-wrap gap-y-1">
                         <i class="fas fa-camera text-brand-600 mr-2"></i>Photo Documentation
-                        <span class="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-brand-100 text-brand-800">
+                        <span class="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-brand-100 text-brand-800 whitespace-nowrap">
                             {{ repair.get_photo_count }} photo{{ repair.get_photo_count|pluralize }}
                         </span>
                     </h4>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 shrink-0 ml-auto">
                         {% comment %}
                         The shop is who a customer phones asking for the
                         photos — for a claim, a fleet's records, a dispute.
@@ -587,7 +593,7 @@
                         </a>
                         <button type="button"
                                 id="photoToggleBtn"
-                                class="inline-flex items-center px-3 py-1 text-sm font-medium text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 rounded-md transition-colors"
+                                class="inline-flex items-center min-h-11 px-3 py-1 text-sm font-medium text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 rounded-md transition-colors whitespace-nowrap"
                                 onclick="togglePhotoSection()">
                             <i id="photoToggleIcon" class="fas fa-chevron-down mr-1"></i>
                             <span id="photoToggleText">Hide Photos</span>
