@@ -96,6 +96,34 @@ webhook, and by the 15-minute reconcile sweep, which go through the same
 path and dedupe on `payment_intent_id` — now enforced by a unique
 constraint, not just an `.exists()` check).
 
+### What the shop sees for an online payment (Oct 2026)
+
+A webhook only says "invoice N was paid". The proof a shop needs — the
+card, Stripe's receipt, the processing fee, the net and when it reaches
+the bank — lives on the Charge, its BalanceTransaction and the Payout on
+the shop's own Connect account. `StripePaymentDetail` (one per STRIPE
+`Payment`, `apps/billing/services/stripe_payment_details.py`) caches it:
+
+- **Charge facts** come from one `PaymentIntent.retrieve(expand=
+  ['latest_charge.balance_transaction'], stripe_account=<shop>)`, made
+  right after the payment is recorded and lazily from the invoice page for
+  payments recorded before this existed. A failure is stored on the row and
+  retried no sooner than an hour later; the page says "haven't come back
+  from Stripe yet" rather than 500ing or guessing.
+- **The deposit** comes from the payout: `payout.*` webhooks on the Connect
+  endpoint stamp every detail whose charge the payout carried (one
+  `BalanceTransaction.list(payout=…)` per event, paginated). If the
+  webhook has not arrived, opening the invoice runs a bounded search
+  (`Payout.list` over the 35 days after the funds became available,
+  oldest first, at most 12 calls, no more than every six hours).
+- **Every number is Stripe's.** Nothing derives a fee from a percentage —
+  these lines are reconciled against a bank statement, and a close guess is
+  worse than a blank. `Payment.stripe_charge_id` (always blank before
+  this) is now written from the same sync.
+- Owner/manager only: the block renders on `owner_invoice_detail`, and the
+  owner's payment email names the card and the net when they are known.
+  Nothing customer-facing changes.
+
 **The fee is decided in exactly one place: `Tenant.effective_platform_fee`.**
 It returns `(percent, fixed_cents, source)` and resolves in this order:
 
@@ -138,7 +166,7 @@ count should be zero; non-zero means fees are being skipped.
 
 | URL | Type | Purpose |
 |-----|------|---------|
-| `/api/billing/stripe/webhook/` | **Connect** (listens to connected accounts) | Shop invoice payments: `checkout.session.completed`, `payment_intent.succeeded`. Should also have `account.updated` (keeps `can_accept_payments` in sync when Stripe restricts a shop). |
+| `/api/billing/stripe/webhook/` | **Connect** (listens to connected accounts) | Shop invoice payments: `checkout.session.completed`, `payment_intent.succeeded`. Should also have `account.updated` (keeps `can_accept_payments` in sync when Stripe restricts a shop). **Add `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated`** (Oct 2026) so the invoice page can say "Deposited to your bank" the day it happens — without them the page finds the payout itself on its next open, up to six hours later. |
 | `/api/tenants/webhooks/stripe/` | Platform | Subscriptions: `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.updated/deleted`. |
 | `/api/billing/stripe/webhook/` | Platform | Legacy catch-all (subscription + billing events). Redundant with the two above; harmless but causes duplicate deliveries. |
 

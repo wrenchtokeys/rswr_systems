@@ -14,6 +14,36 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-10-14 — Proof of an online payment, for the shop
+
+Not deployed at the time of writing. Migration `billing/0038` (one new table, no data
+change). **Needs one Stripe Dashboard change**: subscribe the Connect webhook endpoint to
+`payout.paid`, `payout.failed`, `payout.canceled` and `payout.updated` (see
+`docs/deployment/STRIPE_ARCHITECTURE.md` → Webhook endpoints); without it the deposit line
+still appears, found by the invoice page itself, up to six hours later.
+
+### Added
+- **An invoice paid online now shows the shop its proof.** Under the payment on the invoice
+  page: the card (Visa ···· 4242, Apple Pay when a wallet was used), the Stripe payment ID, a
+  link to Stripe's own receipt, what was charged, Stripe's fee, what reaches the bank, and
+  where the money is — "Available for payout Oct 16", "On its way to your bank, expected
+  Oct 17", "Deposited to your bank Oct 17" with the payout ID, or a plain warning when Stripe
+  could not deposit it. Before this the page said "Paid via Stripe" and nothing else, and the
+  only way to learn when the money would land was the Stripe dashboard.
+- **The owner's "Payment: $137.19 from …" email** names the card and the amount after Stripe's
+  fee when Stripe has already told us; it says nothing it does not know.
+- Every figure is Stripe's own, read from the shop's Connect account and cached on
+  `StripePaymentDetail`. Payments recorded before this are filled in the first time their
+  invoice is opened. Nothing a customer sees changes.
+
+### Technical
+- `apps/billing/services/stripe_payment_details.py` (`sync_from_stripe`, `apply_payout`,
+  `find_payout`, `refresh_for_payments`), `payout.*` handling in `StripeService`,
+  `Payment.stripe_charge_id` finally written, read-only admin, `tests/test_online_payment_proof.py`
+  (30 tests).
+
+---
+
 ## 2026-10-12 — RS Systems installs as an app, and stops logging you out
 
 Not deployed at the time of writing. No migrations.

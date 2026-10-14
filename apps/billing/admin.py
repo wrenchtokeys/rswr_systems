@@ -37,6 +37,7 @@ def _csv_safe(value):
 
 from .models import (
     BillingConfig, Invoice, InvoiceLineItem, Payment, TaxRate, PlatformConfig,
+    StripePaymentDetail,
     PlatformFeeRecord, StripeWebhookEvent,
 )
 from rs_systems.admin_mixins import TenantFilterMixin
@@ -668,3 +669,23 @@ class StripeWebhookEventAdmin(admin.ModelAdmin):
         except (TypeError, ValueError):
             return str(obj.payload)
     payload_pretty.short_description = 'Payload'
+
+
+@admin.register(StripePaymentDetail)
+class StripePaymentDetailAdmin(admin.ModelAdmin):
+    """Read-only: what Stripe told us about an online payment. Edit nothing
+    here — every field is Stripe's word and is re-synced from Stripe."""
+    list_display = [
+        'payment', 'payment_intent_id', 'card_brand', 'card_last4',
+        'net_amount', 'funds_available_on', 'payout_status', 'synced_at',
+    ]
+    list_filter = ['payout_status', 'card_brand']
+    search_fields = ['payment_intent_id', 'charge_id', 'payout_id',
+                     'payment__invoice__invoice_number']
+    readonly_fields = [f.name for f in StripePaymentDetail._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
