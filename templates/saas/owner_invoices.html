@@ -72,6 +72,17 @@
             {% if claims_short.count or claims_waiting.count %}No unpaid invoices sent to customers.{% else %}Nothing outstanding — every invoice is paid.{% endif %}
         </div>
         {% endif %}
+        {% if unsent_count %}
+        {% comment %}Drafts never emailed or texted, plus bounced emails. Not inside the total
+        above — a draft has not asked anyone for anything yet — which is why it gets its
+        own line: at the end of a day of tickets this is the one number that says
+        "you still have invoices to send".{% endcomment %}
+        <a href="?status=unsent" data-unsent-summary
+            class="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between gap-3 text-sm font-medium text-amber-700 hover:text-amber-900">
+            <span>{% icon 'send' class="mr-1.5" %}Not sent yet · {{ unsent_count }} invoice{{ unsent_count|pluralize }}</span>
+            <span class="num font-semibold">${{ unsent_amount|floatformat:2 }}</span>
+        </a>
+        {% endif %}
         {% if claims_short.count or claims_waiting.count %}
         {% comment %}Insurance claims (B5): counted separately from unpaid invoices. Both lines are
         part of the total above — this says how much of it is an insurer's.{% endcomment %}
@@ -118,6 +129,8 @@
         {{ label }}
         {% if value == 'overdue' and overdue_count > 0 %}
         <span class="ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-bold bg-red-100 text-red-700">{{ overdue_count }}</span>
+        {% elif value == 'unsent' and unsent_count > 0 %}
+        <span class="ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">{{ unsent_count }}</span>
         {% endif %}
     </a>
     {% endfor %}
@@ -244,6 +257,9 @@
                             {% elif inv.email_delivery_status == 'delivered' %}
                             <div class="mt-1 text-xs text-green-600" title="Accepted by the customer's mail server {{ inv.email_delivery_status_at|date:'M d, Y g:i A' }}"><i class="fas fa-check mr-0.5"></i>Delivered</div>
                             {% endif %}
+                            {% if inv.needs_sending and inv.status == 'DRAFT' %}
+                            <div class="mt-1 text-xs font-medium text-amber-600" title="This invoice has not been emailed or texted to the customer yet">{% icon 'send' class="mr-0.5" %}Not sent</div>
+                            {% endif %}
                             {% if inv.claim %}
                             <div class="mt-1 text-xs {% if inv.claim.status == 'SHORT' %}text-red-600{% elif inv.claim.status == 'PAID' %}text-green-600{% else %}text-gray-500{% endif %}" title="Insurance claim: {{ inv.claim.get_status_display }}">{% icon 'shield' class="mr-0.5" %}{% if inv.claim.status == 'SHORT' %}Insurer short ${{ inv.claim.short_amount|floatformat:2 }}{% else %}Insurer: {{ inv.claim.get_status_display|lower }}{% endif %}</div>
                             {% endif %}
@@ -277,8 +293,14 @@
                 </a>
             </div>
 
-            {% if inv.status in 'OVERDUE,SENT,PARTIAL,DRAFT' and inv.amount_due > 0 or inv.status in 'OVERDUE,SENT,PARTIAL' and inv.customer.email %}
+            {% if inv.needs_sending or inv.status in 'OVERDUE,SENT,PARTIAL,DRAFT' and inv.amount_due > 0 or inv.status in 'OVERDUE,SENT,PARTIAL' and inv.customer.email %}
             <div class="mt-3 pl-7 flex gap-2" data-optimistic-actions>
+                {% if inv.needs_sending %}
+                <button onclick="openSendEmailModal({{ inv.id }}, '{{ inv.customer.name|escapejs }}', '{{ inv.customer.email|escapejs }}', '{{ inv.invoice_number|escapejs }}', {{ inv.line_count }}, '{{ inv.total }}')"
+                    class="inline-flex items-center justify-center flex-1 min-h-11 px-3 py-2 text-xs font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
+                    {% icon 'send' class="mr-1.5" %}Send invoice
+                </button>
+                {% endif %}
                 {% if inv.status in 'OVERDUE,SENT,PARTIAL,DRAFT' and inv.amount_due > 0 %}
                 <button onclick="openQuickPayModal({{ inv.id }}, '{{ inv.invoice_number|escapejs }}', '{{ inv.customer.name|escapejs }}', '{{ inv.amount_due }}')"
                     class="inline-flex items-center justify-center flex-1 min-h-11 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
@@ -353,6 +375,9 @@
                         {% elif inv.email_delivery_status == 'delivered' %}
                         <div class="mt-1 text-xs text-green-600" title="Accepted by the customer's mail server {{ inv.email_delivery_status_at|date:'M d, Y g:i A' }}"><i class="fas fa-check mr-0.5"></i>Delivered</div>
                         {% endif %}
+                        {% if inv.needs_sending and inv.status == 'DRAFT' %}
+                        <div class="mt-1 text-xs font-medium text-amber-600" title="This invoice has not been emailed or texted to the customer yet">{% icon 'send' class="mr-0.5" %}Not sent</div>
+                        {% endif %}
                         {% if inv.claim %}
                         <div class="mt-1 text-xs {% if inv.claim.status == 'SHORT' %}text-red-600{% elif inv.claim.status == 'PAID' %}text-green-600{% else %}text-gray-500{% endif %}" title="Insurance claim: {{ inv.claim.get_status_display }}">{% icon 'shield' class="mr-0.5" %}{% if inv.claim.status == 'SHORT' %}Insurer short ${{ inv.claim.short_amount|floatformat:2 }}{% else %}Insurer: {{ inv.claim.get_status_display|lower }}{% endif %}</div>
                         {% endif %}
@@ -364,6 +389,13 @@
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-center hidden sm:table-cell no-nav" onclick="event.stopPropagation()">
                         <div class="inline-flex items-center gap-1.5" data-optimistic-actions>
+                            {% if inv.needs_sending %}
+                            <button onclick="openSendEmailModal({{ inv.id }}, '{{ inv.customer.name|escapejs }}', '{{ inv.customer.email|escapejs }}', '{{ inv.invoice_number|escapejs }}', {{ inv.line_count }}, '{{ inv.total }}')"
+                                class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors"
+                                title="Email this invoice to {{ inv.customer.name }}">
+                                {% icon 'send' class="mr-1" %}Send
+                            </button>
+                            {% endif %}
                             {% if inv.status in 'OVERDUE,SENT,PARTIAL,DRAFT' and inv.amount_due > 0 %}
                             <button onclick="openQuickPayModal({{ inv.id }}, '{{ inv.invoice_number|escapejs }}', '{{ inv.customer.name|escapejs }}', '{{ inv.amount_due }}')"
                                 class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -390,9 +422,11 @@
         <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <i class="fas fa-file-invoice text-gray-400 text-2xl"></i>
         </div>
-        <h3 class="text-sm font-medium text-gray-900 mb-1">No invoices found</h3>
+        <h3 class="text-sm font-medium text-gray-900 mb-1">{% if status_filter == 'unsent' %}Nothing waiting to be sent{% else %}No invoices found{% endif %}</h3>
         <p class="text-sm text-gray-500">
-            {% if status_filter != 'all' or customer_filter %}
+            {% if status_filter == 'unsent' %}
+                Every invoice has gone out to its customer. <a href="{% url 'owner_invoice_list' %}" class="text-brand-600 hover:text-brand-800">Show all invoices</a>
+            {% elif status_filter != 'all' or customer_filter %}
                 No invoices match your filters. <a href="{% url 'owner_invoice_list' %}" class="text-brand-600 hover:text-brand-800">Clear filters</a>
             {% else %}
                 Invoices will appear here once they're generated.
@@ -435,7 +469,7 @@
                             <span id="send-modal-invoice-num" class="font-medium text-gray-900"></span>
                         </div>
                         <div class="flex justify-between text-sm mt-1">
-                            <span class="text-gray-600">Repairs:</span>
+                            <span class="text-gray-600">Items:</span>
                             <span id="send-modal-repair-count" class="font-medium text-gray-900"></span>
                         </div>
                         <div class="flex justify-between text-sm mt-1">
@@ -1125,12 +1159,16 @@ async function dismissUninvoiced(customerId, customerName) {
 let sendModalInvoiceId = null;
 let sendModalCustomerEmail = null;
 
+const SHOP_NAME = '{{ tenant.name|escapejs }}';
+
 function openSendEmailModal(invoiceId, customerName, customerEmail, invoiceNumber, repairCount, total) {
     sendModalInvoiceId = invoiceId;
     sendModalCustomerEmail = customerEmail || '';
     
     document.getElementById('send-modal-customer-name').textContent = customerName;
-    document.getElementById('send-modal-subject').textContent = `[RS Systems] Invoice ${invoiceNumber} - ${customerName}`;
+    // Same subject InvoiceEmailService builds — the preview used to promise a
+    // bracketed "[RS Systems]" subject that stopped going out months ago.
+    document.getElementById('send-modal-subject').textContent = `Invoice ${invoiceNumber} from ${SHOP_NAME}`;
     document.getElementById('send-modal-invoice-num').textContent = invoiceNumber;
     document.getElementById('send-modal-repair-count').textContent = repairCount;
     document.getElementById('send-modal-total').textContent = `$${parseFloat(total).toFixed(2)}`;
