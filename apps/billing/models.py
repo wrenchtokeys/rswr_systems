@@ -1250,6 +1250,139 @@ class PlatformConfig(AutoUpdateTimestampMixin, models.Model):
 # PLATFORM FEE RECORDS
 # =============================================================================
 
+class StripePaymentDetail(models.Model):
+    """
+    What Stripe knows about one online payment, kept beside the Payment row
+    so the shop has proof of payment without opening a Stripe dashboard.
+
+    A webhook tells us "invoice N was paid" and nothing else; the card,
+    the Stripe receipt, the processing fee, the net that actually reaches
+    the shop and when it lands in their bank all live on the Charge, its
+    BalanceTransaction and the Payout. This row caches that, filled by
+    `services/stripe_payment_details.py` at record time and refreshed on
+    demand from the invoice page. Everything here is read from the shop's
+    own Connect account; nothing is ever derived locally (a fee guessed
+    from a percentage is exactly the kind of number a shop cannot
+    reconcile against its bank).
+
+    Only STRIPE payments have one. Manual payments (check, cash) never do.
+    """
+    PAYOUT_STATUS_CHOICES = [
+        ('', 'Not yet paid out'),
+        ('pending', 'Pending'),
+        ('in_transit', 'In transit'),
+        ('paid', 'Paid'),
+        ('failed', 'Failed'),
+        ('canceled', 'Canceled'),
+    ]
+
+    payment = models.OneToOneField(
+        Payment, on_delete=models.CASCADE, related_name='stripe_detail',
+    )
+    stripe_account_id = models.CharField(
+        max_length=50, blank=True,
+        help_text="Shop's connected account the charge settled in (acct_...)",
+    )
+    payment_intent_id = models.CharField(max_length=100, blank=True, db_index=True)
+    charge_id = models.CharField(max_length=100, blank=True, db_index=True)
+    balance_transaction_id = models.CharField(max_length=100, blank=True)
+
+    # How they paid — the proof a shop shows a customer who disputes it.
+    card_brand = models.CharField(max_length=30, blank=True)
+    card_last4 = models.CharField(max_length=4, blank=True)
+    wallet = models.CharField(
+        max_length=30, blank=True,
+        help_text="apple_pay / google_pay / link when a wallet was used",
+    )
+    receipt_url = models.URLField(
+        max_length=600, blank=True,
+        help_text="Stripe-hosted receipt for this charge",
+    )
+
+    # The money, as Stripe reports it. Null = not synced yet.
+    currency = models.CharField(max_length=3, default='usd')
+    gross_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    stripe_fee = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Stripe's processing fee (includes the RS Systems fee, if any)",
+    )
+    platform_fee = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="RS Systems' share of stripe_fee (application fee)",
+    )
+    net_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="What reaches the shop's Stripe balance",
+    )
+    funds_available_on = models.DateField(
+        null=True, blank=True,
+        help_text="When the net becomes available for payout in the shop's Stripe balance",
+    )
+
+    # Where the money is now. Filled by payout.* webhooks or the on-demand sweep.
+    payout_id = models.CharField(max_length=100, blank=True, db_index=True)
+    payout_status = models.CharField(
+        max_length=20, blank=True, choices=PAYOUT_STATUS_CHOICES,
+    )
+    payout_arrival_on = models.DateField(
+        null=True, blank=True,
+        help_text="Stripe's arrival date for the payout carrying this payment",
+    )
+
+    synced_at = models.DateTimeField(null=True, blank=True)
+    sync_error = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Stripe payment detail'
+        verbose_name_plural = 'Stripe payment details'
+
+    def __str__(self):
+        return f"Stripe detail for payment #{self.payment_id} ({self.payment_intent_id or 'unsynced'})"
+
+    @property
+    def has_charge(self):
+        """True once the charge-level facts (card, fees, receipt) are in."""
+        return bool(self.charge_id)
+
+    @property
+    def card_label(self):
+        """'Visa ···· 4242', 'Apple Pay (Visa ···· 4242)', or '' if unknown."""
+        if not self.card_last4:
+            return ''
+        brand = _CARD_BRANDS.get(self.card_brand.lower(), self.card_brand.title())
+        label = f"{brand} \u00b7\u00b7\u00b7\u00b7 {self.card_last4}"
+        wallet = _WALLETS.get(self.wallet)
+        return f"{wallet} ({label})" if wallet else label
+
+    @property
+    def deposit_state(self):
+        """One word for the template: 'deposited', 'in_transit', 'failed',
+        'available', 'pending' (funds not yet available) or 'unknown'."""
+        if self.payout_status == 'paid':
+            return 'deposited'
+        if self.payout_status in ('pending', 'in_transit'):
+            return 'in_transit'
+        if self.payout_status in ('failed', 'canceled'):
+            return 'failed'
+        if self.funds_available_on:
+            if self.funds_available_on <= timezone.localdate():
+                return 'available'
+            return 'pending'
+        return 'unknown'
+
+
+_CARD_BRANDS = {
+    'visa': 'Visa', 'mastercard': 'Mastercard', 'amex': 'American Express',
+    'discover': 'Discover', 'diners': 'Diners Club', 'jcb': 'JCB',
+    'unionpay': 'UnionPay', 'eftpos_au': 'eftpos',
+}
+_WALLETS = {
+    'apple_pay': 'Apple Pay', 'google_pay': 'Google Pay', 'link': 'Link',
+    'samsung_pay': 'Samsung Pay', 'amex_express_checkout': 'Amex Express Checkout',
+}
+
+
 class PlatformFeeRecord(models.Model):
     """
     Tracks every platform fee collected on invoice payments.

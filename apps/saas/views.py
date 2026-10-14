@@ -3776,7 +3776,20 @@ def owner_invoice_detail(request, invoice_id):
 
     invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
     line_items = invoice.line_items.all().order_by('id')
-    payments = invoice.payments.all().order_by('-payment_date', '-created_at')
+    payments = (
+        invoice.payments.select_related('stripe_detail', 'recorded_by')
+        .order_by('-payment_date', '-created_at')
+    )
+
+    # Proof of each online payment (card, Stripe receipt, fee, net, when it
+    # reaches the bank). Cached on StripePaymentDetail; this fills anything
+    # missing with a bounded number of Stripe calls and never raises.
+    try:
+        from apps.billing.services.stripe_payment_details import refresh_for_payments
+        refresh_for_payments(list(payments), tenant)
+        payments = payments.all()
+    except Exception:
+        logger.exception(f"Stripe payment detail refresh failed for invoice {invoice.id}")
 
     # Payment method choices for the form (exclude STRIPE — that's automatic)
     payment_methods = [

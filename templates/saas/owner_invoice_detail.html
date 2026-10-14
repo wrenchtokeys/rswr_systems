@@ -400,6 +400,75 @@
                     {% if p.notes %}
                     <div class="mt-2 ml-13 text-xs text-gray-500 italic pl-13" style="padding-left: 3.25rem;">{{ p.notes }}</div>
                     {% endif %}
+                    {% if p.payment_method == 'STRIPE' %}
+                    {% with d=p.stripe_detail %}
+                    {% comment %}
+                    Proof of an online payment, for the shop: the card, Stripe's
+                    receipt, the fee, the net, and where the money is. Every
+                    number is Stripe's own (StripePaymentDetail); when Stripe
+                    has not answered yet the block says so instead of guessing.
+                    {% endcomment %}
+                    <div class="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-xs" style="margin-left: 3.25rem;" data-stripe-proof>
+                        {% if d and d.has_charge %}
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                            {% if d.card_label %}
+                            <span class="inline-flex items-center gap-1.5 font-medium text-gray-900">{% icon 'credit-card' class="w-4 h-4 text-gray-400" %}{{ d.card_label }}</span>
+                            {% endif %}
+                            <span class="font-mono text-gray-500 break-all" title="Stripe payment ID">{{ d.payment_intent_id }}</span>
+                            {% if d.receipt_url %}
+                            <a href="{{ d.receipt_url }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 min-h-11 sm:min-h-0 -my-2 sm:my-0 font-medium text-brand-600 hover:text-brand-800">Stripe receipt{% icon 'external-link' class="w-3.5 h-3.5" %}</a>
+                            {% endif %}
+                        </div>
+                        {% if d.net_amount is not None %}
+                        <dl class="mt-2.5 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5">
+                            <div>
+                                <dt class="text-gray-500">Charged</dt>
+                                <dd class="font-medium text-gray-900">${{ d.gross_amount|floatformat:2 }}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-gray-500">Stripe fee</dt>
+                                <dd class="font-medium text-gray-900">&minus;${{ d.stripe_fee|floatformat:2 }}</dd>
+                            </div>
+                            {% if d.platform_fee %}
+                            <div>
+                                <dt class="text-gray-500">RS Systems fee</dt>
+                                <dd class="font-medium text-gray-900">${{ d.platform_fee|floatformat:2 }} <span class="font-normal text-gray-500">of the Stripe fee</span></dd>
+                            </div>
+                            {% endif %}
+                            <div>
+                                <dt class="text-gray-500">To your bank</dt>
+                                <dd class="font-semibold text-green-700">${{ d.net_amount|floatformat:2 }}</dd>
+                            </div>
+                        </dl>
+                        {% endif %}
+                        <div class="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-gray-700">
+                            {% if d.deposit_state == 'deposited' %}
+                            <span class="inline-flex items-center gap-1.5 font-medium text-green-700">{% icon 'check-circle' class="w-4 h-4" %}Deposited to your bank {{ d.payout_arrival_on|date:"M j, Y" }}</span>
+                            <span class="font-mono text-gray-400 break-all" title="Stripe payout ID">{{ d.payout_id }}</span>
+                            {% elif d.deposit_state == 'in_transit' %}
+                            <span class="inline-flex items-center gap-1.5 font-medium text-gray-900">{% icon 'truck' class="w-4 h-4 text-gray-400" %}On its way to your bank{% if d.payout_arrival_on %}, expected {{ d.payout_arrival_on|date:"M j, Y" }}{% endif %}</span>
+                            {% elif d.deposit_state == 'failed' %}
+                            <span class="inline-flex items-center gap-1.5 font-medium text-red-700">{% icon 'alert-triangle' class="w-4 h-4" %}Stripe could not deposit this payout to your bank. Open Stripe to fix the bank account.</span>
+                            {% elif d.deposit_state == 'available' %}
+                            <span class="inline-flex items-center gap-1.5">{% icon 'clock' class="w-4 h-4 text-gray-400" %}In your Stripe balance since {{ d.funds_available_on|date:"M j, Y" }}. Stripe sends it to your bank on its next automatic payout.</span>
+                            {% elif d.deposit_state == 'pending' %}
+                            <span class="inline-flex items-center gap-1.5">{% icon 'clock' class="w-4 h-4 text-gray-400" %}Available for payout {{ d.funds_available_on|date:"M j, Y" }}, then Stripe sends it to your bank.</span>
+                            {% endif %}
+                            {% if tenant.stripe_connect_account_id %}
+                            <a href="{% url 'connect_dashboard' %}" class="inline-flex items-center gap-1 min-h-11 sm:min-h-0 -my-2 sm:my-0 font-medium text-brand-600 hover:text-brand-800">View payouts in Stripe{% icon 'external-link' class="w-3.5 h-3.5" %}</a>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-gray-600">
+                            <span class="inline-flex items-center gap-1.5">{% icon 'info' class="w-4 h-4 text-gray-400" %}Card and deposit details haven't come back from Stripe yet. They'll appear here the next time you open this invoice.</span>
+                            {% if tenant.stripe_connect_account_id %}
+                            <a href="{% url 'connect_dashboard' %}" class="inline-flex items-center gap-1 min-h-11 sm:min-h-0 -my-2 sm:my-0 font-medium text-brand-600 hover:text-brand-800">Open Stripe{% icon 'external-link' class="w-3.5 h-3.5" %}</a>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endwith %}
+                    {% endif %}
                 </div>
                 {% endfor %}
             </div>

@@ -204,6 +204,18 @@ class PaymentNotificationService:
             ]
             if payment.reference_number:
                 detail_rows.append(('Reference', payment.reference_number))
+            # Online payment: the card and what reaches the shop after
+            # Stripe's fee. Only when Stripe has already told us — never a
+            # number derived here.
+            from apps.billing.services.stripe_payment_details import detail_for
+            stripe_detail = detail_for(payment)
+            if stripe_detail is not None and stripe_detail.has_charge:
+                if stripe_detail.card_label:
+                    detail_rows.append(('Card', stripe_detail.card_label))
+                if stripe_detail.net_amount is not None:
+                    detail_rows.append(
+                        ('After Stripe fees', f'${stripe_detail.net_amount:,.2f}')
+                    )
             detail_rows.extend([
                 ('Invoice total', f'${invoice.total:,.2f}'),
                 ('Total paid', f'${invoice.amount_paid:,.2f}'),

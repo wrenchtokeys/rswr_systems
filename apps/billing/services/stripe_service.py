@@ -346,6 +346,23 @@ class StripeService:
         if sub_result.get('handled'):
             return sub_result
 
+        # Payouts on a connected account: stamp "deposited to your bank"
+        # on the payments the payout carried. Platform payouts (no
+        # account) are RS Systems' own money and are not tracked here.
+        if event_type.startswith('payout.'):
+            if not event_account:
+                return {'success': True, 'handled': False, 'event_type': event_type}
+            from apps.billing.services.stripe_payment_details import apply_payout
+            try:
+                result = apply_payout(data, event_account)
+            except stripe.error.StripeError as e:
+                # Listing the payout's transactions failed — let Stripe
+                # redeliver rather than lose the deposit date.
+                return {'success': False, 'handled': True, 'retryable': True,
+                        'event_type': event_type, 'error': str(e)}
+            result.update({'success': True, 'handled': True})
+            return result
+
         # Stripe Connect account updates
         if event_type == 'account.updated':
             from apps.tenants.services.connect_service import handle_account_updated
@@ -571,7 +588,16 @@ class StripeService:
             return {'success': True, 'duplicate': True}
         
         logger.info(f"Stripe payment ${amount} recorded for {invoice.invoice_number}")
-        
+
+        # Proof for the shop: card, Stripe receipt, fee, net, availability.
+        # One retrieve on the shop's account; a failure is stored on the
+        # detail row and retried from the invoice page, never raised here.
+        try:
+            from apps.billing.services.stripe_payment_details import sync_from_stripe
+            sync_from_stripe(payment)
+        except Exception as e:
+            logger.warning(f"Stripe payment detail sync failed (non-fatal): {e}")
+
         # Send payment confirmation emails
         try:
             from apps.billing.services.payment_notification_service import PaymentNotificationService
