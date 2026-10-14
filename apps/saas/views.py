@@ -3539,6 +3539,10 @@ def owner_invoice_list(request):
 
     if status_filter == 'paid':
         invoices = invoices.filter(status='PAID')
+    elif status_filter == 'unsent':
+        # Drafts nobody emailed or texted, plus emails that bounced: the
+        # end-of-day "which of these did I never actually send?" list.
+        invoices = invoices.filter(Invoice.needs_sending_q())
     elif status_filter == 'insurance':
         # Every invoice with a claim being tracked, whatever the money says.
         invoices = invoices.filter(claim__isnull=False)
@@ -3557,8 +3561,21 @@ def owner_invoice_list(request):
         except (ValueError, TypeError):
             pass
 
+    # The per-row Send button opens the same confirm modal as "create and
+    # send", which shows how many lines the email covers.
+    invoices = invoices.annotate(line_count=Count('line_items'))
+
     # --- Summary cards ---
     all_invoices = Invoice.objects.filter(customer__tenant=tenant)
+
+    # Invoices the customer has not received (drafts never sent + bounced
+    # emails). Not part of "Owed to you" — a draft has not asked anyone for
+    # anything yet — which is exactly why it needs its own line.
+    unsent_agg = all_invoices.filter(Invoice.needs_sending_q()).aggregate(
+        count=Count('id'), total=Sum('total') - Sum('amount_paid'),
+    )
+    unsent_count = unsent_agg.get('count') or 0
+    unsent_amount = unsent_agg.get('total') or Decimal('0.00')
 
     outstanding_qs = all_invoices.filter(status__in=['SENT', 'PARTIAL', 'OVERDUE'])
     total_outstanding = outstanding_qs.aggregate(
@@ -3717,6 +3734,8 @@ def owner_invoice_list(request):
         'outstanding_amount': outstanding_amount,
         'overdue_amount': overdue_amount,
         'overdue_count': overdue_count,
+        'unsent_count': unsent_count,
+        'unsent_amount': unsent_amount,
         'payments_month_amount': payments_month_amount,
         'invoices_this_month': invoices_this_month,
         'aging_buckets': aging_buckets,
@@ -3725,6 +3744,7 @@ def owner_invoice_list(request):
         'claims_waiting': claims_waiting,
         'status_pills': [
             ('all', 'All'),
+            ('unsent', 'Not sent'),
             ('unpaid', 'Unpaid'),
             ('overdue', 'Overdue'),
             ('partial', 'Partially paid'),

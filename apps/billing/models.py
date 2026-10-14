@@ -710,6 +710,38 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
             self.status = 'OVERDUE'
         # Don't change DRAFT or SENT status automatically
     
+    # Email outcomes that mean the invoice went out but never arrived. A
+    # "delayed" email is still in flight and is not one of these.
+    EMAIL_DELIVERY_FAILED = ('bounced', 'rejected', 'complained')
+
+    @classmethod
+    def needs_sending_q(cls):
+        """Q for invoices the customer has not actually received.
+
+        Two cases, both meaning nobody has been asked for the money yet:
+
+        * a DRAFT that was never emailed or texted (an email send promotes
+          DRAFT -> SENT, so a draft with no text is one that never went out);
+        * an email that bounced, was rejected or was marked as spam, on an
+          invoice that is still owed.
+
+        ``needs_sending`` is the per-row twin; keep the two in step.
+        """
+        return models.Q(status='DRAFT', last_sms_at__isnull=True) | (
+            models.Q(email_delivery_status__in=cls.EMAIL_DELIVERY_FAILED)
+            & ~models.Q(status__in=['PAID', 'CANCELLED'])
+        )
+
+    @property
+    def needs_sending(self):
+        """Per-row twin of ``needs_sending_q``."""
+        if self.status == 'DRAFT' and not self.last_sms_at:
+            return True
+        return (
+            self.email_delivery_status in self.EMAIL_DELIVERY_FAILED
+            and self.status not in ('PAID', 'CANCELLED')
+        )
+
     def mark_sent(self):
         """Mark invoice as sent to customer."""
         if self.status == 'DRAFT':
