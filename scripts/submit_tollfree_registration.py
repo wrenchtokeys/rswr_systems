@@ -1,12 +1,23 @@
-"""Toll-free registration version 6 for +18663115189 (RS Systems) — STAFF SCOPE.
+"""Toll-free registration version 7 for +18663115189 (RS Systems) — STAFF SCOPE.
 
     python scripts/submit_tollfree_registration.py <screenshot.png>            # validate only
     python scripts/submit_tollfree_registration.py <screenshot.png> --submit   # really file it
 
 Generate the screenshot with `python scripts/sms_optin_shot.py` — it renders the
-real Settings -> Notifications page and refuses to save a checked box.
+real flow (sign-in -> Settings -> Notifications unchecked -> ticked and saved) under
+RS Systems branding and refuses to save a pre-checked box or a visible shop name.
 
-WHY VERSION 6 EXISTS
+WHY VERSION 7 EXISTS
+--------------------
+Version 6 was denied 2026-10-14 for "Incomplete Opt-in Example - the opt-in example
+provided is incomplete or lacks proper branding. Provide complete screenshots
+showing the entire opt-in process with clear business identification." v6's image
+was a crop of the consent card alone, with the page chrome deliberately cut off to
+keep the shop's branding out - which also cut out RS Systems'. Version 7 changes the
+image (three branded steps, start to finish) and the opt-in description that walks
+the reviewer through it. Nothing else: v6's URL fixes were not the complaint.
+
+WHY VERSION 6 EXISTED
 --------------------
 Version 5 (staff scope, below) was denied 2026-09-18 for "Invalid Website URL -
 the provided website URL is either invalid or inaccessible". The reviewer does not
@@ -80,7 +91,7 @@ from urllib.parse import urlparse
 import boto3
 
 REG = 'registration-3c4aceac54424845b6d540e818f2bddb'
-BASE_VERSION = 5          # newest, already staff scope; overrides below fix its URLs
+BASE_VERSION = 6          # newest; its URLs/samples were not the complaint, its image was
 COMPANY = 'RS Systems'
 WEBSITE = 'https://rssystems.io'
 PROGRAM_TERMS_URL = 'https://rssystems.io/sms/'
@@ -112,26 +123,25 @@ USE_CASE_DETAILS = (
 )
 
 OPT_IN_DESCRIPTION = (
-    "Users opt in inside the RS Systems application, at Settings > Notifications. That "
-    "page is behind a login, so it cannot be browsed to; the attached screenshot shows "
-    "it. Our public pages are https://rssystems.io (company site), "
-    "https://rssystems.io/sms/ (text program terms), https://rssystems.io/privacy/ and "
-    "https://rssystems.io/terms/.\n\n"
-    "The consent checkbox, labelled \"Text me urgent job alerts\", is EMPTY AND "
-    "UNCHECKED by default and is never pre-selected. The user must click it themselves "
-    "and then save. The two checkboxes above it (in-app and email) are on by default, "
-    "so the screenshot shows the contrast directly: ours is the unchecked one.\n\n"
-    "The checkbox label reads: \"I agree to receive automated text messages from RS "
-    "Systems at the mobile number on my account - new repair requests, job assignments "
-    "and approvals. Message frequency varies with job activity, typically a few "
-    "messages per working day. Consent is not a condition of using RS Systems.\"\n\n"
-    "Directly below it: \"Msg & data rates may apply. Reply STOP to opt out, HELP for "
-    "help,\" followed by links to the text program terms, privacy policy and terms "
-    "listed above.\n\n"
-    "Consent is stored with a timestamp against that user's own account record, and no "
-    "text is sent until the user has also verified that mobile number with a code. The "
-    "screenshot shows a demonstration account rather than a real user's record, so that "
-    "no personal information is included in this submission."
+    "Users opt in inside the RS Systems web application. The attached image shows the "
+    "whole process in three numbered steps, each with the RS Systems name and logo in "
+    "frame: (1) the user signs in at https://rssystems.io/login/; (2) they open Settings "
+    "> Notifications, where the text-message checkbox is EMPTY AND UNCHECKED by default "
+    "and never pre-selected - the in-app and email boxes above it are on, so the "
+    "contrast is visible; (3) the user ticks it themselves and saves, and the page "
+    "confirms the date they agreed. That page is behind a login, so it cannot be "
+    "browsed to. Public pages: https://rssystems.io, https://rssystems.io/sms/ (text "
+    "program terms), https://rssystems.io/privacy/ and https://rssystems.io/terms/.\n\n"
+    "The checkbox, labelled \"Text me urgent job alerts\", reads: \"I agree to receive "
+    "automated text messages from RS Systems at the mobile number on my account - new "
+    "repair requests, job assignments and approvals. Message frequency varies with job "
+    "activity, typically a few messages per working day. Consent is not a condition of "
+    "using RS Systems.\" Directly below: \"Msg & data rates may apply. Reply STOP to "
+    "opt out, HELP for help,\" with links to the program terms, privacy policy and "
+    "terms.\n\n"
+    "Consent is stored with a timestamp on the user's own account, and no text is sent "
+    "until that mobile number is also verified with a code. The image uses a "
+    "demonstration account so no personal information is included."
 )
 
 OVERRIDES = {
@@ -257,7 +267,7 @@ def assert_lengths(client, fields):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    parser.add_argument('screenshot', help='PNG from scripts/sms_optin_shot.py')
+    parser.add_argument('screenshot', help='PNG from scripts/sms_optin_shot.py (the three-step flow)')
     parser.add_argument('--submit', action='store_true',
                         help='Actually open and submit a new version. Without it, '
                              'everything is validated and nothing is written.')

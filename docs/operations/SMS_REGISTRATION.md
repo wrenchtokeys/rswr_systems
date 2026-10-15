@@ -4,7 +4,7 @@
 Anything else that mentions SMS status (`FIELD_OPS_SESSIONS.md` Appendix A, `ROADMAP.md`,
 `PRODUCT_DIRECTION.md`) points here and must not restate a status of its own.
 
-**Last verified against AWS: 2026-10-11** (`aws pinpoint-sms-voice-v2`, us-east-1,
+**Last verified against AWS: 2026-10-15** (`aws pinpoint-sms-voice-v2`, us-east-1,
 account 973196283632, tier PRODUCTION).
 
 > ## Read §3.5 first — the answer depends on WHO is being texted
@@ -18,6 +18,9 @@ account 973196283632, tier PRODUCTION).
 > **Update 2026-10-11: version 5 was filed and DENIED — but not on scope.** The reason was
 > "Invalid Website URL", a new one, and neither of v4's two mismatch reasons came back. The
 > audience split held; the URLs did not. **Version 6 is prepared — §3.6.**
+>
+> **Update 2026-10-15: version 6 was DENIED 2026-10-14 for "Incomplete Opt-in Example"** — the
+> screenshot, not the scope and not the URLs. **Version 7 is prepared — §3.7.**
 
 ---
 
@@ -25,13 +28,13 @@ account 973196283632, tier PRODUCTION).
 
 | Number | Number status | Registration | Usable |
 |---|---|---|---|
-| `+18663115189` (RS Systems) | **PENDING** | `REQUIRES_UPDATES` — **version 5 DENIED 2026-09-18 19:58 UTC** | Not yet — **version 6 (staff scope, URLs fixed) is prepared, §3.6** |
+| `+18663115189` (RS Systems) | **PENDING** | `REQUIRES_UPDATES` — **version 6 DENIED 2026-10-14 14:59 UTC** | Not yet — **version 7 (full branded opt-in flow) is prepared, §3.7** |
 | `+18559394817` (Rockstar Windshield Repair) | ACTIVE | COMPLETE (approved 2026-07-30, first try) | Yes — Rockstar only |
 
-Five versions submitted, five denied. **The first four were scoped as customer-facing texts sent
+Six versions submitted, six denied. **The first four were scoped as customer-facing texts sent
 on behalf of shops**, which is the thing that cannot be registered here (§3). The fifth was scoped
 to RS Systems texting its own users (§3.5) and was denied for an inaccessible URL instead (§3.6) —
-a fixable fault in the filing, not in the scope. The number itself is fine and should be **kept**. It leases at $2/mo, which was never the cost that mattered; two months of blocked
+a fixable fault in the filing, not in the scope. The sixth was denied for an unbranded, partial opt-in screenshot (§3.7) — fixable the same way. The number itself is fine and should be **kept**. It leases at $2/mo, which was never the cost that mattered; two months of blocked
 feature work was.
 
 Prod is inert, not broken: `SMS_ENABLED=true` but `SMS_ORIGINATION_IDENTITY` is unset, and
@@ -60,6 +63,7 @@ aws pinpoint-sms-voice-v2 describe-registration-versions --region us-east-1 \
 | 3 | 2026-08-25 | DENIED 08-26 | Unofficial Business Email + Pre-selected Opt-in |
 | 4 | 2026-08-31 | **DENIED 09-02** | **Message Use Case Mismatch + Opt-in Workflow Mismatch** |
 | 5 | 2026-09-17 | **DENIED 09-18** | **Invalid Website URL** — first staff-scope filing; §3.6 |
+| 6 | 2026-10-12 | **DENIED 10-14** | **Incomplete Opt-in Example** — unbranded, partial screenshot; §3.7 |
 
 v4's two reasons, verbatim:
 
@@ -264,6 +268,46 @@ python scripts/submit_tollfree_registration.py sms_optin.png --submit   # file i
    consent for a program this number cannot run (§3), and their "Program terms" link now lands on
    a page about a different audience. Hide them until Path A or C exists, or leave them — a
    product decision, not a registration one.
+
+## 3.7 Version 6's denial, and version 7
+
+Version 6 was submitted 2026-10-12 04:18 UTC and denied 2026-10-14 14:59 UTC (59h — the longest
+review yet). Found 2026-10-15. One reason, verbatim:
+
+> **Incomplete Opt-in Example** — *"Opt-in example incomplete or unbranded. The opt-in example
+> provided is incomplete or lacks proper branding. Provide complete screenshots showing the
+> entire opt-in process with clear business identification."*
+
+Neither v5's URL reason nor v4's scope reasons came back, so the v6 fixes held. The fault was
+the image: `sms_optin.png` was a crop of the Contact Verification and consent cards **with the
+page chrome cut off on purpose**, to keep the shop's name out of an RS Systems filing (v1–v4's
+brand confusion). That crop also removed every trace of RS Systems — and it showed one moment,
+not a process.
+
+### What version 7 changes
+
+- **The image is the whole flow, branded, in one PNG** (`scripts/sms_optin_shot.py`): an
+  RS Systems header band, then three numbered, captioned frames — (1) the signed-out sign-in
+  page, (2) Settings → Notifications in its default state with the box unchecked, (3) the same
+  page after the user ticks it and saves, showing the success banner and "You agreed to texts
+  on …". Frames 2 and 3 include the navbar.
+- **The navbar reads "RS Systems", honestly.** The demo shop is moved to the Starter plan, which
+  has no custom branding, so the navbar renders the platform mark — exactly what every shop
+  without that feature sees. The demo login's email (whose domain is the shop's name) is renamed
+  to `sam@example.com`. The script aborts if the shop's name is visible in any frame
+  (case-insensitive), if the box is pre-checked, if the navbar lacks "RS Systems", or if saving
+  does not record consent.
+- **`optInDescription` walks the reviewer through the three steps** and repeats the consent
+  wording. Base version is now 6; everything else is copied from it.
+
+```bash
+python scripts/sms_optin_shot.py                                        # -> sms_optin.png
+python scripts/submit_tollfree_registration.py sms_optin.png            # validate only
+python scripts/submit_tollfree_registration.py sms_optin.png --submit   # file it
+```
+
+Nothing needs deploying first: v7 changes no public page. The §3.6 "two things v6 does not
+settle" still stand.
 
 ---
 
