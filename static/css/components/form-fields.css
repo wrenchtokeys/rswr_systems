@@ -1,6 +1,14 @@
 /*
  * Professional Form Field Components
  * SaaS-Grade Styling for Repair Forms
+ *
+ * Colour comes from the palette variables (assets/css/palette.css), never a
+ * literal: this file is linked after app.css, so a hard-coded `white` here
+ * out-ranks the dark theme and paints a white box with light field text in
+ * it (the Edit Repair form, 2026-10-15). `--c-*` for surfaces and borders,
+ * `--tx-*` for text, `--surface-field` for the well a field sits in. In
+ * light mode every variable holds the value that used to be typed here.
+ * tests/test_dark_mode.py rejects a colour literal in this file.
  */
 
 /* ================== SECTION CONTAINERS ================== */
@@ -11,7 +19,7 @@
 }
 
 .form-section + .form-section {
-    border-top: 1px solid #f3f4f6;
+    border-top: 1px solid rgb(var(--c-gray-100));
     padding-top: 1.75rem;
 }
 
@@ -25,12 +33,12 @@
     font-size: 1.0625rem;
     font-weight: 600;
     letter-spacing: -0.011em;
-    color: #111827;
+    color: rgb(var(--tx-gray-900, var(--c-gray-900)));
 }
 
 .form-section-subtitle {
     font-size: 0.875rem;
-    color: #6b7280;
+    color: rgb(var(--tx-gray-500, var(--c-gray-500)));
     margin-top: 0.125rem;
 }
 
@@ -69,13 +77,13 @@
     align-items: center;
     font-size: 0.875rem;
     font-weight: 500;
-    color: #374151;
+    color: rgb(var(--tx-gray-700, var(--c-gray-700)));
     margin-bottom: 0.5rem;
 }
 
 .icon-field-label i {
     margin-right: 0.5rem;
-    color: #6b7280;
+    color: rgb(var(--tx-gray-500, var(--c-gray-500)));
     width: 1.25rem;
     text-align: center;
 }
@@ -83,11 +91,11 @@
 .icon-field-input {
     width: 100%;
     padding: 0.625rem 0.75rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid rgb(var(--c-gray-300));
     border-radius: 0.5rem;
     font-size: 0.875rem;
     transition: all 0.2s ease;
-    background-color: white;
+    background-color: var(--surface-field);
 }
 
 .icon-field-input:focus {
@@ -96,10 +104,13 @@
     box-shadow: 0 0 0 3px rgb(var(--brand-500) / 0.1);
 }
 
+/* `.form-control` is flatpickr's altInput (its default altInputClass): it is
+   readonly only to keep the keyboard down, and it is the box the user taps
+   to pick a date — it must not read as disabled. */
 .icon-field-input:disabled,
-.icon-field-input[readonly] {
-    background-color: #f3f4f6;
-    color: #6b7280;
+.icon-field-input[readonly]:not(.form-control) {
+    background-color: rgb(var(--c-gray-100));
+    color: rgb(var(--tx-gray-500, var(--c-gray-500)));
     cursor: not-allowed;
 }
 
@@ -108,33 +119,33 @@
     align-items: center;
     margin-top: 0.5rem;
     font-size: 0.75rem;
-    color: #6b7280;
+    color: rgb(var(--tx-gray-500, var(--c-gray-500)));
 }
 
 .icon-field-helper i {
     margin-right: 0.375rem;
-    color: #9ca3af;
+    color: rgb(var(--tx-gray-400, var(--c-gray-400)));
 }
 
 .icon-field-helper.helper-warning {
-    color: #d97706;
+    color: rgb(var(--tx-amber-600, var(--c-amber-600)));
 }
 
 .icon-field-helper.helper-warning i {
-    color: #f59e0b;
+    color: rgb(var(--tx-amber-500, var(--c-amber-500)));
 }
 
 .icon-field-helper.helper-success {
-    color: #059669;
+    color: rgb(var(--tx-emerald-600, var(--c-emerald-600)));
 }
 
 .icon-field-helper.helper-success i {
-    color: #10b981;
+    color: rgb(var(--tx-emerald-500, var(--c-emerald-500)));
 }
 
 /* ================== REQUIRED INDICATORS ================== */
 .field-required {
-    color: #dc2626;
+    color: rgb(var(--tx-red-600, var(--c-red-600)));
     margin-left: 0.25rem;
 }
 
@@ -149,18 +160,18 @@
 }
 
 .field-badge-required {
-    background-color: #fee2e2;
-    color: #991b1b;
+    background-color: rgb(var(--c-red-100));
+    color: rgb(var(--tx-red-800, var(--c-red-800)));
 }
 
 .field-badge-recommended {
-    background-color: #dbeafe;
-    color: #1e40af;
+    background-color: rgb(var(--c-blue-100));
+    color: rgb(var(--tx-blue-800, var(--c-blue-800)));
 }
 
 .field-badge-optional {
-    background-color: #f3f4f6;
-    color: #6b7280;
+    background-color: rgb(var(--c-gray-100));
+    color: rgb(var(--tx-gray-500, var(--c-gray-500)));
 }
 
 /* ================== PHOTO UPLOAD COMPONENTS ================== */
@@ -172,9 +183,9 @@
     justify-content: center;
     min-height: 12rem;
     padding: 1.5rem;
-    border: 2px dashed #d1d5db;
+    border: 2px dashed rgb(var(--c-gray-300));
     border-radius: 0.75rem;
-    background-color: #fafafa;
+    background-color: rgb(var(--c-gray-50));
     transition: all 0.2s ease;
     cursor: pointer;
 }
@@ -194,12 +205,12 @@
     width: 3.5rem;
     height: 3.5rem;
     margin-bottom: 0.75rem;
-    color: #9ca3af;
+    color: rgb(var(--tx-gray-400, var(--c-gray-400)));
 }
 
 .photo-upload-text {
     font-size: 0.875rem;
-    color: #6b7280;
+    color: rgb(var(--tx-gray-500, var(--c-gray-500)));
     text-align: center;
 }
 
@@ -211,16 +222,16 @@
 .photo-upload-hint {
     margin-top: 0.5rem;
     font-size: 0.75rem;
-    color: #9ca3af;
+    color: rgb(var(--tx-gray-400, var(--c-gray-400)));
 }
 
 /* Photo Preview */
 .photo-preview-container {
     margin-top: 1rem;
     padding: 0.75rem;
-    border: 1px solid #e5e7eb;
+    border: 1px solid rgb(var(--c-gray-200));
     border-radius: 0.5rem;
-    background-color: #f9fafb;
+    background-color: rgb(var(--c-gray-50));
 }
 
 .photo-preview-image {
@@ -240,30 +251,30 @@
 
 .photo-preview-name {
     font-size: 0.875rem;
-    color: #374151;
+    color: rgb(var(--tx-gray-700, var(--c-gray-700)));
     font-weight: 500;
 }
 
 .photo-preview-size {
     font-size: 0.75rem;
-    color: #6b7280;
+    color: rgb(var(--tx-gray-500, var(--c-gray-500)));
 }
 
 .photo-preview-delete {
     padding: 0.375rem 0.75rem;
     font-size: 0.75rem;
     font-weight: 500;
-    color: #dc2626;
-    background-color: white;
-    border: 1px solid #fca5a5;
+    color: rgb(var(--tx-red-600, var(--c-red-600)));
+    background-color: var(--surface-raised);
+    border: 1px solid rgb(var(--c-red-300));
     border-radius: 0.375rem;
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .photo-preview-delete:hover {
-    background-color: #fee2e2;
-    border-color: #dc2626;
+    background-color: rgb(var(--c-red-100));
+    border-color: rgb(var(--c-red-600));
 }
 
 /* ================== MOBILE CAMERA CAPTURE ================== */
@@ -293,7 +304,7 @@
 .field-error {
     margin-top: 0.5rem;
     font-size: 0.875rem;
-    color: #dc2626;
+    color: rgb(var(--tx-red-600, var(--c-red-600)));
     display: flex;
     align-items: center;
 }
@@ -303,12 +314,12 @@
 }
 
 .input-error {
-    border-color: #dc2626 !important;
-    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1) !important;
+    border-color: rgb(var(--c-red-600)) !important;
+    box-shadow: 0 0 0 3px rgb(var(--c-red-600) / 0.1) !important;
 }
 
 .input-success {
-    border-color: #10b981 !important;
+    border-color: rgb(var(--c-emerald-500)) !important;
 }
 
 /* ================== SUBMIT BUTTON ENHANCEMENTS ================== */
@@ -319,7 +330,7 @@
     justify-content: center;
     padding-top: 2rem;
     margin-top: 2rem;
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid rgb(var(--c-gray-200));
 }
 
 /* .btn-primary / .btn-secondary come from app.css (the shared brand button
@@ -375,45 +386,45 @@
 }
 
 .badge-blue {
-    background-color: #dbeafe;
-    color: #1e40af;
-    border: 1px solid #93c5fd;
+    background-color: rgb(var(--c-blue-100));
+    color: rgb(var(--tx-blue-800, var(--c-blue-800)));
+    border: 1px solid rgb(var(--c-blue-300));
 }
 
 .badge-green {
-    background-color: #d1fae5;
-    color: #065f46;
-    border: 1px solid #6ee7b7;
+    background-color: rgb(var(--c-emerald-100));
+    color: rgb(var(--tx-emerald-800, var(--c-emerald-800)));
+    border: 1px solid rgb(var(--c-emerald-300));
 }
 
 .badge-orange {
-    background-color: #fed7aa;
-    color: #9a3412;
-    border: 1px solid #fdba74;
+    background-color: rgb(var(--c-orange-200));
+    color: rgb(var(--tx-orange-800, var(--c-orange-800)));
+    border: 1px solid rgb(var(--c-orange-300));
 }
 
 .badge-red {
-    background-color: #fee2e2;
-    color: #991b1b;
-    border: 1px solid #fca5a5;
+    background-color: rgb(var(--c-red-100));
+    color: rgb(var(--tx-red-800, var(--c-red-800)));
+    border: 1px solid rgb(var(--c-red-300));
 }
 
 .badge-yellow {
-    background-color: #fef3c7;
-    color: #92400e;
-    border: 1px solid #fcd34d;
+    background-color: rgb(var(--c-amber-100));
+    color: rgb(var(--tx-amber-800, var(--c-amber-800)));
+    border: 1px solid rgb(var(--c-amber-300));
 }
 
 .badge-purple {
-    background-color: #e9d5ff;
-    color: #6b21a8;
-    border: 1px solid #c084fc;
+    background-color: rgb(var(--c-purple-200));
+    color: rgb(var(--tx-purple-800, var(--c-purple-800)));
+    border: 1px solid rgb(var(--c-purple-400));
 }
 
 .badge-gray {
-    background-color: #f3f4f6;
-    color: #4b5563;
-    border: 1px solid #d1d5db;
+    background-color: rgb(var(--c-gray-100));
+    color: rgb(var(--tx-gray-600, var(--c-gray-600)));
+    border: 1px solid rgb(var(--c-gray-300));
 }
 
 /* ================== RESPONSIVE ADJUSTMENTS ================== */

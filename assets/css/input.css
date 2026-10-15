@@ -77,6 +77,11 @@
   --surface-base: #f7f8fa;
   --surface-raised: #ffffff;
   --surface-overlay: #ffffff;
+  /* The well a form field sits in. Hand-written CSS that paints a field
+     must use this, never `white`: the dark palette re-points it, and a
+     literal white box in the dark shows light field text on white
+     (the Edit Repair form, 2026-10-15). */
+  --surface-field: #ffffff;
   --hairline: rgb(16 24 40 / 0.08);
   /* The one grey a loading skeleton is allowed to be. Named because
      static/js/list-loading.js paints traced status pills with it too, and the
@@ -426,10 +431,13 @@
   }
 
   /* Toast notifications driven by UI.toast()/UI.flash() in static/js/ui.js.
-     Sits above modals (modal-overlay is z-50) so feedback from modal actions
-     stays visible. */
+     Sits above EVERY modal so feedback from a dialog's own buttons stays
+     visible: the shared skeleton is z-50, but the two legacy dialogs
+     (multi_break_repair_form, convert_to_batch_form) sit at z-index 1000 and
+     the tap-to-crop modal at 1100. At z-70 the "select a damage type" toast
+     rendered behind the break dialog and the button looked dead. */
   .toast-stack {
-    @apply fixed top-4 right-4 z-[70] flex w-full max-w-sm flex-col gap-2
+    @apply fixed top-4 right-4 z-[1200] flex w-full max-w-sm flex-col gap-2
       pointer-events-none;
   }
   .toast {

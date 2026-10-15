@@ -204,6 +204,7 @@ function hideModal() {
 
 function clearModal() {
     document.getElementById('modal_damage_type').value = '';
+    setDamageTypeError('');
     document.getElementById('modal_drilled_before_repair').checked = false;
     document.getElementById('modal_windshield_temperature').value = '';
     document.getElementById('modal_resin_viscosity').value = '';
@@ -233,6 +234,26 @@ function clearModal() {
     // Clear damage location
     clearMultiBreakDamageMarker();
 }
+
+// Inline required-field message for the damage type box in the dialog.
+function setDamageTypeError(message) {
+    const select = document.getElementById('modal_damage_type');
+    const error = document.getElementById('modal_damage_type_error');
+    if (!error) return;
+    if (message) {
+        error.textContent = message;
+        error.classList.remove('hidden');
+        select.classList.add('border-red-500', 'ring-2', 'ring-red-500');
+        select.setAttribute('aria-invalid', 'true');
+        select.focus();
+    } else {
+        error.textContent = '';
+        error.classList.add('hidden');
+        select.classList.remove('border-red-500', 'ring-2', 'ring-red-500');
+        select.removeAttribute('aria-invalid');
+    }
+}
+document.getElementById('modal_damage_type').addEventListener('change', () => setDamageTypeError(''));
 
 // Add Break Button
 document.getElementById('addBreakBtn').addEventListener('click', () => {
@@ -274,8 +295,12 @@ document.getElementById('saveBreakBtn').addEventListener('click', () => {
 
     console.log('Damage type:', damageType);
 
-    // Validation
+    // Validation. The toast alone was not enough: it used to render BEHIND
+    // this dialog (toast-stack z-70 vs .modal z-1000) so a tap on Save with
+    // no damage type looked like nothing happened. The toast now stacks above
+    // every modal, and the message is also written under the box itself.
     if (!damageType) {
+        setDamageTypeError('Pick the damage type before saving this break.');
         UI.toast('Please select a damage type', 'warning');
         return;
     }
