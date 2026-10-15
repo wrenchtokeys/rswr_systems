@@ -171,3 +171,51 @@ def update_technician_profile(request):
         'form': form,
         'technician': technician
     })
+
+
+@technician_required
+def get_windshield_history(request):
+    """What this shop has done to a fleet unit's current windshield.
+
+    GET /tech/api/windshield-history/?customer=<id>&unit_number=<unit>
+
+    The job form shows it under the unit box so the tech can check the glass
+    before the price is worked out: if the earlier repairs aren't on it, the
+    windshield was replaced (usually by another company, which this shop
+    never hears about) and "New windshield" starts the unit over at #1.
+
+    Read-only. ``show`` is False whenever the count cannot move the price:
+    no history, progressive pricing off for the shop or the customer, or an
+    individual (they always pay the first-repair price).
+    """
+    from apps.technician_portal.services.windshield_history import (
+        current_windshield, progressive_applies,
+    )
+    from core.models import Customer
+
+    hidden = JsonResponse({'show': False})
+    tenant = getattr(request, 'tenant', None)
+    try:
+        customer_id = int(request.GET.get('customer') or 0)
+    except ValueError:
+        return hidden
+    if not tenant or not customer_id:
+        return hidden
+    customer = Customer.objects.filter(tenant=tenant, pk=customer_id).first()
+    if not progressive_applies(tenant, customer):
+        return hidden
+    history = current_windshield(
+        tenant, customer, request.GET.get('unit_number'))
+    if history is None:
+        return hidden
+
+    last = history['last_repaired']
+    return JsonResponse({
+        'show': True,
+        'repair_count': history['repair_count'],
+        'next_number': history['next_number'],
+        'next_price': str(history['next_price']),
+        'first_price': str(history['first_price']),
+        'last_repaired': last.strftime('%b %-d, %Y') if last else '',
+        'spots': history['spots'],
+    })

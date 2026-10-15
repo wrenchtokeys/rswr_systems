@@ -22,7 +22,9 @@ from decimal import Decimal
 
 from django.db import transaction
 
-from apps.technician_portal.models import Replacement, Repair, Technician
+from apps.technician_portal.models import (
+    Replacement, Repair, Technician, UnitRepairCount,
+)
 # The ability check lives in services.assignments because the approve path
 # needs the same rule (CODE-280); this module was its first caller.
 from apps.technician_portal.services.assignments import can_perform
@@ -284,6 +286,18 @@ def create_job(*, tenant, actor_user, data, charges=None,
     # Assignment signal: notify the assigned tech when someone else created
     # the job for them — but not about their own creations. A job nobody
     # picked notifies the managers instead (see notify_needs_assignment).
+    if data.get('new_windshield') and isinstance(service, Repair):
+        # Before save(): Repair.save() reads the count to price the job.
+        previous = UnitRepairCount.reset_for(
+            tenant=tenant, customer=customer,
+            key=UnitRepairCount.key_for(service),
+        )
+        if previous:
+            note = (f'New windshield since the last repair (replaced elsewhere). '
+                    f'Repair count started over at #1; it was at {previous}.')
+            service.internal_notes = (
+                f'{note}\n\n{service.internal_notes}' if service.internal_notes else note)
+
     service.needs_assignment = needs_assignment
     service._assignment_actor_user_id = actor_user.id
     if not notify_assignment:

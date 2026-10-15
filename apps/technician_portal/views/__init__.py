@@ -136,5 +136,6 @@ from .api import (
     get_batch_pricing_json,
     get_price_book_suggestion,
     get_viscosity_suggestion,
+    get_windshield_history,
     update_technician_profile,
 )

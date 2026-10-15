@@ -330,6 +330,27 @@ class UnitRepairCount(models.Model):
         """
         return (job.get_vehicle_identifier() or '')[:cls.KEY_MAX_LENGTH]
 
+    @classmethod
+    def reset_for(cls, *, tenant, customer, key):
+        """A new windshield: the vehicle's next repair prices as repair #1.
+
+        The one place the count goes back to zero — a completed windshield
+        replacement, the unit page's "Mark Windshield Replaced", and the job
+        form's "New windshield" tap (glass someone else replaced, which this
+        shop otherwise never hears about). Tenant-scoped (CODE-230). Returns
+        the count it replaced; 0 when there was no row.
+        """
+        row = cls.objects.filter(
+            tenant=tenant, customer=customer, unit_number=key,
+        ).first()
+        if row is None:
+            return 0
+        previous = row.repair_count
+        if previous:
+            row.repair_count = 0
+            row.save(update_fields=['repair_count'])
+        return previous
+
     def __str__(self):
         # No bare "Unit #" — this row may well be an individual's vehicle.
         vehicle = self.unit_number or '(no vehicle on record)'
@@ -2177,28 +2198,27 @@ class Replacement(GlassService):
                 except Exception:
                     pass  # Keep $0 tax if billing app unavailable
 
-            # Reset repair count when replacement is completed
-            # A new windshield means fresh repair pricing for that unit
-            if self.queue_status == 'COMPLETED' and self.original_status != 'COMPLETED':
+            # Reset repair count when a WINDSHIELD replacement is completed:
+            # a new windshield means fresh repair pricing for that unit. Side,
+            # rear, quarter and sunroof glass carry no repairs, so replacing
+            # one must not wipe the windshield's count. Blank is treated as a
+            # windshield — older rows predate glass_position and nearly all of
+            # them were windshields. first_completion, not original_status: a
+            # replacement logged as already done (the job form's default) is
+            # created straight into COMPLETED and never reset the count.
+            if (self.queue_status == 'COMPLETED'
+                    and first_completion
+                    and self.glass_position in ('WINDSHIELD', '')):
                 try:
-                    # Include tenant in the filter to respect tenant isolation.
-                    # Without this, completing a replacement for Tenant A could
-                    # reset Tenant B's repair count if both share a customer
-                    # with the same unit_number.  The Repair model's save()
-                    # already includes tenant= in its UnitRepairCount lookup
-                    # (see line ~756) — this brings Replacement into parity.
-                    # (CODE-230)
                     # key_for(), not self.unit_number — an individual's car is
                     # in vehicle_year/make/model, so the raw column is blank
-                    # and this would reset the wrong (shared) row.
-                    unit_repair_count = UnitRepairCount.objects.filter(
+                    # and this would reset the wrong (shared) row. Tenant-
+                    # scoped inside reset_for (CODE-230).
+                    UnitRepairCount.reset_for(
                         tenant=self.tenant,
                         customer=self.customer,
-                        unit_number=UnitRepairCount.key_for(self)
-                    ).first()
-                    if unit_repair_count:
-                        unit_repair_count.repair_count = 0
-                        unit_repair_count.save()
+                        key=UnitRepairCount.key_for(self),
+                    )
                 except Exception:
                     pass  # Don't fail replacement save if reset fails
 
