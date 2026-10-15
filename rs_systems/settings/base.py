@@ -83,6 +83,7 @@ TEMPLATES = [
                 'common.context_processors.customer_loyalty',
                 'common.context_processors.csp_nonce',
                 'common.context_processors.analytics',
+                'common.context_processors.ui_theme',
             ],
         },
     },

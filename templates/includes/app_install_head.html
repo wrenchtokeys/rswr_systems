@@ -18,7 +18,11 @@ Icons are drawn by `python scripts/app_icons.py`.
 <link rel="manifest" href="{% url 'web_manifest' %}">
 <link rel="icon" type="image/png" sizes="32x32" href="{% static 'images/app/favicon-32.png' %}">
 <link rel="apple-touch-icon" href="{% static 'images/app/apple-touch-icon.png' %}">
-<meta name="theme-color" content="#ffffff">
+{# The status bar follows the staff app's appearance switch (ui_theme). #}
+{% if ui_theme == 'dark' %}<meta name="theme-color" content="#161b22">
+{% elif ui_theme == 'system' %}<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161b22" media="(prefers-color-scheme: dark)">
+{% else %}<meta name="theme-color" content="#ffffff">{% endif %}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="RS Systems">

@@ -1,6 +1,6 @@
 {% load branding_tags %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="{{ ui_theme|default:'light' }}">
 <head>
     <title>{% block title %}RS Systems{% endblock %}</title>
     {% include "includes/head_assets.html" %}

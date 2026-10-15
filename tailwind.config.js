@@ -2,6 +2,24 @@
 // Single source of truth for the app's Tailwind theme.
 // Compiled to static/css/app.css by scripts/build_css.sh — run it after any
 // template or JS class change. Never reintroduce cdn.tailwindcss.com.
+// Dark mode flips the PALETTE, not the templates (scripts/dark_palette.py).
+// Every colour family the app uses reads a CSS variable: backgrounds, borders
+// and rings read --c-<family>-<n>; text reads --tx-<family>-<n>, falling back
+// to the --c- value. :root (assets/css/input.css) holds Tailwind's own light
+// values, so light mode paints exactly what it did; assets/css/theme-dark.css
+// re-points them under <html data-theme="dark">. Never add `dark:` utilities.
+const SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+const FAMILIES = ['gray', 'red', 'orange', 'amber', 'yellow', 'green', 'emerald',
+  'teal', 'cyan', 'sky', 'blue', 'indigo', 'purple', 'pink'];
+const BRAND_SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900];
+
+const scale = (shades, varFor) =>
+  Object.fromEntries(shades.map((n) => [n, `rgb(${varFor(n)} / <alpha-value>)`]));
+const surfaceColors = Object.fromEntries(
+  FAMILIES.map((f) => [f, scale(SHADES, (n) => `var(--c-${f}-${n})`)]));
+const textColors = Object.fromEntries(
+  FAMILIES.map((f) => [f, scale(SHADES, (n) => `var(--tx-${f}-${n}, var(--c-${f}-${n}))`)]));
+
 module.exports = {
   content: [
     './templates/**/*.html',
@@ -55,18 +73,25 @@ module.exports = {
         // blue (#3b82f6 at 500), so nothing changes for shops without one.
         // Channels are space-separated RGB ("59 130 246") to keep Tailwind's
         // opacity modifiers (e.g. bg-brand-500/50) working.
-        brand: {
-          50: 'rgb(var(--brand-50) / <alpha-value>)',
-          100: 'rgb(var(--brand-100) / <alpha-value>)',
-          200: 'rgb(var(--brand-200) / <alpha-value>)',
-          300: 'rgb(var(--brand-300) / <alpha-value>)',
-          400: 'rgb(var(--brand-400) / <alpha-value>)',
-          500: 'rgb(var(--brand-500) / <alpha-value>)',
-          600: 'rgb(var(--brand-600) / <alpha-value>)',
-          700: 'rgb(var(--brand-700) / <alpha-value>)',
-          800: 'rgb(var(--brand-800) / <alpha-value>)',
-          900: 'rgb(var(--brand-900) / <alpha-value>)',
-        },
+        brand: scale(BRAND_SHADES, (n) => `var(--brand-${n})`),
+        ...surfaceColors,
+      },
+      // Text gets its own variables so `text-gray-900` can go light while
+      // `bg-gray-900` stays a dark chip, and `text-brand-600` can lift for a
+      // dark card while `bg-brand-600 text-white` stays the shop's button.
+      textColor: {
+        brand: scale(BRAND_SHADES, (n) => `var(--brand-tx-${n}, var(--brand-${n}))`),
+        ...textColors,
+      },
+      placeholderColor: {
+        brand: scale(BRAND_SHADES, (n) => `var(--brand-tx-${n}, var(--brand-${n}))`),
+        ...textColors,
+      },
+      // `bg-white` is the card surface; it reads a variable so it can become
+      // the dark card. `text-white` / `border-white` stay literal white — they
+      // sit on saturated fills that do not move.
+      backgroundColor: {
+        white: 'rgb(var(--surface-white, 255 255 255) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
