@@ -116,6 +116,12 @@ def job_list(request):
     date_from = request.GET.get('date_from', '')
     date_to = request.GET.get('date_to', '')
     assignment_filter = request.GET.get('assignment', 'all')
+    # "Not invoiced": finished jobs nobody has written a ticket for. The
+    # Invoices page groups these by customer for one invoice per account;
+    # this is the per-job view for the shops that want one ticket per job.
+    invoiced_filter = request.GET.get('invoiced', 'all')
+    if invoiced_filter not in ('all', 'no', 'yes'):
+        invoiced_filter = 'all'
 
     # Damage type only exists on repairs — filtering by it implies repairs.
     if damage_type_filter != 'all':
@@ -158,6 +164,20 @@ def job_list(request):
                 qs = qs.filter(technician_id__in=managed)
         return qs
 
+    from apps.billing.services.job_invoice_lookup import live_invoices_by_job, needs_invoice
+    invoiced_repair_ids, invoiced_replacement_ids = (
+        live_invoices_by_job(tenant) if tenant else ({}, {})
+    )
+
+    def apply_invoiced_filter(qs, invoiced_ids):
+        if invoiced_filter == 'no':
+            return qs.filter(queue_status='COMPLETED', skip_invoicing=False).exclude(
+                id__in=list(invoiced_ids)
+            )
+        if invoiced_filter == 'yes':
+            return qs.filter(id__in=list(invoiced_ids))
+        return qs
+
     repairs_qs = Repair.objects.none()
     replacements_qs = Replacement.objects.none()
     if type_filter in ('all', 'repair'):
@@ -166,12 +186,29 @@ def job_list(request):
         )
         if damage_type_filter != 'all':
             repairs_qs = repairs_qs.filter(damage_type=damage_type_filter)
+        repairs_qs = apply_invoiced_filter(repairs_qs, invoiced_repair_ids)
         repairs_qs = repairs_qs.select_related('customer', 'technician__user', 'warranty_policy')
     if type_filter in ('all', 'replacement'):
         replacements_qs = apply_filters(
             _visible_jobs(Replacement, tenant, technician, user_is_admin)
         )
+        replacements_qs = apply_invoiced_filter(replacements_qs, invoiced_replacement_ids)
         replacements_qs = replacements_qs.select_related('customer', 'technician__user', 'warranty_policy')
+
+    # Count for the "Not invoiced" pill — every finished job this user can
+    # see that has no live invoice, whatever the other filters say (the
+    # Overdue count on the Invoices page works the same way).
+    uninvoiced_count = 0
+    if tenant:
+        for model, invoiced_ids in (
+            (Repair, invoiced_repair_ids), (Replacement, invoiced_replacement_ids),
+        ):
+            uninvoiced_count += (
+                _visible_jobs(model, tenant, technician, user_is_admin)
+                .filter(queue_status='COMPLETED', skip_invoicing=False)
+                .exclude(id__in=list(invoiced_ids))
+                .count()
+            )
 
     # Stats — one aggregate per model (CODE-151 pattern), summed.
     _week_start = timezone.now().date() - timezone.timedelta(days=7)
@@ -227,6 +264,13 @@ def job_list(request):
     paginator = Paginator(jobs, page_size)
     page_obj = paginator.get_page(request.GET.get('page', 1))
 
+    # Per-row invoice state, from the maps already in hand: no queries.
+    for job in page_obj.object_list:
+        live = (invoiced_repair_ids if job.service_type == 'repair'
+                else invoiced_replacement_ids).get(job.id)
+        job.live_invoice = live
+        job.needs_invoice = needs_invoice(job, live)
+
     # Count for the "Filters" button badge — only the filters that live behind
     # the disclosure, not the always-visible type/status/search controls.
     active_filter_count = sum([
@@ -262,6 +306,9 @@ def job_list(request):
         'date_from': date_from,
         'date_to': date_to,
         'assignment_filter': assignment_filter,
+        'invoiced_filter': invoiced_filter,
+        'uninvoiced_count': uninvoiced_count,
+        'user_can_invoices': can_access(request.user, 'invoices', tenant),
         'active_filter_count': active_filter_count,
         'sort_by': sort_by,
         'page_size': page_size,
