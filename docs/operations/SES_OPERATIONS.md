@@ -27,6 +27,12 @@ stops sending, invoices and notifications silently stop.
 - Development uses the console backend unless `USE_REAL_EMAIL=True` **and**
   `EMAIL_HOST_PASSWORD` are set (`rs_systems/settings/development.py`).
 - SES production access granted 2026-07-09 (50,000 msgs/day, 14 msgs/sec quota at grant time).
+- **Replies must stay readable (2026-10-15).** `templates/emails/base.html` paints its
+  ground colour on the wrapper table, never on `<body>`. Outlook copies a quoted
+  email's body background onto the whole reply, and iOS Mail in dark mode keeps an
+  explicit light background while flipping un-coloured text to white — a fleet
+  contact's PO number on Rockstar's INV-1059 arrived as a blank grey band. Guarded by
+  `ReplyReadabilityTests` in `tests/test_email_chassis.py`.
 
 ## Bounce / Complaint / Delivery Handling Today
 

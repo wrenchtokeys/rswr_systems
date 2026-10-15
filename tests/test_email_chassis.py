@@ -136,6 +136,46 @@ class NotificationTemplateRenderTests(SimpleTestCase):
                 self.assertIn('Manage notification preferences', html)
 
 
+class ReplyReadabilityTests(SimpleTestCase):
+    """A customer's reply must be readable on the shop's phone.
+
+    Outlook copies a quoted email's <body> background onto the whole reply,
+    and iOS Mail in dark mode keeps an explicit light background while
+    flipping un-coloured text to white. On 2026-10-15 a fleet contact
+    replied to Rockstar's INV-1059 with a PO number and the shop saw a
+    blank grey band: white text on our #f7f8fa. The ground colour belongs
+    on the wrapper table, never on the body tag.
+    """
+
+    BODY_TAG = re.compile(r'<body\b[^>]*>', re.IGNORECASE)
+
+    def _every_html(self):
+        context = _sample_context()
+        # Every HTML email extends base.html, so the notification set
+        # proves the chassis; generic.html wants send_branded_email's own
+        # context and is covered by SendBrandedEmailTests below.
+        names = ['emails/base.html']
+        names += sorted(
+            'emails/notifications/' + os.path.basename(p)
+            for p in glob.glob('templates/emails/notifications/*.html')
+        )
+        for name in names:
+            yield name, render_to_string(name, context)
+
+    def test_body_tag_carries_no_background(self):
+        for name, html in self._every_html():
+            with self.subTest(template=name):
+                tag = self.BODY_TAG.search(html)
+                self.assertIsNotNone(tag, 'no <body> tag')
+                self.assertNotRegex(tag.group(0), r'background|bgcolor')
+
+    def test_ground_colour_still_painted_by_the_wrapper(self):
+        """Moving it off the body must not drop it altogether."""
+        for name, html in self._every_html():
+            with self.subTest(template=name):
+                self.assertIn('bgcolor="#f7f8fa"', html)
+
+
 class RealCallerContextTests(SimpleTestCase):
     """Render with only what the signal actually passes, not a wish list.
 
@@ -305,8 +345,10 @@ class SendBrandedEmailTests(TestCase):
 
     def test_renders_through_the_chassis(self):
         html = self._send().alternatives[0][0]
-        self.assertIn('#f7f8fa', html)
+        self.assertIn('bgcolor="#f7f8fa"', html)
         self.assertIn('Manage notification preferences', html)
+        self.assertNotRegex(
+            ReplyReadabilityTests.BODY_TAG.search(html).group(0), r'background|bgcolor')
 
     def test_no_emoji_in_either_half(self):
         message = self._send()
