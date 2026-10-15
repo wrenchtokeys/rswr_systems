@@ -410,8 +410,11 @@ class RepairForm(forms.ModelForm):
     # CustomDateTimeInput, because the same widget class also renders
     # scheduled_for below -- an optional booking time that must stay blank when
     # nobody has scheduled anything. See templates/base_app.html.
+    # 'icon-field-input' so the box matches the form's other fields; flatpickr
+    # (base_app.html) builds its visible altInput from this className, so a
+    # class-less widget rendered as a bare, unstyled date box.
     repair_date = forms.DateTimeField(
-        widget=CustomDateTimeInput(attrs={'data-default-now': '1'})
+        widget=CustomDateTimeInput(attrs={'data-default-now': '1', 'class': 'icon-field-input'})
     )
     damage_type = forms.ChoiceField(
         choices=[],  # Will be set in __init__
@@ -460,7 +463,7 @@ class RepairForm(forms.ModelForm):
             'no_tax': forms.CheckboxInput(attrs={
                 'class': 'w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500',
             }),
-            'scheduled_for': CustomDateTimeInput(),
+            'scheduled_for': CustomDateTimeInput(attrs={'class': 'icon-field-input'}),
             # Single-line inputs — the model field is a TextField only so a
             # prefill from Customer.address (also a TextField) can't overflow.
             'service_address': forms.TextInput(attrs={'placeholder': 'Street address'}),

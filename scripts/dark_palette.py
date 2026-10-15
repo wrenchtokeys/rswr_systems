@@ -71,7 +71,7 @@ TAILWIND = {
 }
 FAMILIES = tuple(TAILWIND)
 
-FIELD = '#0f141a'      # inputs: a well a shade below the card
+FIELD = '#0f141a'      # --surface-field: inputs, a well a shade below the card
 
 # Neutral ramp, both roles. bg: 50-300 are the surfaces/hairlines a light page
 # builds from gray (zebra rows, hover, borders); 600-950 stay DARK, because
@@ -151,6 +151,7 @@ def dark_declarations():
         f'--surface-raised: {RAISED};',
         f'--surface-overlay: {OVERLAY};',
         '--surface-white: 22 27 34;',
+        f'--surface-field: {FIELD};',
         '--hairline: rgb(255 255 255 / 0.08);',
         '--sk-tone: #232a33;',
         '--sk-shine: #2c343f;',
@@ -201,9 +202,11 @@ EXTRA_RULES = [
     # which under color-scheme: dark is a flat neutral grey slab. Give them a
     # well slightly darker than the card. Wrapped in :where() end to end so it
     # has zero specificity and any `bg-*` class on a field still wins.
+    # Hand-written field CSS (components/form-fields.css, the profile page)
+    # paints its own fields with the same token.
     ':where({r}) :where(input:not([type=checkbox],[type=radio],[type=range],[type=file],'
     '[type=color],[type=submit],[type=button],[type=reset],[type=image]), select, textarea) '
-    '{{ background-color: {field}; }}',
+    '{{ background-color: var(--surface-field); }}',
     # driver.js (the first-visit tour) hard-codes its footer buttons light.
     '{r} .driver-popover-footer button:not(.driver-popover-next-btn) {{ background-color: #222933; border-color: #3a4350; color: #dce1e7; }}',
     '{r} .driver-popover-close-btn:hover, {r} .driver-popover-close-btn:focus {{ color: #eef1f4; }}',

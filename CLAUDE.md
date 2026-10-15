@@ -205,6 +205,12 @@ There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are ven
   `FAMILIES` in both the script and `tailwind.config.js`, or it renders light in dark mode.
 - **A new hard-coded colour (`#fff`, `#374151`) in CSS or a `<style>` block will not go
   dark.** Use the tokens (`var(--surface-raised)`, `rgb(var(--tx-gray-700, var(--c-gray-700)))`).
+  A form field's well is `var(--surface-field)`. A stylesheet linked *after* `app.css`
+  (`components/form-fields.css` on the repair form) out-ranks the palette with whatever
+  literal it carries — that is how the Edit Repair form shipped white boxes with light text
+  in them. `HandWrittenCssTests` in `tests/test_dark_mode.py` rejects a literal there.
+- **Toasts stack above every modal** (`.toast-stack` is z-1200; the legacy break dialog is
+  z-1000). A dialog whose Save shows its error only in a toast at z-70 looks dead.
 - **The shop's colour has a dark version.** `brand_shades_dark()` (`apps/tenants/branding.py`)
   lifts a navy/black brand until the button shows on graphite (≥3:1) and links read (≥6:1);
   `{% tenant_brand_css %}` emits it in the same nonced `<style>`.

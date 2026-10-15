@@ -241,3 +241,81 @@ class ThemeRenderTests(TestCase):
         self.client.cookies['rs_theme'] = 'dark'
         html = self.client.get('/').content.decode()
         self.assertNotIn('data-theme="dark"', html)
+
+
+class HandWrittenCssTests(SimpleTestCase):
+    """CSS the palette cannot reach.
+
+    The palette flips every Tailwind utility, but a stylesheet linked AFTER
+    app.css, or a `<style>` block in a template, out-ranks it with whatever
+    literal it carries. On 2026-10-15 the Edit Repair form's own stylesheet
+    painted its fields `background-color: white`, which in the dark meant light
+    field text on a white box. The rule: hand-written staff CSS uses the
+    palette variables (`--c-*`, `--tx-*`, `--surface-field`), never a literal.
+    """
+
+    LITERAL = re.compile(r'#[0-9a-fA-F]{3,8}\b|\b(?:white|black)\b')
+    NEVER_DARK = ('customer_portal', 'admin', 'emails', 'saas/base_public',
+                  'landing', 'billing/public_')
+    # Templates whose <style> block has been converted; add one when you
+    # convert it, so it cannot drift back to literals.
+    CONVERTED_STYLE_BLOCKS = (
+        'technician_portal/update_profile.html',
+    )
+
+    @staticmethod
+    def _strip_comments(css):
+        return re.sub(r'/\*.*?\*/', '', css, flags=re.S)
+
+    def _staff_stylesheets(self):
+        """Every static stylesheet a staff page links besides app.css + vendor."""
+        found = set()
+        for path in TEMPLATES.rglob('*.html'):
+            rel = path.relative_to(TEMPLATES).as_posix()
+            if rel.startswith(self.NEVER_DARK):
+                continue
+            for href in re.findall(r"\{%\s*static\s+'(css/[^']+\.css)'\s*%\}", path.read_text()):
+                if href == 'css/app.css' or href.startswith('css/vendor/'):
+                    continue
+                found.add(href)
+        return sorted(found)
+
+    def test_field_well_token_exists_in_both_themes(self):
+        css = APP_CSS.read_text()
+        values = set(re.findall(r'--surface-field:\s*([^;]+);', css))
+        # the minifier shortens #ffffff; either spelling is the light well
+        self.assertTrue(values & {'#fff', '#ffffff'}, values)
+        self.assertIn(palette.FIELD, values)
+
+    def test_staff_stylesheets_carry_no_colour_literals(self):
+        sheets = self._staff_stylesheets()
+        self.assertIn('css/components/form-fields.css', sheets)
+        for href in sheets:
+            body = self._strip_comments((ROOT / 'static' / href).read_text())
+            self.assertEqual(
+                self.LITERAL.findall(body), [],
+                f'static/{href} is linked after app.css and carries a colour literal; '
+                'use rgb(var(--c-…)) / rgb(var(--tx-…)) / var(--surface-field).')
+
+    def test_converted_style_blocks_stay_on_tokens(self):
+        for rel in self.CONVERTED_STYLE_BLOCKS:
+            html = (TEMPLATES / rel).read_text()
+            blocks = re.findall(r'<style[^>]*>(.*?)</style>', html, flags=re.S)
+            self.assertTrue(blocks, rel)
+            for block in blocks:
+                self.assertEqual(self.LITERAL.findall(self._strip_comments(block)), [],
+                                 f'{rel}: <style> block went back to a colour literal')
+
+    def test_toast_stacks_above_every_modal(self):
+        """A toast from a dialog's own Save button must not render behind it."""
+        css = APP_CSS.read_text()
+        m = re.search(r'\.toast-stack\{[^}]*z-index:\s*(\d+)', css)
+        self.assertIsNotNone(m, '.toast-stack has no z-index in the build')
+        toast_z = int(m.group(1))
+        highest = 0
+        for path in TEMPLATES.rglob('*.html'):
+            for block in re.findall(r'<style[^>]*>(.*?)</style>', path.read_text(), flags=re.S):
+                for z in re.findall(r'z-index:\s*(\d+)', block):
+                    highest = max(highest, int(z))
+        self.assertGreater(toast_z, highest,
+                           f'.toast-stack z-index {toast_z} is not above a template modal at {highest}')

@@ -329,6 +329,10 @@
                         <option value="{{ value }}">{{ label }}</option>
                         {% endfor %}
                     </select>
+                    {% comment %}Inline, under the box, so the message is on the
+                    dialog itself and not only in a toast at the page corner.
+                    static/js/multi_break.js fills and clears it.{% endcomment %}
+                    <p id="modal_damage_type_error" class="hidden mt-1 text-sm text-red-600" role="alert"></p>
                 </div>
 
                 <!-- Drilled Before Repair -->
