@@ -81,7 +81,17 @@ See docs/operations/SES_OPERATIONS.md before changing email content.
         }
     </style>
 </head>
-<body style="margin:0; padding:0; background-color:#f7f8fa; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+{% comment %}
+NO BACKGROUND ON <body>. The ground colour lives on the wrapper table
+below, never on the body tag. Outlook copies a quoted email's body
+background onto the whole reply, so a customer's "PO 44817" sat on our
+#f7f8fa — and iOS Mail in dark mode keeps an explicit light background
+but flips text with no explicit colour to white. The shop opened the reply
+and saw a blank grey band where the PO number was (2026-10-15, Rockstar,
+INV-1059). With nothing on the body, the reply text sits on the client's
+own ground and reads in either mode. tests/test_email_chassis.py guards it.
+{% endcomment %}
+<body style="margin:0; padding:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
 
     {% comment %}
     Inbox preview line. Without one, clients scrape the top of the body and
@@ -93,7 +103,7 @@ See docs/operations/SES_OPERATIONS.md before changing email content.
         &#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;
     </div>
 
-    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color:#f7f8fa;">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" bgcolor="#f7f8fa" style="background-color:#f7f8fa;">
         <tr>
             <td align="center" style="padding:32px 10px 40px 10px;">
 
