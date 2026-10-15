@@ -187,6 +187,30 @@ There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are ven
 - **`@view-transition { navigation: auto; }` must stay inline** in the `<style>` block of `templates/includes/head_assets.html`. Chrome ignores the opt-in from an external stylesheet, so moving it into `assets/css/input.css` silently turns every page transition back into a hard swap with nothing in the console. `tests/test_view_transitions.py` guards it.
 - List rows opt into the row→title morph with `data-vt-key="<detail url>"` + a `data-vt-hero` inside; the detail page's `<h1>` carries `.vt-hero`. Only pair them where the two texts are the same thing. `static/js/view-transitions.js` (loaded from `<head>`, not deferred — its `pagereveal` listener must exist before first render) does the naming.
 
+### Dark mode (Oct 2026)
+- **Staff app only, light by default.** Account menu → Appearance: Light / Dark / Auto
+  (Auto follows the device). `static/js/theme.js` writes the `rs_theme` cookie;
+  `common.context_processors.ui_theme` renders it onto `<html data-theme="…">` in
+  `base_app.html` and `base_auth.html` — server-side, so no white flash and no inline script.
+  **Never dark**: landing/public pages, the customer portal (the shop's brand in front of its
+  customers — a later decision), emails, PDFs, `templates/admin/**`. They don't carry the
+  attribute, so they stay light whatever the cookie says.
+- **Flip the palette, not the templates.** Every Tailwind colour family the app uses reads
+  a CSS variable (`tailwind.config.js`): surfaces/borders read `--c-<fam>-<n>`, text reads
+  `--tx-<fam>-<n>` (falling back to `--c-`), `bg-white` reads `--surface-white`. `:root` holds
+  Tailwind's own values, so light mode is byte-for-byte unchanged. **Never add `dark:`
+  utilities** — that is the 5,000-class sweep this design avoids, and the test rejects it.
+- **`assets/css/palette.css` is generated**: edit `scripts/dark_palette.py`, run it, then
+  `./scripts/build_css.sh`. A new colour family (e.g. `lime`) must be added to `TAILWIND` +
+  `FAMILIES` in both the script and `tailwind.config.js`, or it renders light in dark mode.
+- **A new hard-coded colour (`#fff`, `#374151`) in CSS or a `<style>` block will not go
+  dark.** Use the tokens (`var(--surface-raised)`, `rgb(var(--tx-gray-700, var(--c-gray-700)))`).
+- **The shop's colour has a dark version.** `brand_shades_dark()` (`apps/tenants/branding.py`)
+  lifts a navy/black brand until the button shows on graphite (≥3:1) and links read (≥6:1);
+  `{% tenant_brand_css %}` emits it in the same nonced `<style>`.
+- `tests/test_dark_mode.py` (guard set): palette current, light == Tailwind, every status
+  pill ≥4.5:1 in dark, any brand colour readable, only the staff shells carry the attribute.
+
 ### Skeletons and optimistic rows
 - **List skeletons are traced, not authored.** `static/js/list-loading.js` clones the
   live rows and swaps each text run for a `.sk-bar` of its measured width. A list opts

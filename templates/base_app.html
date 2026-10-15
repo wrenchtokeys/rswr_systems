@@ -1,6 +1,6 @@
 {% load static branding_tags ui %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="{{ ui_theme|default:'light' }}">
 <head>
     <title>{% block title %}RS Systems{% endblock %}</title>
     {% include "includes/head_assets.html" %}
@@ -13,6 +13,7 @@
     pages are 70 KB and Chrome paints them mid-parse.
     {% endcomment %}
     <script src="{% static 'js/view-transitions.js' %}?v=1"></script>
+    <script src="{% static 'js/theme.js' %}?v=1" defer></script>
     {% block extra_head %}{% endblock %}
     {% block extra_css %}{% endblock %}
     <style nonce="{{ csp_nonce }}">
@@ -52,7 +53,7 @@
                     {% endcomment %}
                     <a href="{% if is_owner_or_manager %}{% url 'owner_dashboard' %}{% else %}{% url 'technician_dashboard' %}{% endif %}" class="flex items-center space-x-2 shrink-0 min-w-0">
                         {% if request.tenant and request.tenant.branding_enabled and request.tenant.logo %}
-                        <img src="{{ request.tenant.logo.url }}" alt="{{ request.tenant.name }}" class="h-11 sm:h-14 w-auto max-w-[9rem] sm:max-w-[15rem] object-contain flex-shrink-0">
+                        <img src="{{ request.tenant.logo.url }}" alt="{{ request.tenant.name }}" class="shop-logo h-11 sm:h-14 w-auto max-w-[9rem] sm:max-w-[15rem] object-contain flex-shrink-0">
                         {% else %}
                         <div class="w-10 h-10 bg-brand-600 rounded-lg flex items-center justify-center flex-shrink-0">
                             {% include "includes/rs_mark.html" with size="w-6 h-6" %}
@@ -167,6 +168,20 @@
                                 {% icon 'user-cog' class="mr-2 w-4" %}Profile
                             </a>
                             {% endif %}
+                            {% comment %}
+                            Appearance (dark mode). Light is the default; "Auto"
+                            follows the phone's own setting. static/js/theme.js
+                            writes the cookie the server reads on the next page.
+                            {% endcomment %}
+                            <div class="px-4 py-2 border-t border-gray-200">
+                                <p class="text-xs font-medium text-gray-500 mb-1.5" id="appearance-label">Appearance</p>
+                                <div class="theme-switch" role="group" aria-labelledby="appearance-label">
+                                    <button type="button" data-theme-choice="light" aria-pressed="{% if ui_theme != 'dark' and ui_theme != 'system' %}true{% else %}false{% endif %}">{% icon 'sun' %}<span>Light</span></button>
+                                    <button type="button" data-theme-choice="dark" aria-pressed="{% if ui_theme == 'dark' %}true{% else %}false{% endif %}">{% icon 'moon' %}<span>Dark</span></button>
+                                    <button type="button" data-theme-choice="system" aria-pressed="{% if ui_theme == 'system' %}true{% else %}false{% endif %}" title="Match this device's setting">{% icon 'smartphone' %}<span>Auto</span></button>
+                                </div>
+                            </div>
+                            <div class="border-t border-gray-200 my-1"></div>
                             <a href="{% url 'help_home' %}" class="flex items-center min-h-11 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                 {% icon 'question-circle' class="mr-2 w-4" %}Help
                             </a>

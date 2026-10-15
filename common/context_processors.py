@@ -170,3 +170,24 @@ def analytics(request):
     from django.conf import settings as django_settings
 
     return {'plausible_domain': getattr(django_settings, 'PLAUSIBLE_DOMAIN', '')}
+
+
+THEME_COOKIE = 'rs_theme'
+THEMES = ('light', 'dark', 'system')
+
+
+def ui_theme(request):
+    """`{{ ui_theme }}` — the staff app's appearance: light | dark | system.
+
+    Read from a cookie that static/js/theme.js writes, and rendered onto
+    `<html data-theme="…">` by base_app.html / base_auth.html. Server-side on
+    purpose: the page paints in the right theme on its first frame, with no
+    white flash and no inline script for the CSP to cover.
+
+    Light is the default, and anything unrecognised is light. Only the two
+    staff shells read this; the public pages, the customer portal, emails and
+    PDFs never set the attribute, so palette.css keeps them light whatever the
+    cookie says.
+    """
+    value = request.COOKIES.get(THEME_COOKIE, '')
+    return {'ui_theme': value if value in THEMES else 'light'}
