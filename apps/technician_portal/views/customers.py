@@ -434,11 +434,18 @@ def unit_details(request, customer_id, unit_number):
         replacements = replacements.none()
     replacements = replacements.select_related('customer', 'technician__user')
 
+    # Where the price ladder stands on the glass that's on the truck now —
+    # the same answer the job form gives (services/windshield_history.py).
+    # Shop-wide on purpose: the count prices every tech's next repair.
+    from apps.technician_portal.services.windshield_history import current_windshield
+    windshield = current_windshield(tenant, customer, unit_number)
+
     return render(request, 'technician_portal/unit_details.html', {
         'customer': customer,
         'unit_number': unit_number,
         'repairs': repairs,
         'replacements': replacements,
+        'windshield': windshield,
     })
 
 
@@ -454,17 +461,6 @@ def mark_unit_replaced(request, customer_id, unit_number):
     else:
         qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
-    
-    # Get or create the unit repair count record.
-    # Include tenant in the lookup (not just defaults) so the lookup itself is
-    # tenant-scoped.  Having tenant only in defaults means a NULL-tenant row
-    # from an older codepath would match and the correct tenant would never be set.
-    unit_repair_count, created = UnitRepairCount.objects.get_or_create(
-        tenant=tenant,
-        customer=customer,
-        unit_number=unit_number,
-        defaults={'repair_count': 0}
-    )
     
     # Get the technician (current user or fallback).
     # Scope to the current tenant to avoid cross-tenant Technician contamination
@@ -506,9 +502,9 @@ def mark_unit_replaced(request, customer_id, unit_number):
             f"Unit #{unit_number} repair count reset, but no technician available to record replacement."
         )
     
-    # Reset the repair count
-    unit_repair_count.repair_count = 0
-    unit_repair_count.save()
+    # The Replacement's own save() resets the count; this covers the
+    # no-technician branch, where no Replacement was recorded.
+    UnitRepairCount.reset_for(tenant=tenant, customer=customer, key=unit_number)
     
     return redirect('unit_details', customer_id=customer_id, unit_number=unit_number)
 

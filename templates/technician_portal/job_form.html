@@ -145,6 +145,24 @@
                 {% endcomment %}
                 <div id="duplicate-job-warning" class="hidden mt-2 rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-800"
                      data-endpoint="{% url 'check_existing_repair' %}"></div>
+                {% if shop_offers_repairs %}
+                {% comment %}
+                "Is this the same windshield?" A fleet unit's repairs step down
+                the price ladder until the glass is replaced, and glass another
+                company replaced never told us. Shows the repair number, the
+                last visit and where earlier repairs were; "New windshield"
+                sets new_windshield and the job prices as repair #1.
+                static/js/windshield_history.js.
+                {% endcomment %}
+                <input type="hidden" name="new_windshield" id="id_new_windshield" value="{% if form.new_windshield.value and form.new_windshield.value != 'False' %}1{% endif %}">
+                <div id="windshieldHistory" class="hidden mt-2"
+                     data-endpoint="{% url 'get_windshield_history' %}"
+                     data-customer="id_customer"
+                     data-unit="id_unit_number"
+                     data-flag="id_new_windshield"
+                     data-type-name="service_type"
+                     data-type-value="repair"></div>
+                {% endif %}
             </div>
 
             <div>
@@ -646,6 +664,7 @@ document.addEventListener('DOMContentLoaded', function() {
             checkDuplicateJob();
             // The picker writes the hidden select directly — no input event.
             if (window.PriceBookSuggestion) window.PriceBookSuggestion.refreshAll();
+            if (window.WindshieldHistory) window.WindshieldHistory.refresh();
         }
 
         // Service-location prefill (S2): picking a customer fills the
@@ -902,6 +921,10 @@ were never touched. The container above carries the input id and the endpoint.
 
 {% if shop_offers_replacements %}
 <script src="{% static 'js/price_book_suggestion.js' %}"></script>
+{% endif %}
+
+{% if shop_offers_repairs %}
+<script src="{% static 'js/windshield_history.js' %}"></script>
 {% endif %}
 
 {% include 'technician_portal/partials/photo_crop_modal.html' %}

@@ -963,6 +963,12 @@ class QuickJobForm(forms.Form):
     # a different person than the existing individual with the same name.
     confirmed_new_customer = forms.BooleanField(
         required=False, widget=forms.HiddenInput)
+    # "New windshield" tap under the unit box (static/js/windshield_history.js):
+    # the glass was replaced since this shop's last repair — usually by another
+    # company, so no Replacement of ours ever reset the count. create_job
+    # starts the unit over at repair #1 before the price is worked out.
+    new_windshield = forms.BooleanField(required=False, widget=forms.HiddenInput)
+
     # max_length matches GlassService.unit_number (50). It was 100, so a long
     # vehicle string passed form validation and then blew up on save.
     # The label and placeholder are swapped to vehicle wording by the

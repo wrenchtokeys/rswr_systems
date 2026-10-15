@@ -39,7 +39,7 @@
                 </div>
                 <div class="text-right">
                     <div class="text-3xl font-bold text-brand-600">{{ repairs|length }}</div>
-                    <div class="text-xs text-gray-500 uppercase tracking-wide">Total Repairs</div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wide">All-time repairs</div>
                 </div>
             </div>
         </div>
@@ -56,6 +56,45 @@
             </button>
         </div>
     </div>
+
+    {% comment %}
+    Where the progressive ladder stands on the glass that's on the truck now:
+    the count, the last visit and where those repairs were. The job form
+    shows the same thing (services/windshield_history.py) so a tech can
+    check the glass before pricing; a new windshield starts the count over.
+    {% endcomment %}
+    {% if windshield or repairs or replacements %}
+    <div class="card mb-6">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900">Current windshield</h2>
+        </div>
+        <div class="px-6 py-4">
+            {% if windshield %}
+            <div class="flex flex-col sm:flex-row gap-5">
+                <div class="sm:w-56 flex-shrink-0 space-y-1">
+                    <p class="text-2xl font-bold text-gray-900">{{ windshield.repair_count }} repair{{ windshield.repair_count|pluralize }}</p>
+                    <p class="text-sm text-gray-500">on this windshield</p>
+                    {% if windshield.last_repaired %}
+                    <p class="text-sm text-gray-600 pt-2">Last repaired {{ windshield.last_repaired|date:"M j, Y" }}</p>
+                    {% endif %}
+                    {% if windshield.next_price is not None %}
+                    <p class="text-sm text-gray-600">Next repair is #{{ windshield.next_number }} (${{ windshield.next_price|floatformat:2 }})</p>
+                    {% endif %}
+                </div>
+                <div class="flex-1 min-w-0">
+                    {% include "technician_portal/partials/windshield_spots.html" with spots=windshield.spots %}
+                    {% if not windshield.spots %}
+                    <p class="text-xs text-gray-500 mt-2">No damage locations were marked on these repairs.</p>
+                    {% endif %}
+                </div>
+            </div>
+            <p class="text-xs text-gray-500 mt-4">The count starts over when this windshield is replaced. If someone else replaced it, use <strong>Mark Windshield Replaced</strong> above, or tap <strong>New windshield</strong> on the next job.</p>
+            {% else %}
+            <p class="text-sm text-gray-600">No repairs on this windshield yet. The next repair is #1.</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Replacements -->
     {% if replacements %}
