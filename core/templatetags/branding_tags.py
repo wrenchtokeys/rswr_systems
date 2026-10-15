@@ -30,5 +30,9 @@ def tenant_brand_css(context):
     # style-src would have dropped every branded shop back to the default
     # palette while every unbranded test and dev shop stayed green (UI_MAGIC S18).
     nonce = getattr(request, 'csp_nonce', '') if request else ''
-    return format_html('<style nonce="{}">:root {{{{ {} }}}}</style>',
+    # ONE brace pair per literal brace: format_html runs str.format once.
+    # `{{{{` printed `:root {{ … }}`, which the browser drops as an invalid
+    # rule — every branded shop rendered in the default blue from 2026-08-31
+    # until this was caught, while the substring tests stayed green.
+    return format_html('<style nonce="{}">:root {{ {} }}</style>',
                        nonce, mark_safe(lines))
