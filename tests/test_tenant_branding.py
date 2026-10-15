@@ -227,6 +227,15 @@ class PortalBrandCssTests(TestCase):
         # `<style` not `<style>`: the block carries a CSP nonce (UI_MAGIC S18).
         self.assertIn('<style', html)
 
+    def test_rule_is_valid_css(self):
+        # A doubled brace (`:root {{ … }}`) is still a substring match for
+        # every assertion above, and the browser throws the whole rule away.
+        self.tenant.brand_color = '#3b82f6'
+        html = self._render()
+        self.assertIn(':root { --brand-50:', html)
+        self.assertNotIn('{{', html)
+        self.assertNotIn('}}', html)
+
     def test_renders_nothing_without_brand_color(self):
         self.assertEqual(self._render(), '')
 
