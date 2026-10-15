@@ -7,7 +7,7 @@
 sequenced against it and the spine is in progress. Every session now carries a **Status** line (added 2026-09-02).
 **Companion to:** `docs/strategy/PRODUCT_DIRECTION.md` (September 2026), which owns the
 direction; this document owns the sessions. The spine features named there are **B3, B5, B6**
-here.
+here. **B7** (2026-10-14) is the first session queued after the spine.
 
 > **Two caveats before using this doc (added 2026-08-11, revised 2026-09-02).**
 > 1. **Status lines are dated snapshots.** Each session's `**Status:**` line says what was true
@@ -728,6 +728,170 @@ can see and edit the book.
 
 ---
 
+### B7 · Dealer- and insurer-ready paperwork: stock #, VIN, PO, signature
+
+**Goal:** A dealership's or an insurer's accounts-payable person can pay an RS Systems invoice
+without phoning the shop: every line names the vehicle the way that account does (unit #, stock
+#), carries the VIN and PO number when the account needs them, the insurance details already on
+the job print on the invoice, and the customer's signature is on it.
+**Size:** M · **Depends on:** — (B5 is on prod and this reads from it)
+**Status:** **QUEUED 2026-10-14** from Drake's own field report: twice he has typed the VIN and
+the PO number into the job's vehicle box because it is the only text on a job that prints on the
+invoice, and the insurer would not pay without them. Insurers also require the customer's
+signature, which the product cannot capture at all. Nothing is built. This is the next code
+session; step 7 (the selling) is not code and runs beside it. If Drake wants it later, edit this
+line.
+
+**Why it matters.** The individual-vs-fleet work (PR #181, Aug 2026) made the app honest for a
+person and their car and for a numbered fleet. A **car dealership is a third thing wearing the
+fleet's clothes**: a business account, billed on account, many vehicles — but each vehicle is
+inventory, identified by a *stock number*, seen once and then sold. And an **insurance job** is
+paid by a party who never saw the car and pays from paperwork: VIN, claim #, authorization #,
+deductible, and the insured's signature authorizing the work and directing payment to the shop.
+Today the shop fakes all of it through the vehicle box or does it on paper beside RS Systems —
+the "second system" `PRODUCT_DIRECTION.md` exists to kill. Both dealers and insurance jobs are
+exactly what a non-family glass shop does all day, so this sits on the path step 7's prospects
+walk.
+
+**Verified current state (2026-10-14).**
+- `Customer.customer_type` is `FLEET` / `RETAIL` / `WALK_IN`; `INDIVIDUAL_TYPES` is the latter
+  two; `Customer.vehicle_column_label` returns `'Vehicle'` for an individual and the **hardcoded
+  string `'Unit #'`** for everything else. A dealership differs from a fleet only in that noun
+  and in never bringing the same vehicle back — so progressive per-unit pricing
+  (`UnitRepairCount`) is simply never reached, which is correct; the dealer's negotiated rate is
+  the existing account discount. **Do not add a fourth customer type**: every surface keys on
+  `is_individual`, and a dealer identifies a vehicle the fleet way, by a number the business
+  assigned.
+- `GlassService.unit_number` (50 chars) plus `vehicle_year` / `vehicle_make` / `vehicle_model`,
+  all captured on the job form for every customer type. `GlassService.get_vehicle_identifier()`
+  returns **only** `unit_number` for a fleet — the year/make/model typed on a fleet's job never
+  reaches its invoice. An individual gets `vehicle_description`. `InvoiceLineItem.unit_number`
+  (50) is the fallback snapshot for deleted jobs; the job is the authority.
+- `core.Vehicle` has a `vin` column, but `GlassService.vehicle` (the FK) is **never written**
+  anywhere outside a 2026 tenant-backfill migration. The table is dead weight; VIN belongs on the
+  job, not routed through it.
+- Insurance fields on `GlassService`: `insurance_claim`, `insurance_company`, `claim_number`,
+  `authorization_number`, `deductible` — captured in `job_form.html`'s details section, copied
+  onto `InsuranceClaim` (B5) when the invoice is created, shown on `owner_invoice_detail.html`'s
+  claim panel and `claim_detail.html`. **Printed nowhere the customer or the insurer sees**:
+  `apps/billing/services/invoice_service.py` (the reportlab PDF — `InvoiceData`,
+  `build_invoice_data_from_record`, `generate_pdf`) references none of them, nor does
+  `templates/billing/public_invoice_view.html`, nor the portal's invoice detail. This is the
+  whole reason the VIN went into the vehicle box.
+- **No PO / reference field exists** on `GlassService`, `Invoice` or `InvoiceLineItem` (grep
+  `po_number|purchase_order|reference_number` — only `Payment.reference_number`, which is the
+  check number). `Invoice.notes` (customer-facing, printed on the PDF, editable from the owner
+  line-item editor) is the only free text that reaches the invoice.
+- **No signature capture anywhere** (grep `signature` → Stripe webhook verification and one Font
+  Awesome icon name). Nearest precedent: `Quote.accepted_via` + `Quote.responded_by_name`, set by
+  `quote_service.accept_quote(via=, actor_name=)` — a typed name, recorded with how it arrived.
+- Photo privacy (P8) is the model for any new customer-personal file: `repair_photos/*` is a
+  private prefix served through tenant-gated routes in `services/photo_serving.py`
+  (`photo_response(field)`), never `.url`; `tests/test_photo_serving.py` fails the build on a
+  photo-field `.url` in a template. The bucket's public-read statement is an allowlist
+  (`tenants/logos/`, `email_branding/`), so a new prefix is private by default.
+- The PDF line (`generate_pdf`) is: vehicle identifier under a `unit_column_label` header, type,
+  description (notes included, minus the type — `description_detail()`), date, price. The
+  one-row-one-mention rule (`CLAUDE.md`) means VIN and PO must print *beside* the description,
+  never inside it — `get_invoice_description()` does not change.
+
+**Considerations.**
+1. **The account's vehicle noun is a setting on the fleet account, not a type.**
+   `Customer.vehicle_label` — a choice (`UNIT` "Unit #", `STOCK` "Stock #", `TRUCK` "Truck #";
+   default `UNIT`, so nothing existing changes meaning), fleet-only on the customer form (the
+   fleet-only toggle already exists there). `vehicle_column_label` returns it for fleets;
+   individuals unchanged. **Every surface already reads `vehicle_column_label`**, so the noun
+   moves everywhere at once — the payoff of the Aug 2026 "three helpers, no fourth" rule. The
+   job form's `syncUnitWording()` and the unit box placeholder must read the chosen label from
+   the customer-picker payload instead of the literal `'Unit #'`.
+2. **A fleet's line gets its vehicle too.** Keep `get_vehicle_identifier()` as is (callers store
+   it in a 50-char column). Add one helper — `GlassService.vehicle_sublines()` → e.g.
+   `['2024 Chevrolet Silverado', 'VIN 1GCUYDED5RZ123456', 'PO 48811']`, each present only when
+   set — and have the three renderers (PDF, public page, portal) print them under the
+   identifier. For an individual the first entry is already the identifier, so it is omitted.
+3. **VIN** — `GlassService.vin`, `CharField(17)`, normalized upper-case with spaces/dashes
+   stripped; **accept partials** (dealers and insurers quote the last 6 or 8), no check digit.
+   On every form that creates a job (`RepairForm`/`job_form.html`, the owner replacement form,
+   `QuickJobForm`), beside year/make/model, for every customer type — an individual's insurance
+   job needs it as much as a dealer's. Not required; when `insurance_claim` is ticked and VIN is
+   blank, nudge (inline note), never block.
+4. **PO number lives in two places on purpose.** `GlassService.po_number` (50) is what the tech
+   is handed at the vehicle. `Invoice.po_number` (50) is what prints in the header; filled at
+   invoice creation when every job on it agrees (a dealer PO usually covers one car), editable
+   from the invoice page because dealers often issue the PO *after* the work, when the invoice is
+   being drafted — the owner must not have to open each job. A job's PO prints on its line only
+   when it differs from the invoice's. Optional per-account checkbox "Requires a PO number":
+   sending an invoice to such an account with a blank PO shows a **warning, not a block** (the
+   product never hard-blocks a shop from sending its own invoice).
+5. **The insurance block costs zero new fields.** When the invoice has an `InsuranceClaim` (the
+   authority after B5; fall back to the jobs' fields for pre-B5 invoices), the PDF header and the
+   public page print insurer, claim #, authorization # and deductible. Consider also printing the
+   split — "Deductible due from customer $X · Billed to insurer $Y" — from
+   `InsuranceClaim.expected_amount`; it is the one number both parties look for, and it is
+   derived, never stored (B5's rule). An invoice with no claim prints no block at all.
+6. **Signature: drawn, on the tech's phone, at the vehicle, stored like a photo.** The job is
+   what exists at that moment (the invoice may come days later and span a lot), so the signature
+   hangs off the **job**: `signature` (ImageField under a private `signatures/` prefix),
+   `signed_by_name`, `signed_at`, `signature_statement` (a **snapshot of the text agreed to**, so
+   a later wording change cannot alter what was signed), `signed_by_user` (the technician who
+   held the phone). Capture is a full-screen canvas from the job detail page —
+   `static/js/signature_pad.js`, home-grown on pointer events (~100 lines; **no vendor, no CDN**),
+   `touch-action: none` on the canvas, `addEventListener` not inline `on*`, the page's inline
+   script carrying `nonce="{{ csp_nonce }}"`. Statement default, fixed in code for the first cut:
+   "I authorize the work described and confirm it was completed to my satisfaction." plus, for an
+   insurance job, "I direct my insurer to pay <shop> for this work and agree to pay my
+   deductible." Serve the PNG only through a tenant-gated route modeled on
+   `photo_serving.photo_response`; extend `tests/test_photo_serving.py`'s field list so a
+   `.url` on it fails the build. The PDF, public page and portal print the image with "Signed by
+   NAME on DATE" in a "Customer authorization" block; a multi-job invoice prints each distinct
+   signature. Log `SIGNATURE_CAPTURED` through `apps/security/audit.log_event` (add the event
+   type; unknown types raise). Soft delete follows the job. **A typed name is not a signature**:
+   no typed fallback on the shop side. Remote signing from the tokened public invoice page is a
+   natural second cut and is listed under Out of scope so the first cut stays one PR.
+7. **Dad-simple wording.** The settings read "How does this account identify vehicles?" and
+   "Needs a PO number on every invoice". The job form says "VIN (last 8 is fine)". No field
+   anywhere says "reference".
+8. Deploying to a shop with history: no backfill — every new column is blank/`UNIT`, and blank
+   prints nothing.
+
+**Decisions needed.**
+- Signature on the job (recommended) or on the invoice at delivery? And is remote signing from
+  the public invoice page wanted in this session or the next?
+- Are three vehicle nouns (Unit #, Stock #, Truck #) enough, or does an account need to type its
+  own?
+- Print the deductible/insurer split on the PDF (recommended yes)?
+- Is "Requires a PO number" wanted now, or is the invoice-page PO field enough for the first
+  cut?
+
+**Acceptance criteria.**
+1. A fleet account set to "Stock #" reads "Stock #" everywhere `vehicle_column_label` is read —
+   PDF column header, public page, portal, job form label and placeholder; an individual still
+   reads "Vehicle"; an untouched fleet still reads "Unit #".
+   `tests/test_individual_vs_fleet_vehicles.py` stays green unchanged.
+2. A fleet job with year/make/model prints them under the identifier on the PDF, public page
+   and portal; an individual's rendering is byte-identical to today.
+3. A job with a VIN prints "VIN …" on its line on all three surfaces; `"1gc uyd-ed5rz123456"`
+   is stored as `1GCUYDED5RZ123456`; blank prints nothing; the description column never
+   contains the VIN.
+4. An invoice whose jobs share one PO prints "PO #" in the header; jobs with differing POs print
+   theirs per line; the owner changes the invoice's PO on the invoice page and the regenerated
+   PDF carries it; a job on a PAID invoice cannot change the invoice's PO through sync.
+5. An invoice with an `InsuranceClaim` prints insurer, claim #, authorization # and deductible on
+   the PDF and public page; an invoice without one prints no insurance block.
+6. On a touch device a technician draws a signature from the job page and it is stored under a
+   private prefix, served only through a tenant-gated route (a request from another tenant's
+   session → 404), rendered with name and date on the PDF/public page/portal, and audit-logged;
+   a job with no signature prints nothing; the statement text stored is the text shown at the
+   time.
+7. `tests/test_dealer_paperwork.py` covers 1–6 and is added to `scripts/test_guards.sh`.
+
+**Out of scope.** Any submission path to an insurer or TPA (D1); remote signing from the public
+invoice page (second cut); a PO field on customer-portal requests and on quotes; a per-shop
+editable signature statement; resurrecting `core.Vehicle`; VIN decode (B6's out-of-scope line
+stands).
+
+---
+
 ## Track C — Go to market
 
 ---
@@ -1146,6 +1310,7 @@ that.
 | ~~6~~ | ~~**A4**~~ | **BUILT 2026-09-18** (PR #265, open); naming question left open — see A4 Notes |
 | ~~7~~ | ~~**C3**~~ | **BUILT 2026-09-18** — the marketing-site scope C1 left out; PR open |
 | **8** | **step 6** | **NEXT** — three non-family shops (`PRODUCT_DIRECTION.md`) |
+| **9** | **B7** | **QUEUED 2026-10-14** — dealer/insurer paperwork (stock #, VIN, PO, signature); next *code* session, from Drake's field report; runs beside step 7, which is not code |
 | — | **A2** | verify on prod, then either nothing or minutes |
 | — | **A3, A6, B4** | filler |
 | — | **B2, D1, D2** | memos; B2 waits on the toll-free number |
@@ -1270,6 +1435,7 @@ server, real session, CDP) and is the right tool when you need the live JS to ha
 
 | Date | Change |
 |---|---|
+| 2026-10-14 | **B7 added** (dealer- and insurer-ready paperwork). Drake's field report: twice he typed the VIN and the PO into the job's vehicle box because nothing else on a job prints on the invoice, and the insurer would not pay without them; insurers also require the customer's signature, which the product cannot capture. Verified: the insurance fields B5 reads are printed on no customer- or insurer-facing surface; no PO field exists anywhere; a fleet's invoice line drops the year/make/model typed on the job; `core.Vehicle` is never written. Recorded as a Track B session, not a fourth customer type — a dealership is a fleet account with a different noun. §2 row 9. |
 | 2026-09-18 | **C3 built.** Analytics is Plausible Cloud behind a first-party proxy (`/js/p.js`, `/pa/event`) — chosen so the CSP allowlist stays `'self'` + Turnstile, which self-hosting would also have allowed but at the cost of a second system to keep alive. Five guides published behind one `public` flag that the view, the sitemap and robots.txt all read. The non-obvious half: every guide extended the signed-in app shell and carried deep links into Settings and gated guides, so publishing the URL would have shown a visitor a shop's app chrome and four links back to the login page — the exact defect C1's switching section shipped with. `page_meta` gives the four bare public pages a description and a canonical, the share card is a crop of the real dashboard, and robots.txt now keeps crawlers out of the tokened `/quote/`, `/invoice/` and `/pay/` routes. Left to Drake: the Plausible site + `PLAUSIBLE_DOMAIN`, and Search Console verification. §2: nothing is queued ahead of step 6. |
 | 2026-09-18 | **C3 added; A4 closed.** A 2026-09-17/18 readiness audit ("can a stranger's shop run on this yet?") checked every claim against `main` @ `16c01e5b` and found four defects on the path a stranger walks. Three are shipped as PRs and recorded against the sessions they close — #262 against C2 (trial 10 customers/50 jobs vs. a landing page promising a parallel month), #263's H2 against C1 (the switching section's contact link was `@login_required`; #264 duplicated the fix and was closed), #265 closing **A4** (the duplication had survived; two of its tiles were also wrong, and a third contradiction turned up only when the page was rendered). #261 has no session here and is recorded against `PRODUCT_DIRECTION.md` step 2. The fourth defect — the marketing site is five indexable URLs with no analytics, 18 guides behind a login, and no `og:image` — is **new session C3 · Findability**, the scope C1 explicitly deferred. §2 re-sequenced: C3 is the head of the queue, ahead of step 6. |
 | 2026-08-07 | Initial version — from a live four-audience walkthrough of the running app. |
